@@ -39,3 +39,54 @@ export interface MessageListItem {
   /** Sanitized plain-text preview, no markup. */
   preview: string | null;
 }
+
+/** One page of message envelopes plus the cursor for the next page. */
+export interface MessageListPage {
+  items: MessageListItem[];
+  /** Opaque cursor for the following page, or null on the last page. */
+  nextCursor: string | null;
+}
+
+/** Incoming-mail protocol chosen during account setup. */
+export type IncomingProtocol = "imap" | "pop3";
+
+/** Transport security for a mail server connection. */
+export type TransportSecurity = "tls" | "starttls";
+
+/** Incoming (IMAP/POP3) server configuration for a new account. */
+export interface IncomingServerConfig {
+  protocol: IncomingProtocol;
+  host: string;
+  port: number;
+  security: TransportSecurity;
+  username: string;
+  /**
+   * Plaintext password, sent once to the backend which stores it in the
+   * OS keychain. Never logged, echoed, or persisted in the frontend.
+   */
+  password: string;
+}
+
+/** Outgoing (SMTP) server configuration for a new account. */
+export interface OutgoingServerConfig {
+  host: string;
+  port: number;
+  security: TransportSecurity;
+  username: string;
+  /**
+   * Plaintext password, sent once to the backend which stores it in the
+   * OS keychain. Never logged, echoed, or persisted in the frontend.
+   */
+  password: string;
+}
+
+/**
+ * Payload for the `create_account` command. Mirrors the Rust
+ * `CreateAccountInput` exactly (serde `camelCase`).
+ */
+export interface CreateAccountInput {
+  displayName: string;
+  email: string;
+  incoming: IncomingServerConfig;
+  outgoing: OutgoingServerConfig;
+}

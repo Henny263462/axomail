@@ -49,6 +49,23 @@ keyring = { version = "4.1.5", features = ["v1"] }
 tracing = "0.1.44"
 tempfile = "3"
 
+# Phase 2+ protocol and content stack (ADR-0006).
+async-imap = { version = "0.11.3", default-features = false, features = ["runtime-tokio"] }
+mail-send = { version = "0.6.1", default-features = false, features = [
+    "ring",
+    "tls12",
+    "cram-md5",
+    "builder",
+] }
+mail-builder = "0.4.4"
+mail-parser = "0.11.5"
+ammonia = "4.1.3"
+rustls = { version = "0.23.42", default-features = false, features = ["ring", "std", "tls12"] }
+tokio-rustls = { version = "0.26.4", default-features = false, features = ["ring", "tls12"] }
+webpki-roots = "1.0.9"
+tokio-util = "0.7.18"
+futures = "0.3"
+
 # Internal crates. Directory names follow the architecture layout; package
 # names carry the `axomail-` prefix to avoid clashes with public crates
 # (e.g. the external `mail-parser` crate). See ADR-0002.

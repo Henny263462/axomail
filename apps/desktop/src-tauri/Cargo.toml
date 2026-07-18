@@ -19,6 +19,16 @@ tauri-build = { workspace = true }
 
 [dependencies]
 tauri = { workspace = true }
+axomail-core = { workspace = true }
+axomail-storage = { workspace = true }
+axomail-security = { workspace = true }
+tokio = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tracing = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true }
 
 [lints]
 workspace = true

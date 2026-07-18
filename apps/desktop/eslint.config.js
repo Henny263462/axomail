@@ -12,6 +12,14 @@ export default tseslint.config(
     languageOptions: {
       parserOptions: { parser: tseslint.parser },
     },
+    rules: {
+      // `<script setup lang="ts">` blocks are type-checked by vue-tsc, which
+      // already reports undefined identifiers and understands DOM lib types
+      // (Event, HTMLElement, document, …). The base `no-undef` rule cannot
+      // resolve those TypeScript type references, so — exactly as
+      // typescript-eslint does for `.ts` files — it is disabled here.
+      "no-undef": "off",
+    },
   },
   {
     rules: {

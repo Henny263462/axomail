@@ -1,0 +1,169 @@
+//! Request/response types for the provider traits.
+//!
+//! These shapes keep protocol adapters stateless with respect to local
+//! storage: the sync engine passes in the last known remote state and
+//! persists whatever comes back.
+
+use serde::{Deserialize, Serialize};
+
+use crate::address::Address;
+use crate::id::{MailboxId, RemoteMessageId};
+use crate::mailbox::{MailboxName, MailboxRole};
+use crate::message::{MessageFlags, UtcTimestamp};
+
+/// A mailbox as reported by the remote server during discovery.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RemoteMailbox {
+    /// Decoded mailbox name.
+    pub name: MailboxName,
+    /// Role derived from server attributes (SPECIAL-USE) when
+    /// available; `None` means the server gave no hint and the caller
+    /// may fall back to name-based guessing.
+    pub role: Option<MailboxRole>,
+}
+
+/// Snapshot of the remote folder structure.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RemoteMailboxState {
+    /// All selectable mailboxes on the server.
+    pub mailboxes: Vec<RemoteMailbox>,
+}
+
+/// Last locally known remote state of one mailbox, owned by storage
+/// and passed into the adapter for incremental sync.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MailboxSyncState {
+    /// `UIDVALIDITY` recorded during the previous sync (IMAP).
+    pub uid_validity: Option<u32>,
+    /// Highest UID already ingested (IMAP).
+    pub highest_uid: Option<u32>,
+}
+
+/// Instruction for one synchronization pass over one mailbox.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SyncRequest {
+    /// Local mailbox being synchronized.
+    pub mailbox: MailboxId,
+    /// Remote name of that mailbox.
+    pub remote_name: MailboxName,
+    /// Last known remote state; `Default` for a first sync.
+    pub state: MailboxSyncState,
+    /// Maximum number of envelopes to fetch in this pass.
+    pub batch_size: u32,
+}
+
+/// Envelope data for a message discovered on the server.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RemoteEnvelope {
+    /// Identity on the server.
+    pub remote_id: RemoteMessageId,
+    /// Decoded subject, if present.
+    pub subject: Option<String>,
+    /// Senders.
+    pub from: Vec<Address>,
+    /// Primary recipients.
+    pub to: Vec<Address>,
+    /// Date header, if present and parseable.
+    pub date: Option<UtcTimestamp>,
+    /// Server-side flags at fetch time.
+    pub flags: MessageFlags,
+    /// Size in bytes, if reported.
+    pub size_bytes: Option<u64>,
+}
+
+/// Result of one synchronization pass, to be persisted by the caller.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SyncOutcome {
+    /// Current `UIDVALIDITY` of the mailbox (IMAP). A change versus
+    /// the request's state invalidates every cached UID mapping.
+    pub uid_validity: Option<u32>,
+    /// Highest UID covered after this pass; feeds the next request.
+    pub highest_uid: Option<u32>,
+    /// Whether more messages remain beyond `batch_size`.
+    pub has_more: bool,
+    /// Newly discovered messages.
+    pub new_envelopes: Vec<RemoteEnvelope>,
+    /// Flag changes for already known messages.
+    pub flag_updates: Vec<(RemoteMessageId, MessageFlags)>,
+    /// Messages that vanished from the mailbox on the server.
+    pub removed: Vec<RemoteMessageId>,
+}
+
+/// Aggregate counters reported to the UI after a pass.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SyncSummary {
+    /// Messages newly seen on the server.
+    pub new_messages: u64,
+    /// Messages whose flags changed.
+    pub updated_flags: u64,
+    /// Messages no longer present on the server.
+    pub removed_messages: u64,
+}
+
+impl SyncOutcome {
+    /// Derives the UI-facing counters from this outcome.
+    #[must_use]
+    pub fn summary(&self) -> SyncSummary {
+        SyncSummary {
+            new_messages: self.new_envelopes.len() as u64,
+            updated_flags: self.flag_updates.len() as u64,
+            removed_messages: self.removed.len() as u64,
+        }
+    }
+}
+
+/// A raw, unparsed message as fetched from the server.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RawMessage {
+    /// Identity of the message on the server.
+    pub remote_id: RemoteMessageId,
+    /// Complete RFC 5322 byte stream.
+    pub bytes: Vec<u8>,
+}
+
+/// An attachment for an outgoing message.
+///
+/// Held in memory for the MVP; enforced size limits live in the
+/// composer command layer. Streaming for large files is a later
+/// optimization.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct OutgoingAttachment {
+    /// Sanitized file name presented to recipients.
+    pub filename: String,
+    /// MIME type (e.g. `application/pdf`).
+    pub mime_type: String,
+    /// Raw content.
+    pub bytes: Vec<u8>,
+}
+
+/// A message to be submitted via the outgoing provider.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct OutgoingMessage {
+    /// Sender address.
+    pub from: Address,
+    /// Primary recipients; must not be empty at send time.
+    pub to: Vec<Address>,
+    /// Carbon-copy recipients.
+    pub cc: Vec<Address>,
+    /// Blind-carbon-copy recipients (never serialized into headers by
+    /// the SMTP adapter).
+    pub bcc: Vec<Address>,
+    /// Optional reply-to address.
+    pub reply_to: Option<Address>,
+    /// Subject line.
+    pub subject: String,
+    /// Plain-text body (always present; the plain view is mandatory).
+    pub text_body: String,
+    /// Optional HTML alternative, sent as `multipart/alternative`.
+    pub html_body: Option<String>,
+    /// File attachments.
+    pub attachments: Vec<OutgoingAttachment>,
+}
+
+/// Acknowledgment for a submitted message.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SendResult {
+    /// Redacted final server reply line (e.g. the `250` acknowledgment),
+    /// kept for diagnostics.
+    pub server_reply: Option<String>,
+}

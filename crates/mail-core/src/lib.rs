@@ -19,6 +19,7 @@ mod id;
 mod mailbox;
 mod message;
 mod provider;
+mod provider_types;
 
 pub use account::{
     Account, ConnectionSecurity, IncomingProtocol, IncomingServerConfig, OutgoingServerConfig,
@@ -29,7 +30,8 @@ pub use error::{ErrorClass, MailError};
 pub use id::{AccountId, AttachmentId, CredentialRef, MailboxId, MessageId, RemoteMessageId};
 pub use mailbox::{Mailbox, MailboxName, MailboxRole};
 pub use message::{MessageEnvelope, MessageFlags, UtcTimestamp};
-pub use provider::{
-    IncomingMailProvider, OutgoingMailProvider, OutgoingMessage, RawMessage, RemoteMailbox,
-    RemoteMailboxState, SendResult, SyncRequest, SyncSummary,
+pub use provider::{IncomingMailProvider, OutgoingMailProvider};
+pub use provider_types::{
+    MailboxSyncState, OutgoingAttachment, OutgoingMessage, RawMessage, RemoteEnvelope,
+    RemoteMailbox, RemoteMailboxState, SendResult, SyncOutcome, SyncRequest, SyncSummary,
 };

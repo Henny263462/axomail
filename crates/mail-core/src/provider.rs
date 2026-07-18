@@ -2,94 +2,29 @@
 //!
 //! Protocol adapters (`axomail-imap`, `axomail-pop3`, `axomail-smtp`)
 //! implement these traits; the rest of the core depends only on them.
-//! The traits use native `async fn`. They are deliberately **not**
-//! object-safe: `mail-sync` wraps concrete adapters in an enum for
-//! dispatch instead of using `dyn` (see ADR-0004), which keeps the
-//! `async-trait` crate out of the dependency tree.
+//! The traits use native `async fn` (desugared to `impl Future + Send`
+//! so the engine can demand `Send` futures). They are deliberately not
+//! object-safe: composition roots wrap concrete adapters in an enum
+//! for dispatch (ADR-0004), keeping `async-trait` out of the tree.
 //!
-//! The request/response types below are the minimal shapes needed to
-//! define the boundary; they will grow with the phase-2 adapters.
+//! Adapters are stateless with respect to local storage: the sync
+//! engine passes known state in via [`SyncRequest`] and persists the
+//! returned [`SyncOutcome`].
 
-use serde::{Deserialize, Serialize};
-
-use crate::address::Address;
 use crate::error::MailError;
-use crate::id::{MailboxId, RemoteMessageId};
+use crate::id::RemoteMessageId;
 use crate::mailbox::MailboxName;
-
-/// A mailbox as reported by the remote server during discovery.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct RemoteMailbox {
-    /// Decoded mailbox name.
-    pub name: MailboxName,
-}
-
-/// Snapshot of the remote folder structure.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct RemoteMailboxState {
-    /// All selectable mailboxes on the server.
-    pub mailboxes: Vec<RemoteMailbox>,
-}
-
-/// Instruction for one synchronization pass over one mailbox.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct SyncRequest {
-    /// Local mailbox to synchronize.
-    pub mailbox: MailboxId,
-}
-
-/// Outcome of one synchronization pass.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
-pub struct SyncSummary {
-    /// Messages newly seen on the server.
-    pub new_messages: u64,
-    /// Messages whose flags changed.
-    pub updated_flags: u64,
-    /// Messages no longer present on the server.
-    pub removed_messages: u64,
-}
-
-/// A raw, unparsed message as fetched from the server.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct RawMessage {
-    /// Identity of the message on the server.
-    pub remote_id: RemoteMessageId,
-    /// Complete RFC 5322 byte stream.
-    pub bytes: Vec<u8>,
-}
-
-/// A message to be submitted via the outgoing provider.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct OutgoingMessage {
-    /// Sender address.
-    pub from: Address,
-    /// Primary recipients; must not be empty at send time.
-    pub to: Vec<Address>,
-    /// Carbon-copy recipients.
-    pub cc: Vec<Address>,
-    /// Blind-carbon-copy recipients (never serialized into headers by
-    /// the SMTP adapter).
-    pub bcc: Vec<Address>,
-    /// Optional reply-to address.
-    pub reply_to: Option<Address>,
-    /// Subject line.
-    pub subject: String,
-    /// Plain-text body.
-    pub text_body: String,
-}
-
-/// Acknowledgment for a submitted message.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct SendResult {
-    /// Redacted final server reply line (e.g. the `250` acknowledgment),
-    /// kept for diagnostics.
-    pub server_reply: Option<String>,
-}
+use crate::message::MessageFlags;
+use crate::provider_types::{
+    OutgoingMessage, RawMessage, RemoteMailboxState, SendResult, SyncOutcome, SyncRequest,
+};
 
 /// A source of incoming mail (IMAP or POP3).
 ///
 /// Implementations own their connection state; `&mut self` reflects
-/// that a session is a stateful, single-consumer resource.
+/// that a session is a stateful, single-consumer resource. Operations
+/// a protocol cannot support (e.g. server-side flags on POP3) return
+/// [`MailError::UnsupportedCapability`].
 pub trait IncomingMailProvider: Send {
     /// Establishes the connection and authenticates.
     fn connect(&mut self) -> impl Future<Output = Result<(), MailError>> + Send;
@@ -97,17 +32,37 @@ pub trait IncomingMailProvider: Send {
     /// Discovers the remote folder structure.
     fn discover(&mut self) -> impl Future<Output = Result<RemoteMailboxState, MailError>> + Send;
 
-    /// Runs one synchronization pass for a mailbox.
+    /// Runs one incremental synchronization pass for a mailbox.
     fn sync(
         &mut self,
         request: SyncRequest,
-    ) -> impl Future<Output = Result<SyncSummary, MailError>> + Send;
+    ) -> impl Future<Output = Result<SyncOutcome, MailError>> + Send;
 
     /// Fetches one complete raw message.
     fn fetch_message(
         &mut self,
         id: &RemoteMessageId,
     ) -> impl Future<Output = Result<RawMessage, MailError>> + Send;
+
+    /// Replaces the flags of a message on the server.
+    fn set_flags(
+        &mut self,
+        id: &RemoteMessageId,
+        flags: MessageFlags,
+    ) -> impl Future<Output = Result<(), MailError>> + Send;
+
+    /// Moves a message to another mailbox on the server.
+    fn move_message(
+        &mut self,
+        id: &RemoteMessageId,
+        target: &MailboxName,
+    ) -> impl Future<Output = Result<(), MailError>> + Send;
+
+    /// Deletes a message on the server.
+    fn delete_message(
+        &mut self,
+        id: &RemoteMessageId,
+    ) -> impl Future<Output = Result<(), MailError>> + Send;
 
     /// Closes the connection gracefully.
     fn disconnect(&mut self) -> impl Future<Output = Result<(), MailError>> + Send;
@@ -125,9 +80,12 @@ pub trait OutgoingMailProvider: Send + Sync {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::address::Address;
+    use crate::id::MailboxId;
+    use crate::provider_types::MailboxSyncState;
 
-    /// Compile-time proof that the traits are implementable with plain
-    /// `async fn` and that their futures are `Send`.
+    /// Compile-time proof that both traits are implementable with
+    /// plain `async fn` and that their futures are `Send`.
     struct NullIncoming;
 
     impl IncomingMailProvider for NullIncoming {
@@ -139,11 +97,31 @@ mod tests {
             Err(MailError::Cancelled)
         }
 
-        async fn sync(&mut self, _request: SyncRequest) -> Result<SyncSummary, MailError> {
+        async fn sync(&mut self, _request: SyncRequest) -> Result<SyncOutcome, MailError> {
             Err(MailError::Cancelled)
         }
 
         async fn fetch_message(&mut self, _id: &RemoteMessageId) -> Result<RawMessage, MailError> {
+            Err(MailError::Cancelled)
+        }
+
+        async fn set_flags(
+            &mut self,
+            _id: &RemoteMessageId,
+            _flags: MessageFlags,
+        ) -> Result<(), MailError> {
+            Err(MailError::Cancelled)
+        }
+
+        async fn move_message(
+            &mut self,
+            _id: &RemoteMessageId,
+            _target: &MailboxName,
+        ) -> Result<(), MailError> {
+            Err(MailError::Cancelled)
+        }
+
+        async fn delete_message(&mut self, _id: &RemoteMessageId) -> Result<(), MailError> {
             Err(MailError::Cancelled)
         }
 
@@ -169,6 +147,9 @@ mod tests {
         assert_send_future(provider.discover());
         assert_send_future(provider.sync(SyncRequest {
             mailbox: MailboxId::new(1),
+            remote_name: MailboxName::new("INBOX"),
+            state: MailboxSyncState::default(),
+            batch_size: 100,
         }));
         assert_send_future(provider.disconnect());
     }
@@ -188,6 +169,8 @@ mod tests {
             reply_to: None,
             subject: String::new(),
             text_body: String::new(),
+            html_body: None,
+            attachments: vec![],
         };
         assert_send_future(provider.send(&message));
     }

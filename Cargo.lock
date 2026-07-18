@@ -263,8 +263,15 @@ dependencies = [
 name = "axomail-desktop"
 version = "0.1.0"
 dependencies = [
+ "axomail-core",
+ "axomail-security",
+ "axomail-storage",
+ "serde",
+ "serde_json",
  "tauri",
  "tauri-build",
+ "tokio",
+ "tracing",
 ]
 
 [[package]]

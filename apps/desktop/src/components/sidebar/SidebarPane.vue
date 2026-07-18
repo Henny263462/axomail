@@ -9,6 +9,7 @@ defineProps<{
 
 const emit = defineEmits<{
   selectMailbox: [mailboxId: number];
+  addAccount: [];
 }>();
 </script>
 
@@ -17,10 +18,17 @@ const emit = defineEmits<{
     class="sidebar"
     aria-label="Accounts and folders"
   >
+    <button
+      type="button"
+      class="add-account"
+      @click="emit('addAccount')"
+    >
+      Add account
+    </button>
     <EmptyState
       v-if="accounts.length === 0"
       title="No accounts"
-      detail="Account setup arrives with the IMAP work in phase 2."
+      detail="Add an account to get started."
     />
     <template v-else>
       <section
@@ -70,6 +78,24 @@ const emit = defineEmits<{
   background: var(--color-bg-subtle);
   border-right: 1px solid var(--color-border);
   padding: var(--space-3);
+}
+
+.add-account {
+  display: block;
+  width: 100%;
+  padding: var(--space-2);
+  margin-bottom: var(--space-3);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-md);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
+  color: var(--color-text);
+  background: var(--color-bg);
+  transition: background var(--transition-fast);
+}
+
+.add-account:hover {
+  background: var(--color-bg-hover);
 }
 
 .account-name {

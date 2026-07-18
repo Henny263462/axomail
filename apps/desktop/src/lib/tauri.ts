@@ -36,3 +36,24 @@ export async function safeInvoke<T>(
     return null;
   }
 }
+
+/**
+ * Invokes a Tauri command like {@link safeInvoke} but does **not** swallow
+ * command failures: it resolves to `null` only when the IPC bridge is
+ * absent (browser preview, tests), and otherwise rejects with the
+ * backend's user-facing error string on failure.
+ *
+ * Use this for commands whose error message must reach the user — e.g.
+ * account setup, where the backend reports why credentials were rejected.
+ * The browser preview still degrades gracefully to `null` (ADR-0005); the
+ * caller decides how to explain that the action needs the desktop app.
+ */
+export async function invokeOrThrow<T>(
+  command: string,
+  args?: Record<string, unknown>,
+): Promise<T | null> {
+  if (!isTauri()) {
+    return null;
+  }
+  return invoke<T>(command, args);
+}
