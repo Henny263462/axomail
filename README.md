@@ -3,9 +3,11 @@
 A fast, lightweight, open-source desktop mail client for Windows, macOS, and
 Linux. Built with Tauri 2, Rust, and Vue 3.
 
-> **Status: pre-alpha.** Work package 1a (project scaffold) is complete. The
-> application opens an empty shell window; no mail functionality exists yet.
-> See [docs/architecture/plan-phase-1.md](docs/architecture/plan-phase-1.md)
+> **Status: pre-alpha.** Work packages 1a (scaffold) and 1b (core models,
+> error hierarchy, provider traits) are complete, plus the three-column UI
+> shell with design tokens. No mail functionality exists yet — the shell
+> shows honest empty states. See
+> [docs/architecture/plan-phase-1.md](docs/architecture/plan-phase-1.md)
 > for the roadmap.
 
 ## Principles
@@ -65,6 +67,18 @@ Prerequisites:
 pnpm install        # install frontend dependencies
 pnpm tauri dev      # run the desktop app in development mode
 pnpm tauri build    # build a release bundle
+pnpm dev:fixtures   # UI development with sample data (dev-fixtures flag)
+```
+
+### Web preview
+
+The same frontend runs as a browser-served preview (ADR-0005): full UI
+shell and design system, but no mail features — browsers cannot speak
+IMAP/POP3/SMTP or access the OS keychain, so those stay desktop-only.
+
+```sh
+pnpm dev:web        # serve the preview locally
+pnpm build:web      # build the static preview into apps/desktop/dist
 ```
 
 Quality checks:

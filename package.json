@@ -7,7 +7,10 @@
   },
   "scripts": {
     "dev": "pnpm --filter axomail-desktop dev",
+    "dev:web": "pnpm --filter axomail-desktop dev",
+    "dev:fixtures": "pnpm --filter axomail-desktop dev:fixtures",
     "build": "pnpm --filter axomail-desktop build",
+    "build:web": "pnpm --filter axomail-desktop build",
     "typecheck": "pnpm --filter axomail-desktop typecheck",
     "lint": "pnpm --filter axomail-desktop lint",
     "test": "pnpm --filter axomail-desktop test",

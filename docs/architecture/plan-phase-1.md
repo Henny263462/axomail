@@ -13,26 +13,27 @@ and TypeScript strict mode, nine empty-but-documented mail crates, CI base
 pipeline, license policy (deny.toml + npm license check), file-size-limit
 check, LICENSE, README, first ADRs.
 
-### 1b — Core models and errors (next)
+### 1b — Core models and errors ✅
 
-1. Typed IDs (`AccountId`, `MailboxId`, `MessageId`, `RemoteMessageId`, …)
-   as newtypes in `mail-core`; no bare `String` IDs.
-2. Central `MailError` hierarchy with `thiserror`: network, DNS, TLS,
-   auth, protocol, rate-limit, timeout, parsing, database, keychain,
-   filesystem, unsupported-capability; each classified temporary vs.
-   permanent vs. user-configuration.
-3. First domain models: account, incoming/outgoing server config (without
-   secrets), mailbox, message envelope.
-4. Provider trait definitions (`IncomingMailProvider`,
-   `OutgoingMailProvider`) — native `async fn` in traits if object safety
-   allows, otherwise `async-trait`; decision recorded as an ADR.
-5. Unit tests for IDs, error classification, and model invariants.
-6. ADRs: error strategy, async-trait decision, workspace layout notes.
+Delivered 2026-07-18: typed IDs as newtypes (`AccountId`, `MailboxId`,
+`MessageId`, `AttachmentId`, `CredentialRef`, `RemoteMessageId`),
+central `MailError` hierarchy with classification
+(temporary/permanent/user-configuration, ADR-0003), domain models
+(account and server configs without secrets, mailbox with role
+detection, message envelope), provider traits with native `async fn`
+and enum-dispatch strategy (ADR-0004), 20 unit tests.
 
-Exit criteria: `cargo test --workspace` green; no protocol code; no
-storage code; public APIs documented.
+### UI shell (pulled forward from 1d) ✅
 
-### 1c — Storage and keychain
+Delivered 2026-07-18 on owner request: design tokens (white mode plus
+prepared dark token set), three-column shell with stacked navigation
+below 880 px, Sidebar/MessageList/MessageView panes with honest empty
+states, `dev-fixtures` sample data strictly behind a compile-time flag
+(verified absent from release bundles), component tests, and the
+browser-served web preview (ADR-0005). Still open from 1d: real Tauri
+command surface, CONTRIBUTING, SECURITY.
+
+### 1c — Storage and keychain (next)
 
 SQLite base schema with SQLx migrations (accounts, mailboxes, messages,
 locations, flags, sync state, settings), `mail-storage` query surface,

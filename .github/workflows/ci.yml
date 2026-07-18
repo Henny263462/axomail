@@ -76,6 +76,12 @@ jobs:
       - run: pnpm lint
       - run: pnpm test
       - run: pnpm build
+      - name: Verify dev-fixtures are excluded from the production bundle
+        run: |
+          if grep -rq "Fixture account\|fixture@example.org" apps/desktop/dist; then
+            echo "dev-fixtures leaked into the production bundle" >&2
+            exit 1
+          fi
       - name: File size limits (Rust, Vue, TS, CSS)
         run: node scripts/check-file-sizes.mjs
       - name: npm license check

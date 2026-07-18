@@ -1,60 +1,75 @@
 <script setup lang="ts">
-import { invoke } from "@tauri-apps/api/core";
-import { onMounted, ref } from "vue";
+import { computed, onMounted, ref } from "vue";
 
-// Placeholder shell for work package 1a. The three-column layout and the
-// design-token system follow in work package 1d.
-const version = ref<string | null>(null);
+import AppShell from "./components/layout/AppShell.vue";
+import MessageListPane from "./components/list/MessageListPane.vue";
+import MessageViewPane from "./components/message/MessageViewPane.vue";
+import SidebarPane from "./components/sidebar/SidebarPane.vue";
+import type { AccountSummary, MessageListItem } from "./types/mail";
 
+const shell = ref<InstanceType<typeof AppShell> | null>(null);
+
+// Real data arrives through typed Tauri commands once storage lands
+// (work package 1c); until then these stay empty outside dev-fixtures.
+const accounts = ref<AccountSummary[]>([]);
+const messages = ref<MessageListItem[]>([]);
+const selectedMailboxId = ref<number | null>(null);
+const selectedMessageId = ref<number | null>(null);
+
+// `dev-fixtures`: UI sample data, development builds only. The DEV
+// guard is compile-time constant in release builds, so the dynamic
+// import below is dropped from production bundles entirely.
 onMounted(async () => {
-  try {
-    version.value = await invoke<string>("app_version");
-  } catch {
-    // Not running inside Tauri (e.g. plain `vite dev` or tests).
-    version.value = null;
+  if (
+    import.meta.env.DEV &&
+    import.meta.env.VITE_AXOMAIL_DEV_FIXTURES === "1"
+  ) {
+    const fixtures = await import("./dev/fixtures");
+    accounts.value = fixtures.fixtureAccounts;
+    messages.value = fixtures.fixtureMessages;
+    selectedMailboxId.value =
+      fixtures.fixtureAccounts[0]?.mailboxes[0]?.id ?? null;
   }
 });
+
+const visibleMessages = computed(() =>
+  messages.value.filter((m) => m.mailboxId === selectedMailboxId.value),
+);
+
+const selectedMessage = computed(
+  () => messages.value.find((m) => m.id === selectedMessageId.value) ?? null,
+);
+
+function onSelectMailbox(mailboxId: number) {
+  selectedMailboxId.value = mailboxId;
+  selectedMessageId.value = null;
+  shell.value?.showPane("list");
+}
+
+function onSelectMessage(messageId: number) {
+  selectedMessageId.value = messageId;
+  shell.value?.showPane("message");
+}
 </script>
 
 <template>
-  <main class="shell">
-    <h1 class="title">
-      axomail
-    </h1>
-    <p class="subtitle">
-      A fast, lightweight, open-source desktop mail client.
-    </p>
-    <p
-      v-if="version !== null"
-      class="version"
-    >
-      version {{ version }}
-    </p>
-  </main>
+  <AppShell ref="shell">
+    <template #sidebar>
+      <SidebarPane
+        :accounts="accounts"
+        :selected-mailbox-id="selectedMailboxId"
+        @select-mailbox="onSelectMailbox"
+      />
+    </template>
+    <template #list>
+      <MessageListPane
+        :messages="visibleMessages"
+        :selected-message-id="selectedMessageId"
+        @select="onSelectMessage"
+      />
+    </template>
+    <template #message>
+      <MessageViewPane :message="selectedMessage" />
+    </template>
+  </AppShell>
 </template>
-
-<style scoped>
-.shell {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  min-height: 100vh;
-  gap: 0.5rem;
-}
-
-.title {
-  font-size: 1.5rem;
-  font-weight: 600;
-  letter-spacing: -0.02em;
-}
-
-.subtitle {
-  color: var(--color-text-secondary);
-}
-
-.version {
-  color: var(--color-text-tertiary);
-  font-size: 0.8125rem;
-}
-</style>

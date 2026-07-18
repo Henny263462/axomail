@@ -7,9 +7,12 @@ superseded ADR is not edited; a new ADR replaces it and links back.
 | --- | ----- | ------ |
 | [0001](0001-protocol-and-storage-architecture.md) | Protocol and storage architecture | accepted |
 | [0002](0002-core-dependency-selection.md) | Core dependency selection | accepted |
-
-Planned next (work package 1b): error strategy, workspace layout details,
-native `async fn` in traits vs. `async-trait`.
+| [0003](0003-error-strategy.md) | Error strategy | accepted |
+| [0004](0004-async-traits-without-async-trait.md) | Native async traits, enum dispatch, no `async-trait` | accepted |
+| [0005](0005-web-preview-build.md) | Browser-served web preview of the UI | accepted |
+| [0006](0006-protocol-stack-selection.md) | Protocol and content library selection | accepted |
+| [0007](0007-html-rendering-isolation.md) | HTML mail rendering isolation | accepted |
+| [0008](0008-local-search-fts5.md) | Local search via SQLite FTS5 | accepted |
 
 ## Format
 
