@@ -2,6 +2,18 @@
 import { usePaneNavigation, type Pane } from "../../composables/usePaneNavigation";
 import StatusBar from "./StatusBar.vue";
 
+withDefaults(
+  defineProps<{
+    /** Redacted sync failure surfaced in the status bar, or null. */
+    statusError?: string | null;
+  }>(),
+  { statusError: null },
+);
+
+const emit = defineEmits<{
+  dismissStatusError: [];
+}>();
+
 const { isStacked, activePane, showPane, paneVisible } = usePaneNavigation();
 
 const panes: { id: Pane; label: string }[] = [
@@ -55,7 +67,10 @@ defineExpose({ showPane });
         <slot name="message" />
       </div>
     </div>
-    <StatusBar />
+    <StatusBar
+      :error="statusError"
+      @dismiss-error="emit('dismissStatusError')"
+    />
   </div>
 </template>
 

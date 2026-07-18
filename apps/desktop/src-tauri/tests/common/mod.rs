@@ -7,7 +7,7 @@ use axomail_core::{
     Address, ConnectionSecurity, EmailAddress, IncomingProtocol, MailboxId, MessageFlags,
     UtcTimestamp,
 };
-use axomail_desktop_lib::dto::{CreateAccountInput, IncomingInput, ServerInput};
+use axomail_desktop_lib::dto::{ComposeInput, CreateAccountInput, IncomingInput, ServerInput};
 use axomail_desktop_lib::state::SharedSecretStore;
 use axomail_security::InMemorySecretStore;
 use axomail_storage::NewMessage;
@@ -18,6 +18,32 @@ pub fn secret_stores() -> (Arc<InMemorySecretStore>, SharedSecretStore) {
     let concrete = Arc::new(InMemorySecretStore::new());
     let shared: SharedSecretStore = concrete.clone();
     (concrete, shared)
+}
+
+/// A valid account-creation input whose SMTP server points at a local test
+/// server on `127.0.0.1:outgoing_port` over implicit TLS.
+pub fn outgoing_account_input(outgoing_port: u16) -> CreateAccountInput {
+    let mut input = valid_input();
+    input.outgoing = ServerInput {
+        host: "127.0.0.1".to_owned(),
+        port: outgoing_port,
+        security: ConnectionSecurity::Tls,
+        username: "user".to_owned(),
+        password: "pass".to_owned(),
+    };
+    input
+}
+
+/// Builds a compose payload for one account and recipient set.
+pub fn compose_input(account_id: i64, to: &[&str], subject: &str) -> ComposeInput {
+    ComposeInput {
+        account_id,
+        to: to.iter().map(|value| (*value).to_owned()).collect(),
+        cc: Vec::new(),
+        bcc: Vec::new(),
+        subject: subject.to_owned(),
+        text_body: "Hello from the axomail composer test.".to_owned(),
+    }
 }
 
 /// A fully valid account-creation input.

@@ -50,16 +50,8 @@ describe("MessageListPane", () => {
 });
 
 describe("MessageViewPane", () => {
-  it("shows the envelope of the selected message", () => {
-    const message = fixtureMessages[0];
-    if (message === undefined) throw new Error("fixture missing");
-    const wrapper = mount(MessageViewPane, { props: { message } });
-    expect(wrapper.text()).toContain("Design tokens review");
-    expect(wrapper.text()).toContain("ada@example.org");
-  });
-
   it("shows an empty state without a selection", () => {
-    const wrapper = mount(MessageViewPane, { props: { message: null } });
+    const wrapper = mount(MessageViewPane, { props: { messageId: null } });
     expect(wrapper.text()).toContain("No message selected");
   });
 });

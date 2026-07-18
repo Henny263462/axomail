@@ -20,11 +20,14 @@
 #![forbid(unsafe_code)]
 
 mod accounts;
+mod address_json;
+mod drafts;
 mod error_map;
 mod ingest;
 mod mailboxes;
 mod message_rows;
 mod messages;
+mod outbox;
 mod pagination;
 mod settings;
 mod store;
@@ -32,9 +35,11 @@ mod sync_jobs;
 mod sync_state;
 
 pub use accounts::{AccountRepo, NewAccount};
+pub use drafts::{DraftId, DraftRecord, DraftRepo, NewDraft};
 pub use ingest::{IngestRepo, IngestSummary};
 pub use mailboxes::{MailboxRepo, NewMailbox};
 pub use messages::{MessageRepo, NewMessage};
+pub use outbox::{NewOutbox, OutboxId, OutboxRecord, OutboxRepo, OutboxState};
 pub use pagination::{MessageCursor, MessagePage};
 pub use settings::SettingsRepo;
 pub use store::Store;

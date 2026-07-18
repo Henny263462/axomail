@@ -90,3 +90,124 @@ export interface CreateAccountInput {
   incoming: IncomingServerConfig;
   outgoing: OutgoingServerConfig;
 }
+
+/**
+ * Result of a live connection test. Nothing is persisted by the command;
+ * each side reports independently so the user sees which server failed.
+ */
+export interface ConnectionTestResult {
+  incomingOk: boolean;
+  incomingError: string | null;
+  outgoingOk: boolean;
+  outgoingError: string | null;
+}
+
+/** One addressee of a message (display name optional). */
+export interface RecipientDto {
+  name: string | null;
+  address: string;
+}
+
+/** Metadata for a single attachment; the bytes are not carried here. */
+export interface AttachmentMetaDto {
+  filename: string;
+  mimeType: string;
+  size: number;
+}
+
+/**
+ * Full detail of one message, including the sanitized viewing payload.
+ *
+ * `textBody` and `sanitizedHtml` are the only body-bearing fields the
+ * frontend ever holds, and only for the message currently open.
+ */
+export interface MessageDetailDto {
+  id: number;
+  subject: string | null;
+  fromName: string;
+  fromAddress: string;
+  to: RecipientDto[];
+  cc: RecipientDto[];
+  /** Unix seconds (UTC); null when the date header was absent. */
+  dateUnix: number | null;
+  textBody: string | null;
+  /** Sanitized HTML for the sandboxed iframe, or null when absent. */
+  sanitizedHtml: string | null;
+  /** Count of external resources rewritten to inert placeholders. */
+  remoteBlocked: number;
+  /** True when scripts/forms/other active content were stripped. */
+  hadActiveContent: boolean;
+  attachments: AttachmentMetaDto[];
+}
+
+/**
+ * Payload for `send_message` and `save_draft`. Recipient lists are already
+ * split and trimmed by the composer before crossing the IPC boundary.
+ */
+export interface ComposeInput {
+  accountId: number;
+  to: string[];
+  cc: string[];
+  bcc: string[];
+  subject: string;
+  textBody: string;
+}
+
+/** A saved draft, as returned by `list_drafts`. */
+export interface DraftDto {
+  id: number;
+  accountId: number;
+  to: string[];
+  cc: string[];
+  bcc: string[];
+  subject: string;
+  textBody: string;
+  updatedUnix: number;
+}
+
+/** Delivery lifecycle state of an outbox item. */
+export type OutboxState = "pending" | "sending" | "sent" | "failed";
+
+/** One queued or delivered message in the outbox. */
+export interface OutboxItemDto {
+  id: number;
+  accountId: number;
+  subject: string;
+  toSummary: string;
+  state: OutboxState;
+  attempts: number;
+  lastError: string | null;
+  updatedUnix: number;
+}
+
+/**
+ * Outcome of a send or retry attempt. `sent` is true only when the message
+ * left the machine; otherwise it sits in the outbox and `error` explains why.
+ */
+export interface SendOutcomeDto {
+  outboxId: number;
+  sent: boolean;
+  error: string | null;
+}
+
+/** Lifecycle events emitted per sync job on the `axomail://sync` channel. */
+export type SyncEventKind =
+  | "jobQueued"
+  | "jobStarted"
+  | "batchIngested"
+  | "jobFinished"
+  | "jobFailed";
+
+/**
+ * A sync progress event. The shape is flat (a `kind` discriminant plus
+ * nullable detail fields) to mirror the backend's serialized payload
+ * exactly; only the fields relevant to `kind` are populated.
+ */
+export interface SyncEventDto {
+  kind: SyncEventKind;
+  jobId: number;
+  mailboxId: number | null;
+  newMessages: number | null;
+  errorClass: string | null;
+  message: string | null;
+}

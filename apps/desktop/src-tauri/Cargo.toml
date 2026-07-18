@@ -22,13 +22,19 @@ tauri = { workspace = true }
 axomail-core = { workspace = true }
 axomail-storage = { workspace = true }
 axomail-security = { workspace = true }
+axomail-imap = { workspace = true }
+axomail-smtp = { workspace = true }
+axomail-sync = { workspace = true }
+axomail-parser = { workspace = true }
 tokio = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 tracing = { workspace = true }
 
 [dev-dependencies]
-tokio = { workspace = true }
+tokio = { workspace = true, features = ["test-util"] }
+axomail-test-support = { workspace = true }
+tempfile = { workspace = true }
 
 [lints]
 workspace = true

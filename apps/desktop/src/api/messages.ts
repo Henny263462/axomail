@@ -5,7 +5,7 @@
  * browser preview where the IPC bridge is absent (ADR-0005).
  */
 import { safeInvoke } from "../lib/tauri";
-import type { MessageListPage } from "../types/mail";
+import type { MessageDetailDto, MessageListPage } from "../types/mail";
 
 /**
  * Loads one page of a mailbox's messages, newest first.
@@ -32,4 +32,14 @@ export function markMessageSeen(
   seen: boolean,
 ): Promise<null> {
   return safeInvoke<null>("mark_message_seen", { messageId, seen });
+}
+
+/**
+ * Loads the full detail of one message, including the sanitized viewing
+ * payload. Resolves to `null` in the browser preview or on backend failure.
+ */
+export function getMessageDetail(
+  messageId: number,
+): Promise<MessageDetailDto | null> {
+  return safeInvoke<MessageDetailDto>("get_message_detail", { messageId });
 }

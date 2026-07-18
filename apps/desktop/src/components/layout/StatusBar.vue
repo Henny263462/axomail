@@ -2,6 +2,18 @@
 import { useAppVersion } from "../../composables/useAppVersion";
 import { isTauri } from "../../lib/tauri";
 
+withDefaults(
+  defineProps<{
+    /** Redacted sync failure to surface, or null when there is none. */
+    error?: string | null;
+  }>(),
+  { error: null },
+);
+
+const emit = defineEmits<{
+  dismissError: [];
+}>();
+
 const { version } = useAppVersion();
 const browserPreview = !isTauri();
 </script>
@@ -15,7 +27,22 @@ const browserPreview = !isTauri();
       axomail<template v-if="version !== null"> {{ version }}</template>
     </span>
     <span
-      v-if="browserPreview"
+      v-if="error"
+      class="error"
+      role="alert"
+    >
+      {{ error }}
+      <button
+        type="button"
+        class="dismiss"
+        aria-label="Dismiss error"
+        @click="emit('dismissError')"
+      >
+        ✕
+      </button>
+    </span>
+    <span
+      v-else-if="browserPreview"
       class="mode"
     >
       Browser preview — mail features require the desktop app
@@ -39,5 +66,28 @@ const browserPreview = !isTauri();
 
 .mode {
   color: var(--color-text-secondary);
+}
+
+.error {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--color-danger);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dismiss {
+  flex-shrink: 0;
+  font-size: var(--text-xs);
+  line-height: 1;
+  color: var(--color-danger);
+  padding: 2px var(--space-1);
+  border-radius: var(--radius-sm);
+}
+
+.dismiss:hover {
+  background: var(--color-bg-hover);
 }
 </style>

@@ -1,10 +1,49 @@
 <script setup lang="ts">
-import type { MessageListItem } from "../../types/mail";
-import EmptyState from "../common/EmptyState.vue";
+import { ref, watch } from "vue";
 
-defineProps<{
-  message: MessageListItem | null;
+import { getMessageDetail } from "../../api/messages";
+import type { MessageDetailDto } from "../../types/mail";
+import EmptyState from "../common/EmptyState.vue";
+import MessageDetail from "./MessageDetail.vue";
+
+const props = defineProps<{
+  messageId: number | null;
 }>();
+
+type LoadState = "idle" | "loading" | "loaded" | "error";
+
+const state = ref<LoadState>("idle");
+const detail = ref<MessageDetailDto | null>(null);
+
+/**
+ * Loads the detail for `id`, ignoring the result if the selection changed
+ * while the request was in flight (last-write-wins by comparing ids).
+ */
+async function load(id: number): Promise<void> {
+  state.value = "loading";
+  detail.value = null;
+  const result = await getMessageDetail(id);
+  if (props.messageId !== id) return;
+  if (result === null) {
+    state.value = "error";
+    return;
+  }
+  detail.value = result;
+  state.value = "loaded";
+}
+
+watch(
+  () => props.messageId,
+  (id) => {
+    if (id === null) {
+      state.value = "idle";
+      detail.value = null;
+      return;
+    }
+    void load(id);
+  },
+  { immediate: true },
+);
 </script>
 
 <template>
@@ -13,33 +52,26 @@ defineProps<{
     aria-label="Message"
   >
     <EmptyState
-      v-if="message === null"
+      v-if="state === 'idle'"
       title="No message selected"
       detail="Select a message from the list to read it here."
     />
-    <article
-      v-else
-      class="content"
+    <p
+      v-else-if="state === 'loading'"
+      class="status"
+      role="status"
     >
-      <header class="header">
-        <h1 class="subject">
-          {{ message.subject ?? "(no subject)" }}
-        </h1>
-        <p class="meta">
-          <span class="from">{{ message.fromName }}</span>
-          <span class="address">&lt;{{ message.fromAddress }}&gt;</span>
-        </p>
-      </header>
-      <!--
-        Body rendering is deliberately absent: it requires the sanitizing
-        pipeline decided in a dedicated ADR before phase 2. Until then
-        only envelope data is shown.
-      -->
-      <p class="body-note">
-        Message bodies are rendered once the sanitized viewing pipeline
-        lands (phase 2).
-      </p>
-    </article>
+      Loading message…
+    </p>
+    <EmptyState
+      v-else-if="state === 'error' || detail === null"
+      title="Message unavailable"
+      detail="This message could not be loaded. It may require the desktop app."
+    />
+    <MessageDetail
+      v-else
+      :detail="detail"
+    />
   </section>
 </template>
 
@@ -50,34 +82,8 @@ defineProps<{
   background: var(--color-bg);
 }
 
-.content {
+.status {
   padding: var(--space-5);
-}
-
-.header {
-  border-bottom: 1px solid var(--color-border);
-  padding-bottom: var(--space-3);
-  margin-bottom: var(--space-4);
-}
-
-.subject {
-  font-size: var(--text-lg);
-  font-weight: var(--weight-semibold);
-  letter-spacing: -0.01em;
-}
-
-.meta {
-  margin-top: var(--space-1);
-  font-size: var(--text-sm);
-  color: var(--color-text-secondary);
-}
-
-.address {
-  color: var(--color-text-tertiary);
-  margin-left: var(--space-1);
-}
-
-.body-note {
   font-size: var(--text-sm);
   color: var(--color-text-tertiary);
 }

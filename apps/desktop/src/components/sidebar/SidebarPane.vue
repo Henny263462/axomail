@@ -1,16 +1,36 @@
 <script setup lang="ts">
+import { computed } from "vue";
+
 import type { AccountSummary } from "../../types/mail";
 import EmptyState from "../common/EmptyState.vue";
+import type { SidebarView } from "./view";
 
-defineProps<{
-  accounts: AccountSummary[];
-  selectedMailboxId: number | null;
-}>();
+const props = withDefaults(
+  defineProps<{
+    accounts: AccountSummary[];
+    selectedMailboxId: number | null;
+    /** Active top-level view; drives Drafts/Outbox highlighting. */
+    activeView?: SidebarView;
+    /** Account ids with a sync job currently running. */
+    syncingAccountIds?: number[];
+  }>(),
+  { activeView: "mailbox", syncingAccountIds: () => [] },
+);
 
 const emit = defineEmits<{
   selectMailbox: [mailboxId: number];
   addAccount: [];
+  compose: [];
+  syncAccount: [accountId: number];
+  selectDrafts: [];
+  selectOutbox: [];
 }>();
+
+const hasAccounts = computed(() => props.accounts.length > 0);
+
+function isSyncing(accountId: number): boolean {
+  return props.syncingAccountIds.includes(accountId);
+}
 </script>
 
 <template>
@@ -25,8 +45,18 @@ const emit = defineEmits<{
     >
       Add account
     </button>
+    <button
+      type="button"
+      class="compose"
+      :disabled="!hasAccounts"
+      :title="hasAccounts ? undefined : 'Add an account before composing'"
+      @click="emit('compose')"
+    >
+      Compose
+    </button>
+
     <EmptyState
-      v-if="accounts.length === 0"
+      v-if="!hasAccounts"
       title="No accounts"
       detail="Add an account to get started."
     />
@@ -37,12 +67,28 @@ const emit = defineEmits<{
         class="account"
         :aria-label="account.displayName"
       >
-        <h2
-          class="account-name"
-          :title="account.email"
-        >
-          {{ account.displayName }}
-        </h2>
+        <div class="account-header">
+          <h2
+            class="account-name"
+            :title="account.email"
+          >
+            {{ account.displayName }}
+          </h2>
+          <span
+            v-if="isSyncing(account.id)"
+            class="syncing"
+            role="status"
+          >Syncing…</span>
+          <button
+            type="button"
+            class="sync"
+            :aria-label="`Sync ${account.displayName}`"
+            title="Sync this account"
+            @click="emit('syncAccount', account.id)"
+          >
+            ↻
+          </button>
+        </div>
         <ul>
           <li
             v-for="mailbox in account.mailboxes"
@@ -51,8 +97,15 @@ const emit = defineEmits<{
             <button
               type="button"
               class="mailbox"
-              :class="{ selected: mailbox.id === selectedMailboxId }"
-              :aria-current="mailbox.id === selectedMailboxId ? 'true' : undefined"
+              :class="{
+                selected:
+                  activeView === 'mailbox' && mailbox.id === selectedMailboxId,
+              }"
+              :aria-current="
+                activeView === 'mailbox' && mailbox.id === selectedMailboxId
+                  ? 'true'
+                  : undefined
+              "
               @click="emit('selectMailbox', mailbox.id)"
             >
               <span class="mailbox-name">{{ mailbox.name }}</span>
@@ -68,6 +121,27 @@ const emit = defineEmits<{
         </ul>
       </section>
     </template>
+
+    <div class="fixed-views">
+      <button
+        type="button"
+        class="mailbox special"
+        :class="{ selected: activeView === 'drafts' }"
+        :aria-current="activeView === 'drafts' ? 'true' : undefined"
+        @click="emit('selectDrafts')"
+      >
+        Drafts
+      </button>
+      <button
+        type="button"
+        class="mailbox special"
+        :class="{ selected: activeView === 'outbox' }"
+        :aria-current="activeView === 'outbox' ? 'true' : undefined"
+        @click="emit('selectOutbox')"
+      >
+        Outbox
+      </button>
+    </div>
   </nav>
 </template>
 
@@ -78,13 +152,16 @@ const emit = defineEmits<{
   background: var(--color-bg-subtle);
   border-right: 1px solid var(--color-border);
   padding: var(--space-3);
+  display: flex;
+  flex-direction: column;
 }
 
-.add-account {
+.add-account,
+.compose {
   display: block;
   width: 100%;
   padding: var(--space-2);
-  margin-bottom: var(--space-3);
+  margin-bottom: var(--space-2);
   border: 1px solid var(--color-border-strong);
   border-radius: var(--radius-md);
   font-size: var(--text-sm);
@@ -94,17 +171,58 @@ const emit = defineEmits<{
   transition: background var(--transition-fast);
 }
 
-.add-account:hover {
+.compose {
+  margin-bottom: var(--space-3);
+}
+
+.add-account:hover,
+.compose:hover:not(:disabled) {
   background: var(--color-bg-hover);
 }
 
+.compose:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.account-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-2) var(--space-1);
+}
+
 .account-name {
+  flex: 1;
+  min-width: 0;
   font-size: var(--text-xs);
   font-weight: var(--weight-semibold);
   color: var(--color-text-tertiary);
   text-transform: uppercase;
   letter-spacing: 0.04em;
-  padding: var(--space-2) var(--space-2) var(--space-1);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.syncing {
+  font-size: var(--text-xs);
+  color: var(--color-accent);
+}
+
+.sync {
+  flex-shrink: 0;
+  font-size: var(--text-sm);
+  line-height: 1;
+  color: var(--color-text-secondary);
+  padding: 2px var(--space-1);
+  border-radius: var(--radius-sm);
+  transition: background var(--transition-fast);
+}
+
+.sync:hover {
+  background: var(--color-bg-hover);
+  color: var(--color-text);
 }
 
 .mailbox {
@@ -133,5 +251,14 @@ const emit = defineEmits<{
   font-size: var(--text-xs);
   font-weight: var(--weight-semibold);
   color: var(--color-accent);
+}
+
+.fixed-views {
+  margin-top: auto;
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--color-border);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
 }
 </style>

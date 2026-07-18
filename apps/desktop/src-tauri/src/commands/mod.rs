@@ -6,8 +6,13 @@
 //! runtime and maps errors to user-facing strings.
 
 pub mod accounts;
+pub mod compose;
+pub mod connection;
+pub mod detail;
+pub mod drafts;
 pub mod messages;
 pub mod meta;
+pub mod sync;
 
 use axomail_core::MailError;
 

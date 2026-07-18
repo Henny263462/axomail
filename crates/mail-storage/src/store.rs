@@ -24,10 +24,12 @@ use sqlx::migrate::Migrator;
 use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions, SqliteSynchronous};
 
 use crate::accounts::AccountRepo;
+use crate::drafts::DraftRepo;
 use crate::error_map::{map_migrate, map_sqlx};
 use crate::ingest::IngestRepo;
 use crate::mailboxes::MailboxRepo;
 use crate::messages::MessageRepo;
+use crate::outbox::OutboxRepo;
 use crate::settings::SettingsRepo;
 use crate::sync_jobs::SyncJobRepo;
 use crate::sync_state::SyncStateRepo;
@@ -156,5 +158,17 @@ impl Store {
     #[must_use]
     pub fn ingest(&self) -> IngestRepo<'_> {
         IngestRepo::new(&self.pool)
+    }
+
+    /// The composer draft repository.
+    #[must_use]
+    pub fn drafts(&self) -> DraftRepo<'_> {
+        DraftRepo::new(&self.pool)
+    }
+
+    /// The outgoing send-queue (outbox) repository.
+    #[must_use]
+    pub fn outbox(&self) -> OutboxRepo<'_> {
+        OutboxRepo::new(&self.pool)
     }
 }

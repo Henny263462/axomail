@@ -14,6 +14,7 @@ vi.mock("../src/api/accounts", () => ({
 vi.mock("../src/api/messages", () => ({
   listMessages: vi.fn(),
   markMessageSeen: vi.fn(),
+  getMessageDetail: vi.fn(),
 }));
 
 const listAccountsMock = vi.mocked(listAccounts);

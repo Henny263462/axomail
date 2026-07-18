@@ -68,6 +68,27 @@ impl<'a> MailboxRepo<'a> {
         })
     }
 
+    /// Fetches a single mailbox by id, or `None` if absent.
+    ///
+    /// Added for the message-detail command, which resolves a message's
+    /// owning account from its mailbox id without loading the whole tree.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`MailError::Database`] on any query failure and if a stored
+    /// row cannot be decoded into a valid [`Mailbox`].
+    pub async fn get(&self, id: MailboxId) -> Result<Option<Mailbox>, MailError> {
+        let row = sqlx::query_as::<_, MailboxRow>(
+            "SELECT id, account_id, name, role FROM mailboxes WHERE id = ?",
+        )
+        .bind(id.value())
+        .fetch_optional(self.pool)
+        .await
+        .map_err(|error| map_sqlx("get_mailbox", error))?;
+
+        row.map(MailboxRow::into_mailbox).transpose()
+    }
+
     /// Lists the mailboxes of an account ordered by identifier.
     ///
     /// # Errors
