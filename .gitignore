@@ -1,0 +1,19 @@
+# Rust
+/target/
+
+# Node
+node_modules/
+dist/
+*.local
+*.tsbuildinfo
+
+# Logs
+*.log
+pnpm-debug.log*
+
+# Editors and OS
+.idea/
+.vscode/*
+!.vscode/extensions.json
+.DS_Store
+Thumbs.db

@@ -1,0 +1,18 @@
+{
+  "name": "axomail",
+  "private": true,
+  "packageManager": "pnpm@11.4.0",
+  "engines": {
+    "node": ">=22.12"
+  },
+  "scripts": {
+    "dev": "pnpm --filter axomail-desktop dev",
+    "build": "pnpm --filter axomail-desktop build",
+    "typecheck": "pnpm --filter axomail-desktop typecheck",
+    "lint": "pnpm --filter axomail-desktop lint",
+    "test": "pnpm --filter axomail-desktop test",
+    "tauri": "pnpm --filter axomail-desktop tauri",
+    "check:file-sizes": "node scripts/check-file-sizes.mjs",
+    "check:npm-licenses": "pnpm licenses list --json | node scripts/check-npm-licenses.mjs"
+  }
+}

@@ -1,0 +1,55 @@
+[workspace]
+resolver = "3"
+members = [
+    "apps/desktop/src-tauri",
+    "crates/mail-core",
+    "crates/mail-imap",
+    "crates/mail-pop3",
+    "crates/mail-smtp",
+    "crates/mail-sync",
+    "crates/mail-storage",
+    "crates/mail-parser",
+    "crates/mail-security",
+    "crates/mail-test-support",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+# Minimum supported Rust version. Also documented in README.md.
+rust-version = "1.95"
+license = "MIT"
+authors = ["axomail contributors"]
+
+[workspace.dependencies]
+# Desktop shell. Versions verified against crates.io on 2026-07-18 (see ADR-0002).
+tauri = { version = "2.11.5", features = [] }
+tauri-build = { version = "2.6.3", features = [] }
+
+# Internal crates. Directory names follow the architecture layout; package
+# names carry the `axomail-` prefix to avoid clashes with public crates
+# (e.g. the external `mail-parser` crate). See ADR-0002.
+axomail-core = { path = "crates/mail-core" }
+axomail-imap = { path = "crates/mail-imap" }
+axomail-pop3 = { path = "crates/mail-pop3" }
+axomail-smtp = { path = "crates/mail-smtp" }
+axomail-sync = { path = "crates/mail-sync" }
+axomail-storage = { path = "crates/mail-storage" }
+axomail-parser = { path = "crates/mail-parser" }
+axomail-security = { path = "crates/mail-security" }
+axomail-test-support = { path = "crates/mail-test-support" }
+
+[workspace.lints.rust]
+unsafe_code = "warn"
+
+[workspace.lints.clippy]
+# Production paths must not panic on expectable errors. Test modules may
+# opt out locally with `#![allow(clippy::unwrap_used)]`.
+unwrap_used = "warn"
+expect_used = "warn"
+
+[profile.release]
+# Favor small binaries; revisit with measurements in docs/performance/.
+codegen-units = 1
+lto = "thin"
+strip = "symbols"
