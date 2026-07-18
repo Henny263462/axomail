@@ -129,11 +129,17 @@ async function loadMessages(mailboxId: number): Promise<void> {
     return;
   }
   const page = await listMessages(mailboxId, null, 50);
+  // Guard against a slow response arriving after the user has already
+  // switched mailboxes or views — never overwrite the newer selection.
+  if (selectedMailboxId.value !== mailboxId || activeView.value !== "mailbox") {
+    return;
+  }
   messages.value = page?.items ?? [];
 }
 
 async function loadUnified(): Promise<void> {
   const page = await listUnifiedInbox(null, 50);
+  if (activeView.value !== "unified") return;
   unifiedItems.value = page?.items ?? [];
 }
 
@@ -187,7 +193,19 @@ function onSelectMessage(messageId: number): void {
     // Optimistic: reflect the read state immediately. In browser preview
     // markMessageSeen resolves null with nothing to persist; that is fine.
     message.seen = true;
+    decrementUnread(message.mailboxId);
     void markMessageSeen(messageId, true);
+  }
+}
+
+/** Keeps the sidebar unread badge in step with an optimistic read. */
+function decrementUnread(mailboxId: number): void {
+  for (const account of accounts.value) {
+    const mailbox = account.mailboxes.find((m) => m.id === mailboxId);
+    if (mailbox !== undefined) {
+      mailbox.unreadCount = Math.max(0, mailbox.unreadCount - 1);
+      return;
+    }
   }
 }
 
@@ -319,6 +337,7 @@ function onSyncEvent(event: SyncEventDto): void {
         :unified-items="unifiedItems"
         :accounts="accounts"
         :selected-message-id="selectedMessageId"
+        :selected-mailbox-id="selectedMailboxId"
         @select="onSelectMessage"
       />
     </template>

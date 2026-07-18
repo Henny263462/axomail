@@ -48,9 +48,11 @@ export function useSearch() {
 
   watch(query, (next) => {
     cancelTimer();
+    // Invalidate any in-flight request immediately so its late response
+    // can never render as results for the changed query.
+    sequence += 1;
     const trimmed = next.trim();
     if (trimmed === "") {
-      sequence += 1;
       results.value = [];
       searching.value = false;
       return;

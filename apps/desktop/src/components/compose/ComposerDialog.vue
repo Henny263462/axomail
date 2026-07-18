@@ -103,7 +103,9 @@ function buildInput(): ComposeInput {
 }
 
 async function onSend(): Promise<void> {
-  if (sending.value) return;
+  // Sending and draft-saving are mutually exclusive: a Save racing a
+  // successful Send would resurrect the message as an unintended draft.
+  if (sending.value || savingDraft.value) return;
   statusMessage.value = "";
   const input = buildInput();
   if (input.to.length === 0) {
@@ -130,7 +132,7 @@ async function onSend(): Promise<void> {
 }
 
 async function onSaveDraft(): Promise<void> {
-  if (savingDraft.value) return;
+  if (savingDraft.value || sending.value) return;
   errorMessage.value = "";
   savingDraft.value = true;
   try {
@@ -245,7 +247,7 @@ async function onSaveDraft(): Promise<void> {
           <button
             type="button"
             class="button"
-            :disabled="savingDraft"
+            :disabled="savingDraft || sending"
             @click="onSaveDraft"
           >
             {{ savingDraft ? "Saving…" : "Save draft" }}
@@ -253,7 +255,7 @@ async function onSaveDraft(): Promise<void> {
           <button
             type="submit"
             class="button primary"
-            :disabled="sending"
+            :disabled="sending || savingDraft"
           >
             {{ sending ? "Sending…" : "Send" }}
           </button>

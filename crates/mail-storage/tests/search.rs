@@ -242,6 +242,7 @@ async fn ingested_envelopes_are_searchable_and_removals_disappear() {
         new_envelopes: vec![remote_envelope(10, 1, "Ingested Zephyr project")],
         flag_updates: Vec::new(),
         removed: Vec::new(),
+        present_remote_ids: None,
     };
     let summary = store.ingest().apply(mailbox, &outcome).await.unwrap();
     assert_eq!(summary.inserted, 1);
@@ -278,6 +279,7 @@ async fn ingested_envelopes_are_searchable_and_removals_disappear() {
             uid: 10,
             uid_validity: 1,
         }],
+        present_remote_ids: None,
     };
     let summary = store.ingest().apply(mailbox, &removal).await.unwrap();
     assert_eq!(summary.removed, 1);

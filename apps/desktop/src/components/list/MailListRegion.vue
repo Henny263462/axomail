@@ -8,6 +8,8 @@
  * Selection emits a plain message id in every mode, so the host opens the
  * detail exactly as it does for a normal mailbox.
  */
+import { watch } from "vue";
+
 import { useSearch } from "../../composables/useSearch";
 import type {
   AccountSummary,
@@ -19,12 +21,14 @@ import SearchBox from "./SearchBox.vue";
 import SearchResultsPane from "./SearchResultsPane.vue";
 import UnifiedListPane from "./UnifiedListPane.vue";
 
-defineProps<{
+const props = defineProps<{
   view: "mailbox" | "unified";
   messages: MessageListItem[];
   unifiedItems: UnifiedItemDto[];
   accounts: AccountSummary[];
   selectedMessageId: number | null;
+  /** Identity of the shown mailbox; switching it resets an active search. */
+  selectedMailboxId: number | null;
 }>();
 
 const emit = defineEmits<{
@@ -32,6 +36,13 @@ const emit = defineEmits<{
 }>();
 
 const { query, results, active, searching, clear } = useSearch();
+
+// A stale result list must never hide a freshly selected mailbox or the
+// unified inbox: any change of the shown list resets the search.
+watch(
+  () => [props.view, props.selectedMailboxId],
+  () => clear(),
+);
 </script>
 
 <template>

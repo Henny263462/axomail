@@ -74,8 +74,10 @@ impl AccountSummaryDto {
 /// One server's connection input from the account-setup form.
 ///
 /// Holds a plaintext password only transiently while the command stores it
-/// in the keychain; it is never persisted, logged, or echoed back.
-#[derive(Debug, Clone, Deserialize)]
+/// in the keychain; it is never persisted, logged, or echoed back. The
+/// manual [`std::fmt::Debug`] impls below redact the password so even a
+/// future `{:?}`/`?input` trace cannot leak it.
+#[derive(Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ServerInput {
     /// Server host name.
@@ -90,8 +92,20 @@ pub struct ServerInput {
     pub password: String,
 }
 
+impl std::fmt::Debug for ServerInput {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ServerInput")
+            .field("host", &self.host)
+            .field("port", &self.port)
+            .field("security", &self.security)
+            .field("username", &self.username)
+            .field("password", &"<redacted>")
+            .finish()
+    }
+}
+
 /// Incoming-server input, extending [`ServerInput`] with a protocol.
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct IncomingInput {
     /// Receiving protocol.
@@ -108,7 +122,22 @@ pub struct IncomingInput {
     pub password: String,
 }
 
+impl std::fmt::Debug for IncomingInput {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("IncomingInput")
+            .field("protocol", &self.protocol)
+            .field("host", &self.host)
+            .field("port", &self.port)
+            .field("security", &self.security)
+            .field("username", &self.username)
+            .field("password", &"<redacted>")
+            .finish()
+    }
+}
+
 /// Full input for creating an account (also used by `test_connection`).
+/// The derived `Debug` is safe: both embedded inputs redact their
+/// password fields.
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CreateAccountInput {

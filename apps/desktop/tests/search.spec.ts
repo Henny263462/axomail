@@ -31,6 +31,7 @@ function mountRegion() {
       unifiedItems: [],
       accounts: [],
       selectedMessageId: null,
+    selectedMailboxId: null,
     },
   });
 }

@@ -6,7 +6,6 @@
 //! is computed: new messages, flag changes in a bounded window, and
 //! removals.
 
-use std::collections::HashSet;
 use std::time::Duration;
 
 use async_imap::types::Mailbox;
@@ -93,6 +92,9 @@ async fn full_picture(
         new_envelopes,
         flag_updates: Vec::new(),
         removed: Vec::new(),
+        // Full-picture path: the caller wipes local state on a validity
+        // change, so no present-set diff is needed here.
+        present_remote_ids: None,
     })
 }
 
@@ -123,16 +125,21 @@ async fn incremental(
         .map_or(known_high, |max| max.max(known_high));
     let highest_uid = (covered > 0).then_some(covered);
 
-    // Removed: UIDs at or below the known high-water mark that the server
-    // no longer reports. The engine intersects this with the UIDs it
-    // actually stored, so reporting numbers that were never ingested (the
-    // gaps between assigned UIDs) is harmless.
+    // Removals: report the FULL authoritative present set (bounded by
+    // the real message count) instead of enumerating absent UIDs — a
+    // sparse UID space would otherwise explode into millions of phantom
+    // entries. The set must NOT be capped at `known_high`: the caller
+    // diffs every stored row against it in the same transaction that
+    // inserts this pass's new envelopes, so omitting the new UIDs would
+    // delete them right after insertion.
     let present = uid_search_all(connected, timeout).await?;
-    let present_set: HashSet<u32> = present.iter().copied().collect();
-    let removed = (1..=known_high)
-        .filter(|uid| !present_set.contains(uid))
-        .map(|uid| RemoteMessageId::Imap { uid, uid_validity })
-        .collect();
+    let present_remote_ids = Some(
+        present
+            .iter()
+            .copied()
+            .map(|uid| RemoteMessageId::Imap { uid, uid_validity })
+            .collect(),
+    );
 
     let flag_updates = fetch_flag_updates(connected, known_high, uid_validity, timeout).await?;
 
@@ -142,7 +149,8 @@ async fn incremental(
         has_more,
         new_envelopes: fetched,
         flag_updates,
-        removed,
+        removed: Vec::new(),
+        present_remote_ids,
     })
 }
 

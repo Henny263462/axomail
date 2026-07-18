@@ -222,6 +222,7 @@ impl IncomingMailProvider for FakeProvider {
                 new_envelopes: Vec::new(),
                 flag_updates: Vec::new(),
                 removed: Vec::new(),
+                present_remote_ids: None,
             }),
         }
     }
@@ -411,6 +412,7 @@ pub fn batch(
         new_envelopes: new,
         flag_updates: Vec::new(),
         removed: Vec::new(),
+        present_remote_ids: None,
     }
 }
 
@@ -429,6 +431,7 @@ pub fn changes(
         new_envelopes: Vec::new(),
         flag_updates,
         removed,
+        present_remote_ids: None,
     }
 }
 

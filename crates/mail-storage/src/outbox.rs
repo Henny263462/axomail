@@ -267,6 +267,33 @@ impl<'a> OutboxRepo<'a> {
         rows.into_iter().map(OutboxRow::into_record).collect()
     }
 
+    /// Recovers rows a crashed process left in `sending`.
+    ///
+    /// A crash mid-submission is ambiguous — the message may or may not
+    /// have reached the server — so the row is moved to `failed` with an
+    /// explanatory error instead of being retried silently. The user
+    /// decides via the explicit retry action. Returns the number of
+    /// recovered rows. Call once at startup, before resuming `queued`
+    /// rows.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`MailError::Database`] on any query failure.
+    pub async fn recover_interrupted(&self) -> Result<u64, MailError> {
+        let result = sqlx::query(
+            "UPDATE outbox
+             SET state = 'failed',
+                 last_error = 'submission was interrupted by a shutdown; \
+the message may or may not have been sent — verify before retrying',
+                 updated_at_unix = unixepoch()
+             WHERE state = 'sending'",
+        )
+        .execute(self.pool)
+        .await
+        .map_err(|error| map_sqlx("recover_interrupted_outbox", error))?;
+        Ok(result.rows_affected())
+    }
+
     /// Lists every outbox row, most recently updated first.
     ///
     /// # Errors

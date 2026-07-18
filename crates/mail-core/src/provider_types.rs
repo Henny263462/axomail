@@ -86,7 +86,18 @@ pub struct SyncOutcome {
     /// Flag changes for already known messages.
     pub flag_updates: Vec<(RemoteMessageId, MessageFlags)>,
     /// Messages that vanished from the mailbox on the server.
+    ///
+    /// Only for adapters that can compute a *bounded* diff themselves
+    /// (POP3 against its known-UIDL set). IMAP leaves this empty and
+    /// reports [`SyncOutcome::present_remote_ids`] instead, since
+    /// enumerating gaps in a sparse UID space would explode.
     pub removed: Vec<RemoteMessageId>,
+    /// Authoritative, COMPLETE set of message ids currently present on
+    /// the server (bounded by the real message count). When `Some`, the
+    /// caller derives removals by deleting every stored id absent from
+    /// this set — including ids ingested in the same pass, so the set
+    /// must never be capped below the ids in `new_envelopes`.
+    pub present_remote_ids: Option<Vec<RemoteMessageId>>,
 }
 
 /// Aggregate counters reported to the UI after a pass.

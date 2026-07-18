@@ -27,6 +27,19 @@ pub async fn resume_pending_outbox(
     secrets: &SharedSecretStore,
     extra_roots: &[Vec<u8>],
 ) -> u64 {
+    // A crash mid-submission leaves rows in `sending`; recover them to a
+    // retryable `failed` state (ambiguity documented on the repo method)
+    // before resuming the unambiguous `queued` rows.
+    match store.outbox().recover_interrupted().await {
+        Ok(0) => {}
+        Ok(count) => {
+            tracing::warn!(count, "recovered outbox rows interrupted mid-submission");
+        }
+        Err(error) => {
+            tracing::warn!(error = %error, "could not recover interrupted outbox rows");
+        }
+    }
+
     let queued = match store.outbox().list_queued().await {
         Ok(rows) => rows,
         Err(error) => {

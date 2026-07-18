@@ -115,6 +115,9 @@ pub(crate) async fn run(
         new_envelopes,
         flag_updates: Vec::new(),
         removed,
+        // POP3 computes a bounded diff against its known-UIDL set
+        // itself; no authoritative present list is reported.
+        present_remote_ids: None,
     };
     Ok((outcome, SessionMap { by_uidl }))
 }
@@ -132,6 +135,7 @@ fn empty_outcome(known: &HashSet<String>) -> SyncOutcome {
             .iter()
             .map(|uidl| RemoteMessageId::Pop3 { uidl: uidl.clone() })
             .collect(),
+        present_remote_ids: None,
     }
 }
 

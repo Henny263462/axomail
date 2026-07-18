@@ -29,7 +29,11 @@ export function useSyncStatus(onEvent?: (event: SyncEventDto) => void) {
     switch (event.kind) {
       case "jobQueued":
       case "jobStarted":
-        runningJobs.set(event.jobId, event.mailboxId);
+        // jobQueued already recorded the mailbox; a started event without
+        // one must not erase it or the per-mailbox indicator goes dark.
+        if (event.mailboxId !== null || !runningJobs.has(event.jobId)) {
+          runningJobs.set(event.jobId, event.mailboxId);
+        }
         break;
       case "jobFinished":
       case "jobFailed":

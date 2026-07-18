@@ -197,6 +197,18 @@ async fn incremental_sync_fetches_new_uids() {
     assert_eq!(outcome.highest_uid, Some(4));
     assert!(!outcome.has_more);
     assert!(outcome.removed.is_empty());
+
+    // Regression (data-loss bug): the present set must contain the UIDs
+    // fetched in this very pass — the ingest layer deletes every stored
+    // row absent from it, in the same transaction that inserts them.
+    let present: Vec<u32> = outcome
+        .present_remote_ids
+        .as_deref()
+        .expect("incremental sync reports the present set")
+        .iter()
+        .map(uid)
+        .collect();
+    assert_eq!(present, vec![1, 2, 3, 4]);
 }
 
 #[tokio::test]
@@ -243,8 +255,19 @@ async fn incremental_sync_detects_removed_messages() {
     };
     let outcome = provider.sync(sync_request(state, 100)).await.expect("sync");
 
-    let removed: Vec<u32> = outcome.removed.iter().map(uid).collect();
-    assert_eq!(removed, vec![3]);
+    // The adapter reports the authoritative present set (bounded by real
+    // messages) instead of enumerating absent UIDs; the caller diffs its
+    // stored ids against it. UID 3 must be absent from the present set.
+    assert!(outcome.removed.is_empty());
+    let present: Vec<u32> = outcome
+        .present_remote_ids
+        .as_deref()
+        .expect("incremental sync reports the present set")
+        .iter()
+        .map(uid)
+        .collect();
+    assert_eq!(present, vec![1, 2, 4, 5]);
+    assert!(!present.contains(&3));
     assert!(outcome.new_envelopes.is_empty());
 }
 
