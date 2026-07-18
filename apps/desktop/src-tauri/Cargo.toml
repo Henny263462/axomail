@@ -19,10 +19,12 @@ tauri-build = { workspace = true }
 
 [dependencies]
 tauri = { workspace = true }
+tauri-plugin-notification = { workspace = true }
 axomail-core = { workspace = true }
 axomail-storage = { workspace = true }
 axomail-security = { workspace = true }
 axomail-imap = { workspace = true }
+axomail-pop3 = { workspace = true }
 axomail-smtp = { workspace = true }
 axomail-sync = { workspace = true }
 axomail-parser = { workspace = true }

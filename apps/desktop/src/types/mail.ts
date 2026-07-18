@@ -190,6 +190,54 @@ export interface SendOutcomeDto {
   error: string | null;
 }
 
+/**
+ * One full-text search hit for the results view. `snippet` carries the
+ * FTS `[`/`]` markers around matched terms and MUST be rendered as plain
+ * text (the markers stripped or styled), never as HTML.
+ */
+export interface SearchResultDto {
+  messageId: number;
+  mailboxId: number;
+  accountId: number;
+  subject: string | null;
+  fromName: string;
+  fromAddress: string;
+  /** Unix seconds (UTC); null when the date header was absent. */
+  dateUnix: number | null;
+  snippet: string;
+}
+
+/**
+ * A unified-inbox envelope: the same shape a mailbox list item has, tagged
+ * with the account it belongs to so the list can show an account indicator.
+ */
+export interface UnifiedItemDto extends MessageListItem {
+  accountId: number;
+}
+
+/** One page of the unified inbox plus the cursor for the next page. */
+export interface UnifiedPageDto {
+  items: UnifiedItemDto[];
+  /** Opaque cursor for the following page, or null on the last page. */
+  nextCursor: string | null;
+}
+
+/** Per-POP3-account server-deletion policy. */
+export interface Pop3DeletePolicyDto {
+  accountId: number;
+  enabled: boolean;
+}
+
+/**
+ * User-editable application settings. `syncIntervalMinutes` has a minimum of
+ * 1; the backend clamps it, and the settings UI enforces the same floor.
+ */
+export interface SettingsDto {
+  notificationsEnabled: boolean;
+  syncIntervalMinutes: number;
+  pop3DeletePolicies: Pop3DeletePolicyDto[];
+}
+
 /** Lifecycle events emitted per sync job on the `axomail://sync` channel. */
 export type SyncEventKind =
   | "jobQueued"

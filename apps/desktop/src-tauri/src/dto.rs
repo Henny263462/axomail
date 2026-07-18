@@ -21,7 +21,10 @@ mod compose;
 mod connection;
 mod detail;
 mod message;
+mod search;
+mod settings;
 mod sync_event;
+mod unified;
 
 pub use account::{
     AccountSummaryDto, CreateAccountInput, IncomingInput, MailboxSummaryDto, ServerInput,
@@ -30,7 +33,10 @@ pub use compose::{ComposeInput, DraftDto, OutboxItemDto, SendOutcomeDto};
 pub use connection::ConnectionTestResult;
 pub use detail::{AttachmentMetaDto, MessageDetailDto, RecipientDto};
 pub use message::{MessageListItemDto, MessageListPageDto};
+pub use search::SearchResultDto;
+pub use settings::{Pop3DeletePolicyDto, SettingsDto};
 pub use sync_event::SyncEventDto;
+pub use unified::{UnifiedItemDto, UnifiedPageDto};
 
 /// Largest integer a JavaScript `number` can represent exactly: `2^53 - 1`.
 pub(crate) const MAX_SAFE_INTEGER: i64 = 9_007_199_254_740_991;

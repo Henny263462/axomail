@@ -244,6 +244,29 @@ impl<'a> OutboxRepo<'a> {
         row.map(OutboxRow::into_record).transpose()
     }
 
+    /// Lists the rows still `queued` (never yet submitted), oldest first.
+    ///
+    /// Added for startup resume: after crash recovery the app re-sends every
+    /// row a previous run left `queued`, in the order they were enqueued.
+    /// `failed` rows are deliberately excluded — they are retried only on the
+    /// user's explicit request — as are `sending`/`sent` rows.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`MailError::Database`] on any query failure or if a stored
+    /// row cannot be decoded.
+    pub async fn list_queued(&self) -> Result<Vec<OutboxRecord>, MailError> {
+        let rows = sqlx::query_as::<_, OutboxRow>(sqlx::AssertSqlSafe(format!(
+            "SELECT {OUTBOX_COLUMNS} FROM outbox WHERE state = 'queued' \
+             ORDER BY created_at_unix ASC, id ASC"
+        )))
+        .fetch_all(self.pool)
+        .await
+        .map_err(|error| map_sqlx("list_queued_outbox", error))?;
+
+        rows.into_iter().map(OutboxRow::into_record).collect()
+    }
+
     /// Lists every outbox row, most recently updated first.
     ///
     /// # Errors

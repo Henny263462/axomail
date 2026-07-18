@@ -3,10 +3,15 @@ import { computed } from "vue";
 
 import type { MessageListItem } from "../../types/mail";
 
-const props = defineProps<{
-  message: MessageListItem;
-  selected: boolean;
-}>();
+const props = withDefaults(
+  defineProps<{
+    message: MessageListItem;
+    selected: boolean;
+    /** Account display name shown as a tertiary indicator (unified inbox). */
+    accountName?: string | null;
+  }>(),
+  { accountName: null },
+);
 
 const emit = defineEmits<{
   select: [messageId: number];
@@ -34,6 +39,10 @@ const date = computed(() => formatDate(props.message.dateUnix));
     >
       <span class="row">
         <span class="from">{{ message.fromName || message.fromAddress }}</span>
+        <span
+          v-if="accountName"
+          class="account"
+        >{{ accountName }}</span>
         <time class="date">{{ date }}</time>
       </span>
       <span class="subject">{{ message.subject ?? "(no subject)" }}</span>
@@ -73,6 +82,8 @@ const date = computed(() => formatDate(props.message.dateUnix));
 }
 
 .from {
+  flex: 1;
+  min-width: 0;
   font-size: var(--text-sm);
   font-weight: var(--weight-medium);
   color: var(--color-text-secondary);
@@ -85,6 +96,16 @@ const date = computed(() => formatDate(props.message.dateUnix));
 .unseen .subject {
   color: var(--color-text);
   font-weight: var(--weight-semibold);
+}
+
+.account {
+  font-size: var(--text-xs);
+  color: var(--color-text-tertiary);
+  flex-shrink: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 45%;
 }
 
 .date {

@@ -19,6 +19,7 @@ const props = withDefaults(
 
 const emit = defineEmits<{
   selectMailbox: [mailboxId: number];
+  selectUnified: [];
   addAccount: [];
   compose: [];
   syncAccount: [accountId: number];
@@ -53,6 +54,16 @@ function isSyncing(accountId: number): boolean {
       @click="emit('compose')"
     >
       Compose
+    </button>
+
+    <button
+      type="button"
+      class="all-inboxes"
+      :class="{ selected: activeView === 'unified' }"
+      :aria-current="activeView === 'unified' ? 'true' : undefined"
+      @click="emit('selectUnified')"
+    >
+      All inboxes
     </button>
 
     <EmptyState
@@ -225,7 +236,8 @@ function isSyncing(accountId: number): boolean {
   color: var(--color-text);
 }
 
-.mailbox {
+.mailbox,
+.all-inboxes {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -237,11 +249,19 @@ function isSyncing(accountId: number): boolean {
   transition: background var(--transition-fast);
 }
 
-.mailbox:hover {
+.all-inboxes {
+  margin-bottom: var(--space-2);
+  font-weight: var(--weight-medium);
+  color: var(--color-text);
+}
+
+.mailbox:hover,
+.all-inboxes:hover {
   background: var(--color-bg-hover);
 }
 
-.mailbox.selected {
+.mailbox.selected,
+.all-inboxes.selected {
   background: var(--color-bg-selected);
   color: var(--color-text);
   font-weight: var(--weight-medium);

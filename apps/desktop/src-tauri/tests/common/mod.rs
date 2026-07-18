@@ -1,6 +1,8 @@
 //! Shared fixtures for the command integration tests.
 #![allow(dead_code, clippy::unwrap_used, clippy::expect_used)]
 
+pub mod pop3_server;
+
 use std::sync::Arc;
 
 use axomail_core::{
@@ -27,6 +29,21 @@ pub fn outgoing_account_input(outgoing_port: u16) -> CreateAccountInput {
     input.outgoing = ServerInput {
         host: "127.0.0.1".to_owned(),
         port: outgoing_port,
+        security: ConnectionSecurity::Tls,
+        username: "user".to_owned(),
+        password: "pass".to_owned(),
+    };
+    input
+}
+
+/// A valid account-creation input whose incoming server is POP3 over implicit
+/// TLS at `127.0.0.1:incoming_port`, keeping the default outgoing SMTP config.
+pub fn pop3_account_input(incoming_port: u16) -> CreateAccountInput {
+    let mut input = valid_input();
+    input.incoming = IncomingInput {
+        protocol: IncomingProtocol::Pop3,
+        host: "127.0.0.1".to_owned(),
+        port: incoming_port,
         security: ConnectionSecurity::Tls,
         username: "user".to_owned(),
         password: "pass".to_owned(),

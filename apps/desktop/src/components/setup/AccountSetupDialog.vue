@@ -2,7 +2,13 @@
 import { onMounted, ref } from "vue";
 
 import { createAccount } from "../../api/accounts";
-import type { AccountSummary, CreateAccountInput } from "../../types/mail";
+import { testConnection } from "../../api/connection";
+import type {
+  AccountSummary,
+  ConnectionTestResult,
+  CreateAccountInput,
+} from "../../types/mail";
+import ConnectionTestPanel from "./ConnectionTestPanel.vue";
 import type { ServerDraft } from "./draft";
 import ServerConfigFields from "./ServerConfigFields.vue";
 
@@ -32,6 +38,9 @@ const outgoing = ref<ServerDraft>({
 
 const pending = ref(false);
 const errorMessage = ref("");
+const testing = ref(false);
+const testResult = ref<ConnectionTestResult | null>(null);
+const testMessage = ref("");
 const root = ref<HTMLElement | null>(null);
 const firstField = ref<HTMLInputElement | null>(null);
 
@@ -119,6 +128,33 @@ function messageFrom(error: unknown): string {
   if (typeof error === "string") return error;
   if (error instanceof Error) return error.message;
   return "Could not create the account.";
+}
+
+/**
+ * Runs a live connection test for both servers and shows each result
+ * independently. Nothing is persisted; the entered secrets go only to the
+ * live login attempt (see {@link testConnection}).
+ */
+async function onTest(): Promise<void> {
+  if (testing.value) return;
+  testResult.value = null;
+  testMessage.value = "";
+  if (incoming.value.host.trim() === "" || outgoing.value.host.trim() === "") {
+    testMessage.value = "Enter both server addresses before testing.";
+    return;
+  }
+  testing.value = true;
+  try {
+    const result = await testConnection(buildInput());
+    if (result === null) {
+      testMessage.value =
+        "Connection test needs the desktop app; it is unavailable in the browser preview.";
+      return;
+    }
+    testResult.value = result;
+  } finally {
+    testing.value = false;
+  }
 }
 
 async function onSubmit(): Promise<void> {
@@ -209,6 +245,13 @@ async function onSubmit(): Promise<void> {
         >
           {{ errorMessage }}
         </p>
+
+        <ConnectionTestPanel
+          :testing="testing"
+          :result="testResult"
+          :message="testMessage"
+          @test="onTest"
+        />
 
         <div class="actions">
           <button

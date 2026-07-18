@@ -9,6 +9,8 @@ use axomail_desktop_lib::commands::connection::{probe, probe_incoming, probe_out
 use axomail_desktop_lib::dto::{CreateAccountInput, IncomingInput, ServerInput};
 use axomail_test_support::{ScriptedServer, Step, TestTlsIdentity, imap};
 
+use common::pop3_server;
+
 /// Builds the IMAP dialog async-imap walks on connect+disconnect: `LOGIN`
 /// carries tag `A0001` (the first command) and `LOGOUT` carries `A0002`.
 fn imap_success_steps() -> Vec<Step> {
@@ -26,6 +28,18 @@ fn imap_input(port: u16) -> IncomingInput {
         security: ConnectionSecurity::Tls,
         username: "user".to_owned(),
         password: "pass".to_owned(),
+    }
+}
+
+/// Incoming input pointing at a local POP3 test server over implicit TLS.
+fn pop3_input(port: u16, password: &str) -> IncomingInput {
+    IncomingInput {
+        protocol: IncomingProtocol::Pop3,
+        host: "127.0.0.1".to_owned(),
+        port,
+        security: ConnectionSecurity::Tls,
+        username: "user".to_owned(),
+        password: password.to_owned(),
     }
 }
 
@@ -78,17 +92,41 @@ async fn probe_incoming_reports_authentication_failure() {
 }
 
 #[tokio::test]
-async fn probe_incoming_rejects_pop3_until_phase_three() {
-    let mut input = imap_input(1);
-    input.protocol = IncomingProtocol::Pop3;
+async fn probe_incoming_succeeds_against_scripted_pop3() {
+    let server = pop3_server::spawn(Vec::new(), "pass").await;
+    let roots = vec![server.root_der.clone()];
 
-    let error = probe_incoming(&input, &[])
+    let result = probe_incoming(&pop3_input(server.port, "pass"), &roots).await;
+
+    assert!(
+        result.is_ok(),
+        "expected a successful probe, got {result:?}"
+    );
+    // The probe authenticates and closes cleanly, and never deletes mail.
+    assert!(server.saw_command("USER"));
+    assert!(server.saw_command("PASS"));
+    assert!(server.saw_command("QUIT"));
+    assert!(
+        !server.saw_command("DELE"),
+        "a probe must never delete mail"
+    );
+}
+
+#[tokio::test]
+async fn probe_incoming_reports_pop3_authentication_failure() {
+    let server = pop3_server::spawn(Vec::new(), "correct-horse").await;
+    let roots = vec![server.root_der.clone()];
+
+    let error = probe_incoming(&pop3_input(server.port, "wrong"), &roots)
         .await
-        .expect_err("pop3 is not supported yet");
-    assert!(matches!(
-        error,
-        axomail_core::MailError::UnsupportedCapability { .. }
-    ));
+        .expect_err("a wrong POP3 password must be rejected");
+
+    assert!(
+        matches!(error, axomail_core::MailError::Authentication),
+        "expected Authentication, got {error:?}"
+    );
+    // The redacted message never leaks the attempted password.
+    assert!(!error.to_string().contains("wrong"));
 }
 
 #[tokio::test]

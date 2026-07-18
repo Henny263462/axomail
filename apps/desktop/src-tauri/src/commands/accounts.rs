@@ -251,9 +251,12 @@ pub async fn create_account(
     state: tauri::State<'_, AppState>,
     input: CreateAccountInput,
 ) -> Result<AccountSummaryDto, String> {
-    create_account_impl(state.store(), state.secrets(), input)
+    let summary = create_account_impl(state.store(), state.secrets(), input)
         .await
-        .map_err(map_command_error)
+        .map_err(map_command_error)?;
+    // The new account's inbox joins the background-sync target set.
+    refresh_scheduler_targets(&state).await;
+    Ok(summary)
 }
 
 /// Deletes an account and its keychain secrets.
@@ -264,5 +267,16 @@ pub async fn delete_account(
 ) -> Result<(), String> {
     delete_account_impl(state.store(), state.secrets(), account_id)
         .await
-        .map_err(map_command_error)
+        .map_err(map_command_error)?;
+    // Drop the removed account's inbox from the background-sync target set.
+    refresh_scheduler_targets(&state).await;
+    Ok(())
+}
+
+/// Pushes the current inbox target set into the scheduler, logging (never
+/// surfacing) a failure: the account change already succeeded.
+async fn refresh_scheduler_targets(state: &AppState) {
+    if let Err(error) = state.scheduler().refresh_targets().await {
+        tracing::warn!(error = %error, "could not refresh background-sync targets");
+    }
 }

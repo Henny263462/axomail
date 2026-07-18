@@ -10,13 +10,15 @@ import {
 } from "./api/compose";
 import { listMessages, markMessageSeen } from "./api/messages";
 import { syncAccount } from "./api/sync";
+import { listUnifiedInbox } from "./api/unified";
 import ComposerDialog from "./components/compose/ComposerDialog.vue";
 import EmptyState from "./components/common/EmptyState.vue";
 import AppShell from "./components/layout/AppShell.vue";
 import DraftListPane from "./components/list/DraftListPane.vue";
-import MessageListPane from "./components/list/MessageListPane.vue";
+import MailListRegion from "./components/list/MailListRegion.vue";
 import OutboxListPane from "./components/list/OutboxListPane.vue";
 import MessageViewPane from "./components/message/MessageViewPane.vue";
+import SettingsDialog from "./components/settings/SettingsDialog.vue";
 import AccountSetupDialog from "./components/setup/AccountSetupDialog.vue";
 import SidebarPane from "./components/sidebar/SidebarPane.vue";
 import type { SidebarView } from "./components/sidebar/view";
@@ -27,6 +29,7 @@ import type {
   MessageListItem,
   OutboxItemDto,
   SyncEventDto,
+  UnifiedItemDto,
 } from "./types/mail";
 
 const shell = ref<InstanceType<typeof AppShell> | null>(null);
@@ -35,6 +38,7 @@ const accounts = ref<AccountSummary[]>([]);
 // Only the currently selected mailbox's page is held; switching mailboxes
 // reloads from the backend rather than caching every mailbox client-side.
 const messages = ref<MessageListItem[]>([]);
+const unifiedItems = ref<UnifiedItemDto[]>([]);
 const drafts = ref<DraftDto[]>([]);
 const outbox = ref<OutboxItemDto[]>([]);
 const selectedMailboxId = ref<number | null>(null);
@@ -42,6 +46,7 @@ const selectedMessageId = ref<number | null>(null);
 const selectedDraftId = ref<number | null>(null);
 const activeView = ref<SidebarView>("mailbox");
 const setupOpen = ref(false);
+const settingsOpen = ref(false);
 const composerOpen = ref(false);
 const composerDraft = ref<DraftDto | null>(null);
 const composerAccountId = ref(0);
@@ -73,8 +78,13 @@ const composeAccountId = computed<number | null>(() => {
   return owning?.id ?? accounts.value[0]?.id ?? null;
 });
 
+/** True for the message-backed views (a single mailbox or the unified inbox). */
+const messageView = computed(
+  () => activeView.value === "mailbox" || activeView.value === "unified",
+);
+
 const viewedMessageId = computed(() =>
-  activeView.value === "mailbox" ? selectedMessageId.value : null,
+  messageView.value ? selectedMessageId.value : null,
 );
 
 /**
@@ -122,6 +132,11 @@ async function loadMessages(mailboxId: number): Promise<void> {
   messages.value = page?.items ?? [];
 }
 
+async function loadUnified(): Promise<void> {
+  const page = await listUnifiedInbox(null, 50);
+  unifiedItems.value = page?.items ?? [];
+}
+
 async function loadDrafts(): Promise<void> {
   drafts.value = (await listDrafts()) ?? [];
 }
@@ -136,6 +151,14 @@ async function selectMailbox(mailboxId: number): Promise<void> {
   selectedMessageId.value = null;
   shell.value?.showPane("list");
   await loadMessages(mailboxId);
+}
+
+async function selectUnified(): Promise<void> {
+  activeView.value = "unified";
+  selectedMailboxId.value = null;
+  selectedMessageId.value = null;
+  shell.value?.showPane("list");
+  await loadUnified();
 }
 
 async function selectDrafts(): Promise<void> {
@@ -155,7 +178,11 @@ async function selectOutbox(): Promise<void> {
 function onSelectMessage(messageId: number): void {
   selectedMessageId.value = messageId;
   shell.value?.showPane("message");
-  const message = messages.value.find((m) => m.id === messageId);
+  // The selected id may come from the mailbox list, the unified inbox, or a
+  // search result; only the first two carry a seen flag to update optimistically.
+  const message =
+    messages.value.find((m) => m.id === messageId) ??
+    unifiedItems.value.find((m) => m.id === messageId);
   if (message !== undefined && !message.seen) {
     // Optimistic: reflect the read state immediately. In browser preview
     // markMessageSeen resolves null with nothing to persist; that is fine.
@@ -170,6 +197,14 @@ function openSetup(): void {
 
 function closeSetup(): void {
   setupOpen.value = false;
+}
+
+function openSettings(): void {
+  settingsOpen.value = true;
+}
+
+function closeSettings(): void {
+  settingsOpen.value = false;
 }
 
 async function onAccountCreated(account: AccountSummary): Promise<void> {
@@ -225,13 +260,17 @@ async function onRetryOutbox(outboxId: number): Promise<void> {
 
 /** Reacts to sync events after {@link useSyncStatus} updates its own state. */
 function onSyncEvent(event: SyncEventDto): void {
-  if (
-    event.kind === "batchIngested" &&
-    activeView.value === "mailbox" &&
-    event.mailboxId !== null &&
-    event.mailboxId === selectedMailboxId.value
-  ) {
-    void loadMessages(event.mailboxId);
+  if (event.kind === "batchIngested") {
+    if (
+      activeView.value === "mailbox" &&
+      event.mailboxId !== null &&
+      event.mailboxId === selectedMailboxId.value
+    ) {
+      void loadMessages(event.mailboxId);
+    } else if (activeView.value === "unified") {
+      // The unified inbox spans every account, so any ingest may add to it.
+      void loadUnified();
+    }
   }
   if (event.kind === "jobFinished") {
     void refreshAccounts();
@@ -244,6 +283,7 @@ function onSyncEvent(event: SyncEventDto): void {
     ref="shell"
     :status-error="syncError"
     @dismiss-status-error="dismissError"
+    @open-settings="openSettings"
   >
     <template #sidebar>
       <SidebarPane
@@ -252,6 +292,7 @@ function onSyncEvent(event: SyncEventDto): void {
         :active-view="activeView"
         :syncing-account-ids="syncingAccountIds"
         @select-mailbox="selectMailbox"
+        @select-unified="selectUnified"
         @add-account="openSetup"
         @compose="openCompose"
         @sync-account="onSyncAccount"
@@ -271,16 +312,19 @@ function onSyncEvent(event: SyncEventDto): void {
         :items="outbox"
         @retry="onRetryOutbox"
       />
-      <MessageListPane
+      <MailListRegion
         v-else
+        :view="activeView === 'unified' ? 'unified' : 'mailbox'"
         :messages="messages"
+        :unified-items="unifiedItems"
+        :accounts="accounts"
         :selected-message-id="selectedMessageId"
         @select="onSelectMessage"
       />
     </template>
     <template #message>
       <MessageViewPane
-        v-if="activeView === 'mailbox'"
+        v-if="messageView"
         :message-id="viewedMessageId"
       />
       <EmptyState
@@ -307,5 +351,10 @@ function onSyncEvent(event: SyncEventDto): void {
     @close="closeComposer"
     @sent="onComposerSent"
     @saved="onComposerSaved"
+  />
+  <SettingsDialog
+    v-if="settingsOpen"
+    :accounts="accounts"
+    @close="closeSettings"
   />
 </template>

@@ -25,7 +25,7 @@ fn cache_raw(raw_root: &std::path::Path, message_id: i64, bytes: &str) {
 async fn detail_parses_and_sanitizes_a_cached_message() {
     let store = Store::open_in_memory().await.unwrap();
     let (_concrete, secrets) = secret_stores();
-    let factory = AppProviderFactory::new(secrets.clone());
+    let factory = AppProviderFactory::new(secrets.clone(), store.clone());
     let raw_root = tempfile::tempdir().unwrap();
 
     let summary = create_account_impl(&store, &secrets, valid_input())
@@ -71,7 +71,7 @@ async fn detail_parses_and_sanitizes_a_cached_message() {
 async fn detail_without_a_content_source_is_a_configuration_error() {
     let store = Store::open_in_memory().await.unwrap();
     let (_concrete, secrets) = secret_stores();
-    let factory = AppProviderFactory::new(secrets.clone());
+    let factory = AppProviderFactory::new(secrets.clone(), store.clone());
     let raw_root = tempfile::tempdir().unwrap();
 
     let summary = create_account_impl(&store, &secrets, valid_input())
@@ -96,7 +96,7 @@ async fn detail_without_a_content_source_is_a_configuration_error() {
 async fn detail_rejects_an_unknown_message() {
     let store = Store::open_in_memory().await.unwrap();
     let (_concrete, secrets) = secret_stores();
-    let factory = AppProviderFactory::new(secrets.clone());
+    let factory = AppProviderFactory::new(secrets.clone(), store.clone());
     let raw_root = tempfile::tempdir().unwrap();
 
     let error = get_message_detail_impl(&store, &factory, raw_root.path(), 987_654)

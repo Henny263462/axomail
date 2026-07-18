@@ -8,16 +8,23 @@
 pub mod commands;
 pub mod composition;
 pub mod dto;
+pub mod notifications;
+pub mod pop3_sync;
+pub mod scheduler;
+pub mod settings;
+pub mod startup;
 pub mod state;
 
 use std::sync::Arc;
 
 use axomail_security::KeyringSecretStore;
 use axomail_storage::Store;
+use axomail_sync::SyncEvent;
 use tauri::{Emitter, Manager};
 use tokio::sync::broadcast::error::RecvError;
 
 use crate::dto::SyncEventDto;
+use crate::notifications::{NewMailNotifier, TauriNotifier, maybe_notify_new_messages};
 use crate::state::{AppState, SharedSecretStore};
 
 /// Name of the SQLite database file within the application data directory.
@@ -30,12 +37,14 @@ const SYNC_EVENT: &str = "axomail://sync";
 ///
 /// The setup hook resolves the application data directory, opens the local
 /// store (running migrations), starts the sync engine (whose dispatcher
-/// performs crash recovery once), and forwards the engine's progress events
-/// to the frontend as [`SYNC_EVENT`]. If storage cannot be opened the
-/// process exits non-zero without presenting a window: the client is useless
-/// without its local database.
+/// performs crash recovery once), launches the background scheduler, resumes
+/// the outbox, and forwards the engine's progress events to the frontend as
+/// [`SYNC_EVENT`]. If storage cannot be opened the process exits non-zero
+/// without presenting a window: the client is useless without its local
+/// database.
 pub fn run() {
     let outcome = tauri::Builder::default()
+        .plugin(tauri_plugin_notification::init())
         .setup(|app| {
             let data_dir = match app.path().app_data_dir() {
                 Ok(dir) => dir,
@@ -57,7 +66,12 @@ pub fn run() {
             // tasks, which need an entered runtime context here in setup.
             let state =
                 tauri::async_runtime::block_on(async { AppState::new(store, secrets, data_dir) });
-            forward_sync_events(app.handle().clone(), &state);
+            let notifier = TauriNotifier::new(app.handle().clone());
+            forward_sync_events(app.handle().clone(), &state, notifier);
+            let startup_state = state.clone();
+            tauri::async_runtime::spawn(async move {
+                startup::start_background_services(&startup_state).await;
+            });
             app.manage(state);
             Ok(())
         })
@@ -77,6 +91,11 @@ pub fn run() {
             commands::drafts::save_draft,
             commands::drafts::list_drafts,
             commands::drafts::delete_draft,
+            commands::search::search_messages,
+            commands::unified::list_unified_inbox,
+            commands::settings::get_settings,
+            commands::settings::update_settings,
+            commands::settings::set_pop3_delete_policy,
         ])
         .run(tauri::generate_context!());
 
@@ -87,23 +106,23 @@ pub fn run() {
 }
 
 /// Spawns a task that mirrors the sync engine's broadcast events onto the
-/// [`SYNC_EVENT`] Tauri channel. It ends when the engine (and its broadcast
-/// sender) is dropped at shutdown.
-fn forward_sync_events(app: tauri::AppHandle, state: &AppState) {
+/// [`SYNC_EVENT`] Tauri channel and raises an aggregate new-mail notification
+/// when a job finishes having ingested new messages. It ends when the engine
+/// (and its broadcast sender) is dropped at shutdown.
+fn forward_sync_events(
+    app: tauri::AppHandle,
+    state: &AppState,
+    notifier: impl NewMailNotifier + 'static,
+) {
     let mut events = state.engine().subscribe();
+    let store = state.store().clone();
     tauri::async_runtime::spawn(async move {
         loop {
             match events.recv().await {
-                Ok(event) => match SyncEventDto::from_event(&event) {
-                    Ok(dto) => {
-                        if let Err(error) = app.emit(SYNC_EVENT, dto) {
-                            tracing::warn!(error = %error, "failed to emit sync event");
-                        }
-                    }
-                    Err(error) => {
-                        tracing::warn!(error = %error, "dropping sync event with out-of-range id");
-                    }
-                },
+                Ok(event) => {
+                    notify_if_new_mail(&store, &notifier, &event).await;
+                    forward_one(&app, &event);
+                }
                 Err(RecvError::Lagged(missed)) => {
                     tracing::warn!(missed, "sync event forwarder fell behind");
                 }
@@ -111,4 +130,37 @@ fn forward_sync_events(app: tauri::AppHandle, state: &AppState) {
             }
         }
     });
+}
+
+/// Emits one engine event to the frontend as a [`SyncEventDto`].
+fn forward_one(app: &tauri::AppHandle, event: &SyncEvent) {
+    match SyncEventDto::from_event(event) {
+        Ok(dto) => {
+            if let Err(error) = app.emit(SYNC_EVENT, dto) {
+                tracing::warn!(error = %error, "failed to emit sync event");
+            }
+        }
+        Err(error) => {
+            tracing::warn!(error = %error, "dropping sync event with out-of-range id");
+        }
+    }
+}
+
+/// Shows one aggregate notification when a job finished with new messages and
+/// the user has notifications enabled.
+async fn notify_if_new_mail(store: &Store, notifier: &impl NewMailNotifier, event: &SyncEvent) {
+    let SyncEvent::JobFinished { summary, .. } = event else {
+        return;
+    };
+    if summary.new_messages == 0 {
+        return;
+    }
+    let enabled = match settings::notifications_enabled(store).await {
+        Ok(enabled) => enabled,
+        Err(error) => {
+            tracing::warn!(error = %error, "could not read the notifications setting");
+            return;
+        }
+    };
+    maybe_notify_new_messages(notifier, enabled, summary.new_messages);
 }

@@ -12,6 +12,7 @@ withDefaults(
 
 const emit = defineEmits<{
   dismissStatusError: [];
+  openSettings: [];
 }>();
 
 const { isStacked, activePane, showPane, paneVisible } = usePaneNavigation();
@@ -70,6 +71,7 @@ defineExpose({ showPane });
     <StatusBar
       :error="statusError"
       @dismiss-error="emit('dismissStatusError')"
+      @open-settings="emit('openSettings')"
     />
   </div>
 </template>

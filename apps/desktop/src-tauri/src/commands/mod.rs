@@ -12,7 +12,10 @@ pub mod detail;
 pub mod drafts;
 pub mod messages;
 pub mod meta;
+pub mod search;
+pub mod settings;
 pub mod sync;
+pub mod unified;
 
 use axomail_core::MailError;
 

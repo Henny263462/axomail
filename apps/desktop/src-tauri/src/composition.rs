@@ -3,10 +3,14 @@
 //! `mail-sync` is generic over an [`IncomingMailProvider`] and a
 //! [`ProviderFactory`]; the concrete protocol crates are named only here, in
 //! the application layer. [`AnyIncomingProvider`] is the dispatch enum the
-//! ADR prescribes (a POP3 arm joins in phase 3), and [`AppProviderFactory`]
-//! builds one for an account by resolving its incoming secret from the OS
-//! keychain and constructing an [`ImapProvider`] with production TLS trust
-//! (the Mozilla/webpki bundle only; no extra roots).
+//! ADR prescribes (IMAP and POP3 arms), and [`AppProviderFactory`] builds one
+//! for an account by resolving its incoming secret from the OS keychain and
+//! constructing the matching adapter with production TLS trust (the
+//! Mozilla/webpki bundle only; no extra roots).
+//!
+//! The POP3 arm is wrapped in [`Pop3Sync`], which threads the local store so
+//! it can fill the adapter's known-`UIDL` set from the `pop3_uidl` table
+//! before each sync and record newly ingested `UIDL`s afterwards.
 
 use std::sync::Arc;
 
@@ -15,41 +19,52 @@ use axomail_core::{
     MessageFlags, RawMessage, RemoteMailboxState, RemoteMessageId, SyncOutcome, SyncRequest,
 };
 use axomail_imap::{ImapConfig, ImapProvider};
+use axomail_pop3::{Pop3Config, Pop3Provider};
+use axomail_storage::Store;
 use axomail_sync::ProviderFactory;
 
+use crate::pop3_sync::Pop3Sync;
+use crate::settings;
 use crate::state::SharedSecretStore;
 
 /// Enum-dispatched incoming provider (ADR-0004: no `dyn`, no `async-trait`).
 ///
-/// Only the IMAP arm exists today; POP3 (`axomail-pop3`) is added in phase 3.
-/// Each trait method delegates to the wrapped adapter by `match`.
+/// Each trait method delegates to the wrapped adapter by `match`. The POP3
+/// arm carries a [`Pop3Sync`] rather than a bare adapter so the known-`UIDL`
+/// bookkeeping happens transparently on every sync.
 pub enum AnyIncomingProvider {
     /// The IMAP adapter.
     Imap(ImapProvider),
+    /// The POP3 adapter with its storage-backed de-duplication.
+    Pop3(Pop3Sync),
 }
 
 impl IncomingMailProvider for AnyIncomingProvider {
     async fn connect(&mut self) -> Result<(), MailError> {
         match self {
             Self::Imap(provider) => provider.connect().await,
+            Self::Pop3(provider) => provider.connect().await,
         }
     }
 
     async fn discover(&mut self) -> Result<RemoteMailboxState, MailError> {
         match self {
             Self::Imap(provider) => provider.discover().await,
+            Self::Pop3(provider) => provider.discover().await,
         }
     }
 
     async fn sync(&mut self, request: SyncRequest) -> Result<SyncOutcome, MailError> {
         match self {
             Self::Imap(provider) => provider.sync(request).await,
+            Self::Pop3(provider) => provider.sync(request).await,
         }
     }
 
     async fn fetch_message(&mut self, id: &RemoteMessageId) -> Result<RawMessage, MailError> {
         match self {
             Self::Imap(provider) => provider.fetch_message(id).await,
+            Self::Pop3(provider) => provider.fetch_message(id).await,
         }
     }
 
@@ -60,6 +75,7 @@ impl IncomingMailProvider for AnyIncomingProvider {
     ) -> Result<(), MailError> {
         match self {
             Self::Imap(provider) => provider.set_flags(id, flags).await,
+            Self::Pop3(provider) => provider.set_flags(id, flags).await,
         }
     }
 
@@ -70,42 +86,51 @@ impl IncomingMailProvider for AnyIncomingProvider {
     ) -> Result<(), MailError> {
         match self {
             Self::Imap(provider) => provider.move_message(id, target).await,
+            Self::Pop3(provider) => provider.move_message(id, target).await,
         }
     }
 
     async fn delete_message(&mut self, id: &RemoteMessageId) -> Result<(), MailError> {
         match self {
             Self::Imap(provider) => provider.delete_message(id).await,
+            Self::Pop3(provider) => provider.delete_message(id).await,
         }
     }
 
     async fn disconnect(&mut self) -> Result<(), MailError> {
         match self {
             Self::Imap(provider) => provider.disconnect().await,
+            Self::Pop3(provider) => provider.disconnect().await,
         }
     }
 }
 
 /// Builds an [`AnyIncomingProvider`] for an account (the [`ProviderFactory`]
 /// the sync engine drives).
+///
+/// Holds the local [`Store`] as well as the secret store: the POP3 arm reads
+/// its per-account delete policy from settings and needs the store for its
+/// `UIDL` bookkeeping.
 #[derive(Clone)]
 pub struct AppProviderFactory {
     secrets: SharedSecretStore,
+    store: Store,
 }
 
 impl AppProviderFactory {
-    /// Creates a factory that resolves credentials through `secrets`.
+    /// Creates a factory that resolves credentials through `secrets` and
+    /// reads settings and `UIDL` state through `store`.
     #[must_use]
-    pub fn new(secrets: SharedSecretStore) -> Self {
-        Self { secrets }
+    pub fn new(secrets: SharedSecretStore, store: Store) -> Self {
+        Self { secrets, store }
     }
 }
 
 impl ProviderFactory<AnyIncomingProvider> for AppProviderFactory {
     async fn make(&self, account: &Account) -> Result<AnyIncomingProvider, MailError> {
+        let password = resolve_secret(&self.secrets, &account.incoming.credential).await?;
         match account.incoming.protocol {
             IncomingProtocol::Imap => {
-                let password = resolve_secret(&self.secrets, &account.incoming.credential).await?;
                 // Production trust: the webpki bundle only. `extra_root_certs_der`
                 // stays empty and there is no code path that weakens verification.
                 let config = ImapConfig::new(
@@ -116,9 +141,25 @@ impl ProviderFactory<AnyIncomingProvider> for AppProviderFactory {
                 );
                 Ok(AnyIncomingProvider::Imap(ImapProvider::new(config)))
             }
-            IncomingProtocol::Pop3 => Err(MailError::UnsupportedCapability {
-                capability: "POP3 receiving (arrives in phase 3)".to_owned(),
-            }),
+            IncomingProtocol::Pop3 => {
+                // The per-account policy is the only switch that lifts POP3's
+                // delete block; account setup never sets it.
+                let delete_after_download =
+                    settings::pop3_delete_enabled(&self.store, account.id.value()).await?;
+                let mut config = Pop3Config::new(
+                    account.incoming.endpoint.clone(),
+                    account.incoming.security,
+                    account.incoming.username.clone(),
+                    password,
+                );
+                config.delete_after_download = delete_after_download;
+                let provider = Pop3Provider::new(config);
+                Ok(AnyIncomingProvider::Pop3(Pop3Sync::new(
+                    provider,
+                    self.store.clone(),
+                    account.id,
+                )))
+            }
         }
     }
 }

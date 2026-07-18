@@ -12,6 +12,7 @@ withDefaults(
 
 const emit = defineEmits<{
   dismissError: [];
+  openSettings: [];
 }>();
 
 const { version } = useAppVersion();
@@ -47,6 +48,15 @@ const browserPreview = !isTauri();
     >
       Browser preview — mail features require the desktop app
     </span>
+    <button
+      type="button"
+      class="settings"
+      aria-label="Settings"
+      title="Settings"
+      @click="emit('openSettings')"
+    >
+      ⚙
+    </button>
   </footer>
 </template>
 
@@ -66,6 +76,22 @@ const browserPreview = !isTauri();
 
 .mode {
   color: var(--color-text-secondary);
+}
+
+.settings {
+  margin-left: auto;
+  flex-shrink: 0;
+  font-size: var(--text-sm);
+  line-height: 1;
+  color: var(--color-text-secondary);
+  padding: 2px var(--space-1);
+  border-radius: var(--radius-sm);
+  transition: background var(--transition-fast);
+}
+
+.settings:hover {
+  background: var(--color-bg-hover);
+  color: var(--color-text);
 }
 
 .error {

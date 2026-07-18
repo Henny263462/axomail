@@ -30,6 +30,7 @@ use crate::ingest::IngestRepo;
 use crate::mailboxes::MailboxRepo;
 use crate::messages::MessageRepo;
 use crate::outbox::OutboxRepo;
+use crate::pop3_uidl::Pop3UidlRepo;
 use crate::search::SearchRepo;
 use crate::settings::SettingsRepo;
 use crate::sync_jobs::SyncJobRepo;
@@ -172,6 +173,12 @@ impl Store {
     #[must_use]
     pub fn outbox(&self) -> OutboxRepo<'_> {
         OutboxRepo::new(&self.pool)
+    }
+
+    /// The POP3 `UIDL` de-duplication repository.
+    #[must_use]
+    pub fn pop3_uidls(&self) -> Pop3UidlRepo<'_> {
+        Pop3UidlRepo::new(&self.pool)
     }
 
     /// The full-text search repository.

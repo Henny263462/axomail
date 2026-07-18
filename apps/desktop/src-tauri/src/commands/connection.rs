@@ -10,6 +10,7 @@ use std::num::NonZeroU16;
 
 use axomail_core::{IncomingMailProvider, IncomingProtocol, MailError, ServerEndpoint};
 use axomail_imap::{ImapConfig, ImapProvider};
+use axomail_pop3::{Pop3Config, Pop3Provider};
 use axomail_smtp::{SmtpConfig, SmtpProvider};
 
 use crate::dto::{ConnectionTestResult, CreateAccountInput, IncomingInput, ServerInput};
@@ -22,8 +23,13 @@ fn endpoint(host: &str, port: u16) -> Result<ServerEndpoint, MailError> {
     ServerEndpoint::new(host.to_owned(), port)
 }
 
-/// Probes the incoming server: builds a provider and runs `connect` then a
-/// best-effort `disconnect`. POP3 is rejected until phase 3.
+/// Probes the incoming server: builds the protocol's provider and runs
+/// `connect` (which authenticates) then a best-effort `disconnect`.
+///
+/// The POP3 probe never enables server-side deletion, so a mistyped test can
+/// never remove mail; `connect` performs the `CAPA`/`USER`/`PASS` exchange,
+/// so a wrong password surfaces as [`MailError::Authentication`] just as it
+/// does for IMAP.
 ///
 /// `extra_roots` is empty in production; the integration tests supply the
 /// self-signed certificate of a local test server through it, mirroring
@@ -31,16 +37,12 @@ fn endpoint(host: &str, port: u16) -> Result<ServerEndpoint, MailError> {
 ///
 /// # Errors
 ///
-/// Returns the underlying [`MailError`] when the connection or login fails,
-/// or [`MailError::UnsupportedCapability`] for a POP3 account.
+/// Returns the underlying [`MailError`] when the connection or login fails.
 pub async fn probe_incoming(
     input: &IncomingInput,
     extra_roots: &[Vec<u8>],
 ) -> Result<(), MailError> {
     match input.protocol {
-        IncomingProtocol::Pop3 => Err(MailError::UnsupportedCapability {
-            capability: "POP3 receiving (arrives in phase 3)".to_owned(),
-        }),
         IncomingProtocol::Imap => {
             let mut config = ImapConfig::new(
                 endpoint(&input.host, input.port)?,
@@ -53,6 +55,21 @@ pub async fn probe_incoming(
             provider.connect().await?;
             // The session is disposable; a failed logout does not change the
             // probe's verdict.
+            let _ = provider.disconnect().await;
+            Ok(())
+        }
+        IncomingProtocol::Pop3 => {
+            let mut config = Pop3Config::new(
+                endpoint(&input.host, input.port)?,
+                input.security,
+                input.username.clone(),
+                input.password.clone(),
+            );
+            config.extra_root_certs_der = extra_roots.to_vec();
+            // A probe must never mutate the mailbox: leave deletion disabled.
+            config.delete_after_download = false;
+            let mut provider = Pop3Provider::new(config);
+            provider.connect().await?;
             let _ = provider.disconnect().await;
             Ok(())
         }
