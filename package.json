@@ -16,6 +16,10 @@
     "test": "pnpm --filter axomail-desktop test",
     "tauri": "pnpm --filter axomail-desktop tauri",
     "check:file-sizes": "node scripts/check-file-sizes.mjs",
-    "check:npm-licenses": "pnpm licenses list --json | node scripts/check-npm-licenses.mjs"
+    "check:npm-licenses": "pnpm licenses list --json | node scripts/check-npm-licenses.mjs",
+    "bench:startup": "node scripts/bench/startup.mjs",
+    "bench:db": "node scripts/bench/db-scale.mjs",
+    "bench:size": "node scripts/bench/bundle-size.mjs",
+    "bench:memory": "node scripts/bench/idle-memory.mjs"
   }
 }

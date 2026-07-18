@@ -21,6 +21,16 @@ pub(crate) const MESSAGE_COLUMNS: &str = "id, mailbox_id, \
     flag_seen, flag_answered, flag_flagged, flag_draft, flag_deleted, \
     size_bytes, preview";
 
+/// [`MESSAGE_COLUMNS`] qualified with the `m` table alias, for queries
+/// that join `messages` against other tables (e.g. the unified inbox).
+/// Output column names stay unqualified, so [`MessageRow`] maps them by
+/// the same names as [`MESSAGE_COLUMNS`].
+pub(crate) const MESSAGE_COLUMNS_M: &str = "m.id, m.mailbox_id, \
+    m.remote_kind, m.remote_uid, m.remote_uid_validity, m.remote_uidl, \
+    m.subject, m.date_unix, \
+    m.flag_seen, m.flag_answered, m.flag_flagged, m.flag_draft, m.flag_deleted, \
+    m.size_bytes, m.preview";
+
 /// Raw `messages` row, mapped by column name.
 #[derive(sqlx::FromRow)]
 pub(crate) struct MessageRow {

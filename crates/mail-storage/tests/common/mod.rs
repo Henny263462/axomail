@@ -1,12 +1,14 @@
 //! Shared fixtures for the storage integration tests.
-#![allow(clippy::unwrap_used, clippy::expect_used)]
+// Each integration-test binary pulls in this whole module; fixtures used
+// by only one binary are otherwise flagged dead in the others.
+#![allow(clippy::unwrap_used, clippy::expect_used, dead_code)]
 
 use std::num::NonZeroU16;
 
 use axomail_core::{
     Address, ConnectionSecurity, CredentialRef, EmailAddress, IncomingProtocol,
     IncomingServerConfig, MailboxName, MailboxRole, MessageFlags, OutgoingServerConfig,
-    ServerEndpoint, UtcTimestamp,
+    RemoteEnvelope, RemoteMessageId, ServerEndpoint, UtcTimestamp,
 };
 use axomail_storage::{NewAccount, NewMailbox, NewMessage};
 
@@ -68,5 +70,55 @@ pub fn sample_message(
         size_bytes: Some(2048),
         preview: Some("preview text".to_owned()),
         has_raw: false,
+    }
+}
+
+/// Builds a message fixture with a custom sender and preview so search
+/// tests can target subject, sender, and body text independently.
+pub fn search_message(
+    mailbox: axomail_core::MailboxId,
+    subject: &str,
+    sender_name: &str,
+    sender_email: &str,
+    preview: &str,
+    date_unix: Option<i64>,
+) -> NewMessage {
+    let from = Address {
+        display_name: Some(sender_name.to_owned()),
+        email: EmailAddress::parse(sender_email).unwrap(),
+    };
+    let to = Address::from_email(EmailAddress::parse("klaus@theferbers.eu").unwrap());
+    NewMessage {
+        mailbox,
+        remote_id: None,
+        subject: Some(subject.to_owned()),
+        from: vec![from],
+        to: vec![to],
+        cc: Vec::new(),
+        bcc: Vec::new(),
+        date: date_unix.map(UtcTimestamp::from_unix_seconds),
+        flags: MessageFlags::default(),
+        size_bytes: Some(2048),
+        preview: Some(preview.to_owned()),
+        has_raw: false,
+    }
+}
+
+/// Builds an IMAP [`RemoteEnvelope`] fixture for the ingest path.
+pub fn remote_envelope(uid: u32, uid_validity: u32, subject: &str) -> RemoteEnvelope {
+    let from = Address {
+        display_name: Some("Grace Hopper".to_owned()),
+        email: EmailAddress::parse("grace@example.org").unwrap(),
+    };
+    RemoteEnvelope {
+        remote_id: RemoteMessageId::Imap { uid, uid_validity },
+        subject: Some(subject.to_owned()),
+        from: vec![from],
+        to: vec![Address::from_email(
+            EmailAddress::parse("klaus@theferbers.eu").unwrap(),
+        )],
+        date: Some(UtcTimestamp::from_unix_seconds(uid.into())),
+        flags: MessageFlags::default(),
+        size_bytes: Some(1024),
     }
 }

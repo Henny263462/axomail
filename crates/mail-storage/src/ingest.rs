@@ -82,6 +82,7 @@ impl<'a> IngestRepo<'a> {
             if let Some(message_id) = insert_envelope(&mut tx, mailbox, envelope).await? {
                 insert_recipients(&mut tx, message_id, "from", &envelope.from).await?;
                 insert_recipients(&mut tx, message_id, "to", &envelope.to).await?;
+                index_envelope_content(&mut tx, message_id, envelope).await?;
                 inserted += 1;
             }
         }
@@ -175,6 +176,27 @@ async fn insert_envelope(
     .map_err(|error| map_sqlx("ingest_message", error))?;
 
     Ok(id)
+}
+
+/// Indexes a freshly inserted envelope's header text (subject and
+/// sender/recipient names and addresses) so it is searchable immediately.
+/// Envelopes carry no body text yet; the message-detail path fills the
+/// body in later via [`crate::SearchRepo::index_message_body`].
+async fn index_envelope_content(
+    conn: &mut SqliteConnection,
+    message_id: i64,
+    envelope: &RemoteEnvelope,
+) -> Result<(), MailError> {
+    let correspondents =
+        crate::search::correspondents_text(envelope.from.iter().chain(&envelope.to));
+    crate::search::upsert_content(
+        conn,
+        message_id,
+        envelope.subject.as_deref(),
+        &correspondents,
+        "",
+    )
+    .await
 }
 
 /// Inserts one kind of recipient list, preserving order via `position`.

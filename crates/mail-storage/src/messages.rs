@@ -116,6 +116,24 @@ impl<'a> MessageRepo<'a> {
         insert_recipients(&mut tx, id, "cc", &new.cc).await?;
         insert_recipients(&mut tx, id, "bcc", &new.bcc).await?;
 
+        // Index header text plus the preview (as the initial body) so the
+        // message is searchable right after insertion.
+        let correspondents = crate::search::correspondents_text(
+            new.from
+                .iter()
+                .chain(&new.to)
+                .chain(&new.cc)
+                .chain(&new.bcc),
+        );
+        crate::search::upsert_content(
+            &mut tx,
+            id,
+            new.subject.as_deref(),
+            &correspondents,
+            new.preview.as_deref().unwrap_or_default(),
+        )
+        .await?;
+
         tx.commit()
             .await
             .map_err(|error| map_sqlx("insert_message", error))?;

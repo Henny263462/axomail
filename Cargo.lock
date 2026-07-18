@@ -406,6 +406,17 @@ dependencies = [
 [[package]]
 name = "axomail-pop3"
 version = "0.1.0"
+dependencies = [
+ "axomail-core",
+ "axomail-test-support",
+ "futures",
+ "rcgen",
+ "rustls",
+ "tokio",
+ "tokio-rustls",
+ "tracing",
+ "webpki-roots",
+]
 
 [[package]]
 name = "axomail-security"

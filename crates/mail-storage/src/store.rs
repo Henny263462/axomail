@@ -30,9 +30,11 @@ use crate::ingest::IngestRepo;
 use crate::mailboxes::MailboxRepo;
 use crate::messages::MessageRepo;
 use crate::outbox::OutboxRepo;
+use crate::search::SearchRepo;
 use crate::settings::SettingsRepo;
 use crate::sync_jobs::SyncJobRepo;
 use crate::sync_state::SyncStateRepo;
+use crate::unified::UnifiedRepo;
 
 /// Migrations embedded at compile time from `migrations/` (ADR-0001).
 static MIGRATOR: Migrator = sqlx::migrate!("./migrations");
@@ -170,5 +172,17 @@ impl Store {
     #[must_use]
     pub fn outbox(&self) -> OutboxRepo<'_> {
         OutboxRepo::new(&self.pool)
+    }
+
+    /// The full-text search repository.
+    #[must_use]
+    pub fn search(&self) -> SearchRepo<'_> {
+        SearchRepo::new(&self.pool)
+    }
+
+    /// The cross-account unified-inbox repository.
+    #[must_use]
+    pub fn unified(&self) -> UnifiedRepo<'_> {
+        UnifiedRepo::new(&self.pool)
     }
 }

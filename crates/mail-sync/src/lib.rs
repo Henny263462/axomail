@@ -35,6 +35,7 @@ mod engine;
 mod event;
 mod factory;
 mod job;
+mod scheduler;
 mod shared;
 mod worker;
 
@@ -43,6 +44,7 @@ pub use engine::SyncEngine;
 pub use event::{SyncErrorClass, SyncEvent, SyncJobSummary};
 pub use factory::ProviderFactory;
 pub use job::SyncMailbox;
+pub use scheduler::{BackgroundScheduler, SchedulerConfig, SchedulerStatus};
 
 // Re-exported so callers can name job identifiers and states without a
 // direct dependency on the storage crate's job vocabulary.
