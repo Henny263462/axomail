@@ -1,14 +1,20 @@
 # axomail
 
+[![CI](https://github.com/Henny263462/axomail/actions/workflows/ci.yml/badge.svg)](https://github.com/Henny263462/axomail/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/Henny263462/axomail?include_prereleases)](https://github.com/Henny263462/axomail/releases)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+
 A fast, lightweight, open-source desktop mail client for Windows, macOS, and
 Linux. Built with Tauri 2, Rust, and Vue 3.
 
-> **Status: pre-alpha.** Work packages 1a (scaffold) and 1b (core models,
-> error hierarchy, provider traits) are complete, plus the three-column UI
-> shell with design tokens. No mail functionality exists yet — the shell
-> shows honest empty states. See
-> [docs/architecture/plan-phase-1.md](docs/architecture/plan-phase-1.md)
-> for the roadmap.
+> **Status: pre-alpha.** The MVP feature set is implemented — IMAP two-way
+> sync, SMTP sending with drafts and a guarded outbox, POP3 download,
+> multiple accounts with a unified inbox, sanitized message viewing,
+> full-text search (FTS5), background sync, and desktop notifications —
+> but it has not yet been hardened against real-world servers at scale.
+> Expect rough edges; release bundles are unsigned. See
+> [docs/architecture/](docs/architecture/) for the roadmap and
+> [Releases](https://github.com/Henny263462/axomail/releases) for downloads.
 
 ## Principles
 

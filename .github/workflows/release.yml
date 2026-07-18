@@ -1,0 +1,60 @@
+name: Release
+
+# Builds and publishes desktop bundles when a version tag is pushed:
+#   git tag v0.1.0 && git push origin v0.1.0
+# Artifacts are unsigned (no code-signing certificates yet — see the
+# release notes); Windows SmartScreen and macOS Gatekeeper will warn.
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Bundle (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Tauri system dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev build-essential curl \
+            wget file libxdo-dev libssl-dev libayatana-appindicator3-dev \
+            librsvg2-dev
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          projectPath: apps/desktop
+          tagName: ${{ github.ref_name }}
+          releaseName: "axomail ${{ github.ref_name }}"
+          releaseBody: |
+            Pre-alpha build of axomail — a fast, lightweight, open-source
+            desktop mail client (IMAP, POP3, SMTP).
+
+            **These bundles are unsigned.** Windows SmartScreen and macOS
+            Gatekeeper will warn on first launch; on macOS use
+            right-click → Open. Linux builds ship as AppImage/deb/rpm.
+
+            All mail data stays local; credentials live only in the OS
+            keychain. See the README for the current feature state and
+            known limitations.
+          releaseDraft: false
+          prerelease: true

@@ -1,0 +1,70 @@
+name: Bug report
+description: Something does not work as expected
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report a bug.
+        **Privacy note:** please redact email addresses, server host
+        names, and message content from logs and screenshots before
+        posting. Never post passwords or tokens — axomail itself never
+        writes them to logs, but be careful with your own copies.
+  - type: input
+    id: version
+    attributes:
+      label: axomail version
+      description: Shown in the status bar (e.g. 0.1.0).
+    validations:
+      required: true
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating system
+      options:
+        - Windows
+        - macOS
+        - Linux
+    validations:
+      required: true
+  - type: input
+    id: os-version
+    attributes:
+      label: OS version / distribution
+      placeholder: e.g. Windows 11 24H2, macOS 15.2, Fedora 42
+  - type: dropdown
+    id: protocol
+    attributes:
+      label: Affected mail protocol (if applicable)
+      options:
+        - IMAP
+        - POP3
+        - SMTP (sending)
+        - Not protocol-related
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. …
+        2. …
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Redacted logs or error messages
+      description: Remember to redact addresses, hosts, and content.
+      render: text
