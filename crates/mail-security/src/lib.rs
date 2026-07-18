@@ -12,10 +12,11 @@
 //!   traversal, control characters, and reserved device names when writing
 //!   attachments to disk;
 //! - [`redact_email`] and [`redact_secretlike`], conservative helpers that
-//!   keep addresses and token-shaped strings out of logs.
-//!
-//! HTML sanitization for untrusted message content will also live here, but
-//! is deferred to phase 2 (see ADR-0007).
+//!   keep addresses and token-shaped strings out of logs;
+//! - [`sanitize_message_html`] (and its byte-level counterpart
+//!   [`sanitize_message_html_bytes`]), the allowlist-based HTML sanitizer
+//!   for untrusted message bodies and layer one of the four-layer rendering
+//!   defense in ADR-0007.
 //!
 //! # Blocking I/O
 //!
@@ -27,6 +28,8 @@
 
 mod credential;
 mod filename;
+mod html;
+mod html_policy;
 mod keyring_store;
 mod memory_store;
 mod redact;
@@ -34,6 +37,7 @@ mod secret_store;
 
 pub use credential::{Direction, credential_ref_for_account};
 pub use filename::sanitize_attachment_filename;
+pub use html::{SanitizedHtml, sanitize_message_html, sanitize_message_html_bytes};
 pub use keyring_store::KeyringSecretStore;
 pub use memory_store::InMemorySecretStore;
 pub use redact::{redact_email, redact_secretlike};

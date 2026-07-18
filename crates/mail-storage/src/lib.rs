@@ -21,16 +21,22 @@
 
 mod accounts;
 mod error_map;
+mod ingest;
 mod mailboxes;
 mod message_rows;
 mod messages;
 mod pagination;
 mod settings;
 mod store;
+mod sync_jobs;
+mod sync_state;
 
 pub use accounts::{AccountRepo, NewAccount};
+pub use ingest::{IngestRepo, IngestSummary};
 pub use mailboxes::{MailboxRepo, NewMailbox};
 pub use messages::{MessageRepo, NewMessage};
 pub use pagination::{MessageCursor, MessagePage};
 pub use settings::SettingsRepo;
 pub use store::Store;
+pub use sync_jobs::{JobKind, JobState, NewSyncJob, SyncJob, SyncJobId, SyncJobRepo};
+pub use sync_state::SyncStateRepo;

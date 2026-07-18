@@ -9,6 +9,22 @@ authors.workspace = true
 publish = false
 
 [dependencies]
+axomail-core = { workspace = true }
+mail-send = { workspace = true }
+mail-builder = { workspace = true }
+tokio = { workspace = true }
+rustls = { workspace = true }
+tokio-rustls = { workspace = true }
+webpki-roots = { workspace = true }
+tracing = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["test-util"] }
+rcgen = { workspace = true }
+# The external MIME parser is used only to assert the structure of the
+# messages that mail-builder produces (alternative parts, attachments,
+# headers). It must not leak into production code (ADR-0006).
+mail-parser = { workspace = true }
 
 [lints]
 workspace = true

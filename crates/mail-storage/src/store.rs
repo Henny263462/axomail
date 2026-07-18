@@ -25,9 +25,12 @@ use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions, S
 
 use crate::accounts::AccountRepo;
 use crate::error_map::{map_migrate, map_sqlx};
+use crate::ingest::IngestRepo;
 use crate::mailboxes::MailboxRepo;
 use crate::messages::MessageRepo;
 use crate::settings::SettingsRepo;
+use crate::sync_jobs::SyncJobRepo;
+use crate::sync_state::SyncStateRepo;
 
 /// Migrations embedded at compile time from `migrations/` (ADR-0001).
 static MIGRATOR: Migrator = sqlx::migrate!("./migrations");
@@ -135,5 +138,23 @@ impl Store {
     #[must_use]
     pub fn settings(&self) -> SettingsRepo<'_> {
         SettingsRepo::new(&self.pool)
+    }
+
+    /// The per-mailbox IMAP sync-state repository.
+    #[must_use]
+    pub fn sync_state(&self) -> SyncStateRepo<'_> {
+        SyncStateRepo::new(&self.pool)
+    }
+
+    /// The background-job repository.
+    #[must_use]
+    pub fn sync_jobs(&self) -> SyncJobRepo<'_> {
+        SyncJobRepo::new(&self.pool)
+    }
+
+    /// The sync-outcome ingestion repository.
+    #[must_use]
+    pub fn ingest(&self) -> IngestRepo<'_> {
+        IngestRepo::new(&self.pool)
     }
 }

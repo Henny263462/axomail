@@ -9,6 +9,21 @@ authors.workspace = true
 publish = false
 
 [dependencies]
+tokio = { workspace = true }
+tokio-rustls = { workspace = true }
+rustls = { workspace = true }
+rcgen = { workspace = true }
+tracing = { workspace = true }
+futures = { workspace = true }
+
+[dev-dependencies]
+# The crate's own integration tests act as protocol clients, so they need
+# the async runtime and TLS stack directly (integration-test crates do not
+# inherit the library's regular dependencies).
+tokio = { workspace = true }
+tokio-rustls = { workspace = true }
+rustls = { workspace = true }
+futures = { workspace = true }
 
 [lints]
 workspace = true
