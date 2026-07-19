@@ -78,7 +78,9 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             commands::meta::app_version,
             commands::accounts::list_accounts,
+            commands::accounts::list_account_details,
             commands::accounts::create_account,
+            commands::accounts::update_account,
             commands::accounts::delete_account,
             commands::connection::test_connection,
             commands::messages::list_messages,

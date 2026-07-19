@@ -102,6 +102,59 @@ export interface ConnectionTestResult {
   outgoingError: string | null;
 }
 
+/**
+ * Receiving-server view of an {@link AccountDetail}. `protocol` and
+ * `username` are shown for context but are immutable through the edit path.
+ */
+export interface IncomingServerDetail {
+  protocol: IncomingProtocol;
+  host: string;
+  port: number;
+  security: TransportSecurity;
+  username: string;
+}
+
+/** Sending-server view of an {@link AccountDetail}. */
+export interface OutgoingServerDetail {
+  host: string;
+  port: number;
+  security: TransportSecurity;
+  username: string;
+}
+
+/**
+ * Full, editable configuration of one account, mirroring the Rust
+ * `AccountDetailDto`. Carries no password or credential reference: only the
+ * display name and both servers' host/port/security are editable, with the
+ * protocol, login names, and email shown for context.
+ */
+export interface AccountDetail {
+  id: number;
+  displayName: string;
+  email: string;
+  incoming: IncomingServerDetail;
+  outgoing: OutgoingServerDetail;
+}
+
+/** One server's editable transport fields for {@link UpdateAccountInput}. */
+export interface ServerEndpointInput {
+  host: string;
+  port: number;
+  security: TransportSecurity;
+}
+
+/**
+ * Payload for the `update_account` command. Mirrors the Rust
+ * `UpdateAccountInput`: it can change only the display name and each
+ * server's host/port/security — never the protocol, username, or password.
+ */
+export interface UpdateAccountInput {
+  accountId: number;
+  displayName: string;
+  incoming: ServerEndpointInput;
+  outgoing: ServerEndpointInput;
+}
+
 /** One addressee of a message (display name optional). */
 export interface RecipientDto {
   name: string | null;

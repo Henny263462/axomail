@@ -27,7 +27,9 @@ mod sync_event;
 mod unified;
 
 pub use account::{
-    AccountSummaryDto, CreateAccountInput, IncomingInput, MailboxSummaryDto, ServerInput,
+    AccountDetailDto, AccountSummaryDto, CreateAccountInput, IncomingInput,
+    IncomingServerDetailDto, MailboxSummaryDto, OutgoingServerDetailDto, ServerEndpointInput,
+    ServerInput, UpdateAccountInput,
 };
 pub use compose::{ComposeInput, DraftDto, OutboxItemDto, SendOutcomeDto};
 pub use connection::ConnectionTestResult;

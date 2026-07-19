@@ -37,7 +37,7 @@ mod sync_jobs;
 mod sync_state;
 mod unified;
 
-pub use accounts::{AccountRepo, NewAccount};
+pub use accounts::{AccountRepo, AccountUpdate, NewAccount};
 pub use drafts::{DraftId, DraftRecord, DraftRepo, NewDraft};
 pub use ingest::{IngestRepo, IngestSummary};
 pub use mailboxes::{MailboxRepo, NewMailbox};

@@ -1,24 +1,20 @@
 <script setup lang="ts">
-import { onMounted, ref } from "vue";
+/**
+ * Settings dialog shell.
+ *
+ * Owns the modal overlay, the focus trap, and the section switcher; each
+ * section's fields and behaviour live in its own component (a lightweight
+ * stand-in for the planned settings-section registry). "General" holds the
+ * application-wide settings; "Accounts" manages the configured accounts.
+ */
+import { ref } from "vue";
 
-import {
-  getSettings,
-  setPop3DeletePolicy,
-  updateSettings,
-} from "../../api/settings";
-import { isTauri } from "../../lib/tauri";
-import type {
-  AccountSummary,
-  Pop3DeletePolicyDto,
-  SettingsDto,
-} from "../../types/mail";
+import type { AccountSummary } from "../../types/mail";
+import AccountsSection from "./AccountsSection.vue";
+import GeneralSettingsSection from "./GeneralSettingsSection.vue";
 
-/** Exact warning shown beside every POP3 server-deletion toggle. */
-const DELETE_WARNING =
-  "Deletes mail from the server after download. This cannot be undone.";
-
-const props = defineProps<{
-  /** Accounts, used to label each POP3 delete-policy toggle. */
+defineProps<{
+  /** Accounts, forwarded to the General section for its POP3 labels. */
   accounts: AccountSummary[];
 }>();
 
@@ -26,29 +22,15 @@ const emit = defineEmits<{
   close: [];
 }>();
 
-const notificationsEnabled = ref(false);
-const syncIntervalMinutes = ref(5);
-const policies = ref<Pop3DeletePolicyDto[]>([]);
+type Section = "general" | "accounts";
+const section = ref<Section>("general");
 
-type LoadState = "loading" | "ready" | "unavailable";
-const state = ref<LoadState>("loading");
-const saving = ref(false);
-const errorMessage = ref("");
-const statusMessage = ref("");
+const sections: { id: Section; label: string }[] = [
+  { id: "general", label: "General" },
+  { id: "accounts", label: "Accounts" },
+];
 
 const root = ref<HTMLElement | null>(null);
-
-onMounted(async () => {
-  const settings = await getSettings();
-  if (settings === null) {
-    state.value = "unavailable";
-    return;
-  }
-  notificationsEnabled.value = settings.notificationsEnabled;
-  syncIntervalMinutes.value = Math.max(1, settings.syncIntervalMinutes);
-  policies.value = settings.pop3DeletePolicies.map((policy) => ({ ...policy }));
-  state.value = "ready";
-});
 
 function close(): void {
   emit("close");
@@ -58,7 +40,7 @@ function focusables(): HTMLElement[] {
   if (root.value === null) return [];
   return Array.from(
     root.value.querySelectorAll<HTMLElement>(
-      "button:not([disabled]), input:not([disabled])",
+      "button:not([disabled]), input:not([disabled]), select:not([disabled])",
     ),
   );
 }
@@ -82,72 +64,6 @@ function onKeydown(event: KeyboardEvent): void {
     first?.focus();
   }
 }
-
-function accountName(accountId: number): string {
-  const account = props.accounts.find((item) => item.id === accountId);
-  return account?.displayName ?? `Account ${accountId}`;
-}
-
-function messageFrom(error: unknown): string {
-  if (typeof error === "string") return error;
-  if (error instanceof Error) return error.message;
-  return "Could not save settings.";
-}
-
-function currentSettings(): SettingsDto {
-  return {
-    notificationsEnabled: notificationsEnabled.value,
-    syncIntervalMinutes: Math.max(1, Math.floor(syncIntervalMinutes.value || 1)),
-    pop3DeletePolicies: policies.value.map((policy) => ({ ...policy })),
-  };
-}
-
-/**
- * Flips one account's POP3 delete policy through the dedicated command — the
- * user-visible second guard. On failure the checkbox reverts and the error is
- * announced; local state changes only after the backend accepts it.
- */
-async function onTogglePolicy(
-  policy: Pop3DeletePolicyDto,
-  event: Event,
-): Promise<void> {
-  const next = (event.target as HTMLInputElement).checked;
-  statusMessage.value = "";
-  if (!isTauri()) {
-    (event.target as HTMLInputElement).checked = policy.enabled;
-    errorMessage.value =
-      "Changing the delete policy needs the desktop app; it is unavailable in the browser preview.";
-    return;
-  }
-  try {
-    await setPop3DeletePolicy(policy.accountId, next);
-    policy.enabled = next;
-    errorMessage.value = "";
-  } catch (error) {
-    (event.target as HTMLInputElement).checked = policy.enabled;
-    errorMessage.value = messageFrom(error);
-  }
-}
-
-async function onSave(): Promise<void> {
-  if (saving.value || state.value !== "ready") return;
-  statusMessage.value = "";
-  if (!isTauri()) {
-    errorMessage.value =
-      "Saving settings needs the desktop app; it is unavailable in the browser preview.";
-    return;
-  }
-  saving.value = true;
-  try {
-    await updateSettings(currentSettings());
-    errorMessage.value = "";
-    close();
-  } catch (error) {
-    errorMessage.value = messageFrom(error);
-  } finally {
-    saving.value = false;
-  }
-}
 </script>
 
 <template>
@@ -162,111 +78,48 @@ async function onSave(): Promise<void> {
       aria-modal="true"
       aria-labelledby="settings-title"
     >
-      <h2
-        id="settings-title"
-        class="title"
-      >
-        Settings
-      </h2>
-
-      <p
-        v-if="state === 'loading'"
-        class="note"
-        role="status"
-      >
-        Loading settings…
-      </p>
-      <p
-        v-else-if="state === 'unavailable'"
-        class="note"
-        role="status"
-      >
-        Settings require the desktop app; they are unavailable in the browser
-        preview.
-      </p>
-
-      <form
-        v-else
-        class="form"
-        @submit.prevent="onSave"
-      >
-        <label class="toggle">
-          <input
-            id="settings-notifications"
-            v-model="notificationsEnabled"
-            type="checkbox"
-          >
-          <span>Show desktop notifications for new mail</span>
-        </label>
-
-        <div class="field">
-          <label for="settings-interval">Sync interval (minutes)</label>
-          <input
-            id="settings-interval"
-            v-model.number="syncIntervalMinutes"
-            type="number"
-            inputmode="numeric"
-            min="1"
-            step="1"
-          >
-        </div>
-
-        <fieldset
-          v-if="policies.length > 0"
-          class="group"
+      <div class="header">
+        <h2
+          id="settings-title"
+          class="title"
         >
-          <legend class="legend">
-            POP3 server deletion
-          </legend>
-          <p class="warning">
-            {{ DELETE_WARNING }}
-          </p>
-          <label
-            v-for="policy in policies"
-            :key="policy.accountId"
-            class="toggle"
-          >
-            <input
-              type="checkbox"
-              :checked="policy.enabled"
-              @change="onTogglePolicy(policy, $event)"
-            >
-            <span>{{ accountName(policy.accountId) }}</span>
-          </label>
-        </fieldset>
-
-        <p
-          class="error"
-          role="alert"
-          aria-live="assertive"
+          Settings
+        </h2>
+        <button
+          type="button"
+          class="close"
+          aria-label="Close settings"
+          @click="close"
         >
-          {{ errorMessage }}
-        </p>
-        <p
-          class="status"
-          role="status"
-          aria-live="polite"
-        >
-          {{ statusMessage }}
-        </p>
+          ×
+        </button>
+      </div>
 
-        <div class="actions">
-          <button
-            type="button"
-            class="button"
-            @click="close"
-          >
-            Cancel
-          </button>
-          <button
-            type="submit"
-            class="button primary"
-            :disabled="saving"
-          >
-            {{ saving ? "Saving…" : "Save" }}
-          </button>
-        </div>
-      </form>
+      <div
+        class="sections"
+        role="tablist"
+        aria-label="Settings sections"
+      >
+        <button
+          v-for="item in sections"
+          :key="item.id"
+          type="button"
+          role="tab"
+          class="tab"
+          :class="{ active: section === item.id }"
+          :aria-selected="section === item.id"
+          @click="section = item.id"
+        >
+          {{ item.label }}
+        </button>
+      </div>
+
+      <GeneralSettingsSection
+        v-if="section === 'general'"
+        :accounts="accounts"
+        @close="close"
+      />
+      <AccountsSection v-else-if="section === 'accounts'" />
     </div>
   </div>
 </template>
@@ -293,133 +146,57 @@ async function onSave(): Promise<void> {
   padding: var(--space-5);
 }
 
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--space-3);
+}
+
 .title {
   font-size: var(--text-lg);
   font-weight: var(--weight-semibold);
   letter-spacing: -0.01em;
-  margin-bottom: var(--space-4);
 }
 
-.note {
-  font-size: var(--text-sm);
+.close {
+  font-size: var(--text-lg);
+  line-height: 1;
   color: var(--color-text-secondary);
+  background: none;
+  border: none;
+  padding: var(--space-1);
+  cursor: pointer;
 }
 
-.form {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-4);
-}
-
-.toggle {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  font-size: var(--text-sm);
+.close:hover {
   color: var(--color-text);
 }
 
-.field {
+.sections {
   display: flex;
-  flex-direction: column;
   gap: var(--space-1);
+  margin-bottom: var(--space-4);
+  border-bottom: 1px solid var(--color-border);
 }
 
-.field label {
-  font-size: var(--text-xs);
-  font-weight: var(--weight-medium);
-  color: var(--color-text-secondary);
-}
-
-.field input {
-  font: inherit;
-  font-size: var(--text-sm);
-  color: var(--color-text);
-  background: var(--color-bg);
-  border: 1px solid var(--color-border-strong);
-  border-radius: var(--radius-sm);
-  padding: var(--space-1) var(--space-2);
-  max-width: 8rem;
-}
-
-.field input:focus-visible {
-  border-color: var(--color-accent);
-}
-
-.group {
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-  padding: var(--space-3);
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-}
-
-.legend {
-  font-size: var(--text-xs);
-  font-weight: var(--weight-semibold);
-  color: var(--color-text-tertiary);
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  padding: 0 var(--space-1);
-}
-
-.warning {
-  font-size: var(--text-xs);
-  color: var(--color-danger);
-}
-
-.error {
-  font-size: var(--text-sm);
-  color: var(--color-danger);
-}
-
-.error:empty {
-  display: none;
-}
-
-.status {
-  font-size: var(--text-sm);
-  color: var(--color-text-secondary);
-}
-
-.status:empty {
-  display: none;
-}
-
-.actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: var(--space-2);
-}
-
-.button {
+.tab {
   font-size: var(--text-sm);
   font-weight: var(--weight-medium);
-  padding: var(--space-2) var(--space-4);
-  border-radius: var(--radius-md);
-  border: 1px solid var(--color-border-strong);
+  color: var(--color-text-secondary);
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  padding: var(--space-2) var(--space-3);
+  cursor: pointer;
+}
+
+.tab:hover {
   color: var(--color-text);
-  background: var(--color-bg);
-  transition: background var(--transition-fast);
 }
 
-.button:hover {
-  background: var(--color-bg-hover);
-}
-
-.button:disabled {
-  opacity: 0.6;
-  cursor: default;
-}
-
-.button.primary {
-  color: var(--color-text-inverse);
-  background: var(--color-accent);
-  border-color: var(--color-accent);
-}
-
-.button.primary:hover {
-  background: var(--color-accent-hover);
+.tab.active {
+  color: var(--color-text);
+  border-bottom-color: var(--color-accent);
 }
 </style>

@@ -8,11 +8,13 @@ use axomail_core::{
     MailboxName, MailboxRole, OutgoingServerConfig, ServerEndpoint,
 };
 use axomail_security::{Direction, credential_ref_for_account};
-use axomail_storage::{NewAccount, NewMailbox, Store};
+use axomail_storage::{AccountUpdate, NewAccount, NewMailbox, Store};
 
 use crate::commands::map_command_error;
 use crate::commands::messages::count_unread;
-use crate::dto::{AccountSummaryDto, CreateAccountInput, MailboxSummaryDto};
+use crate::dto::{
+    AccountDetailDto, AccountSummaryDto, CreateAccountInput, MailboxSummaryDto, UpdateAccountInput,
+};
 use crate::state::{AppState, SharedSecretStore};
 
 /// Default mailbox set created for a new account, in display order, so the UI
@@ -123,6 +125,59 @@ pub async fn create_account_impl(
             Err(error)
         }
     }
+}
+
+/// Lists every configured account as an editable detail view (no secrets).
+///
+/// This backs the account-management settings section: it carries each
+/// account's display name, primary address, protocol, and both servers'
+/// host/port/security, but never a password or credential reference.
+///
+/// # Errors
+///
+/// Returns [`MailError::Database`] on any query failure and
+/// [`MailError::Configuration`] if a stored id is out of the safe integer
+/// range.
+pub async fn list_account_details_impl(store: &Store) -> Result<Vec<AccountDetailDto>, MailError> {
+    let accounts = store.accounts().list().await?;
+    accounts.iter().map(AccountDetailDto::from_domain).collect()
+}
+
+/// Applies an account edit: validates the changed transport fields, persists
+/// them, and returns the refreshed detail view.
+///
+/// Only the display name and each server's host/port/security are written.
+/// The protocol, login names, primary address, and stored credentials are
+/// left untouched — this path can neither switch protocol nor re-key the
+/// keychain, so it performs no keychain I/O at all.
+///
+/// # Errors
+///
+/// Returns [`MailError::Configuration`] for an invalid host, a zero port, or
+/// an unknown account id, and [`MailError::Database`] on any query failure.
+pub async fn update_account_impl(
+    store: &Store,
+    input: UpdateAccountInput,
+) -> Result<AccountDetailDto, MailError> {
+    // Validate the edited transport fields into core value types first, so a
+    // bad host or port is rejected before the row is touched.
+    let incoming_endpoint =
+        ServerEndpoint::new(input.incoming.host, nonzero_port(input.incoming.port)?)?;
+    let outgoing_endpoint =
+        ServerEndpoint::new(input.outgoing.host, nonzero_port(input.outgoing.port)?)?;
+
+    let update = AccountUpdate {
+        display_name: input.display_name,
+        incoming_endpoint,
+        incoming_security: input.incoming.security,
+        outgoing_endpoint,
+        outgoing_security: input.outgoing.security,
+    };
+    let account = store
+        .accounts()
+        .update(AccountId::new(input.account_id), &update)
+        .await?;
+    AccountDetailDto::from_domain(&account)
 }
 
 /// Deletes an account and its keychain secrets.
@@ -271,6 +326,27 @@ pub async fn delete_account(
     // Drop the removed account's inbox from the background-sync target set.
     refresh_scheduler_targets(&state).await;
     Ok(())
+}
+
+/// Lists every configured account with its editable server configuration.
+#[tauri::command]
+pub async fn list_account_details(
+    state: tauri::State<'_, AppState>,
+) -> Result<Vec<AccountDetailDto>, String> {
+    list_account_details_impl(state.store())
+        .await
+        .map_err(map_command_error)
+}
+
+/// Updates an account's display name and server transport settings.
+#[tauri::command]
+pub async fn update_account(
+    state: tauri::State<'_, AppState>,
+    input: UpdateAccountInput,
+) -> Result<AccountDetailDto, String> {
+    update_account_impl(state.store(), input)
+        .await
+        .map_err(map_command_error)
 }
 
 /// Pushes the current inbox target set into the scheduler, logging (never

@@ -54,6 +54,82 @@ async fn account_crud_round_trips() {
 }
 
 #[tokio::test]
+async fn account_update_changes_mutable_fields_and_preserves_the_rest() {
+    use std::num::NonZeroU16;
+
+    use axomail_core::{ConnectionSecurity, ServerEndpoint};
+    use axomail_storage::AccountUpdate;
+
+    let store = Store::open_in_memory().await.unwrap();
+    let repo = store.accounts();
+    let created = repo
+        .insert(&sample_account("Work", "klaus@theferbers.eu"))
+        .await
+        .unwrap();
+
+    // Swap both endpoints and both security modes relative to the fixture
+    // (incoming Tls, outgoing StartTls) so every mutable field is exercised.
+    let update = AccountUpdate {
+        display_name: "Personal".to_owned(),
+        incoming_endpoint: ServerEndpoint::new("imap2.example.org", NonZeroU16::new(143).unwrap())
+            .unwrap(),
+        incoming_security: ConnectionSecurity::StartTls,
+        outgoing_endpoint: ServerEndpoint::new("smtp2.example.org", NonZeroU16::new(2525).unwrap())
+            .unwrap(),
+        outgoing_security: ConnectionSecurity::Tls,
+    };
+    let updated = repo.update(created.id, &update).await.unwrap();
+
+    // Mutable fields changed as requested.
+    assert_eq!(updated.display_name, "Personal");
+    assert_eq!(updated.incoming.endpoint.host(), "imap2.example.org");
+    assert_eq!(updated.incoming.endpoint.port().get(), 143);
+    assert_eq!(updated.incoming.security, ConnectionSecurity::StartTls);
+    assert_eq!(updated.outgoing.endpoint.host(), "smtp2.example.org");
+    assert_eq!(updated.outgoing.endpoint.port().get(), 2525);
+    assert_eq!(updated.outgoing.security, ConnectionSecurity::Tls);
+
+    // Immutable fields are left exactly as stored.
+    assert_eq!(updated.id, created.id);
+    assert_eq!(updated.email, created.email);
+    assert_eq!(updated.incoming.protocol, created.incoming.protocol);
+    assert_eq!(updated.incoming.username, created.incoming.username);
+    assert_eq!(updated.incoming.credential, created.incoming.credential);
+    assert_eq!(updated.outgoing.username, created.outgoing.username);
+    assert_eq!(updated.outgoing.credential, created.outgoing.credential);
+
+    // The change is persisted, not merely reflected in the return value.
+    let refetched = repo.get(created.id).await.unwrap().expect("account exists");
+    assert_eq!(refetched, updated);
+}
+
+#[tokio::test]
+async fn account_update_rejects_an_unknown_id() {
+    use std::num::NonZeroU16;
+
+    use axomail_core::{AccountId, ConnectionSecurity, MailError, ServerEndpoint};
+    use axomail_storage::AccountUpdate;
+
+    let store = Store::open_in_memory().await.unwrap();
+    let update = AccountUpdate {
+        display_name: "Ghost".to_owned(),
+        incoming_endpoint: ServerEndpoint::new("imap.example.org", NonZeroU16::new(993).unwrap())
+            .unwrap(),
+        incoming_security: ConnectionSecurity::Tls,
+        outgoing_endpoint: ServerEndpoint::new("smtp.example.org", NonZeroU16::new(465).unwrap())
+            .unwrap(),
+        outgoing_security: ConnectionSecurity::Tls,
+    };
+
+    let error = store
+        .accounts()
+        .update(AccountId::new(9999), &update)
+        .await
+        .unwrap_err();
+    assert!(matches!(error, MailError::Configuration { .. }));
+}
+
+#[tokio::test]
 async fn mailbox_upsert_is_idempotent() {
     let store = Store::open_in_memory().await.unwrap();
     let account = store
