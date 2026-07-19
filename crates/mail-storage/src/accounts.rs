@@ -33,6 +33,29 @@ pub struct NewAccount {
     pub outgoing: OutgoingServerConfig,
 }
 
+/// The mutable configuration of an existing account.
+///
+/// Only the fields an account edit is allowed to change are present: the
+/// display name and each server's endpoint and transport security. The
+/// incoming protocol, login names, primary address, and credential
+/// references are immutable through this path — switching protocol or
+/// re-keying credentials is deliberately out of scope, so they cannot be
+/// touched here. Endpoints are [`ServerEndpoint`]s, so host and port are
+/// already validated by the core layer before they reach the repository.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AccountUpdate {
+    /// New name shown in the account list.
+    pub display_name: String,
+    /// New receiving endpoint (host and port).
+    pub incoming_endpoint: ServerEndpoint,
+    /// New receiving transport security.
+    pub incoming_security: ConnectionSecurity,
+    /// New sending endpoint (host and port).
+    pub outgoing_endpoint: ServerEndpoint,
+    /// New sending transport security.
+    pub outgoing_security: ConnectionSecurity,
+}
+
 /// Repository over the `accounts` table.
 #[derive(Debug)]
 pub struct AccountRepo<'a> {
@@ -87,6 +110,53 @@ impl<'a> AccountRepo<'a> {
             incoming: new.incoming.clone(),
             outgoing: new.outgoing.clone(),
         })
+    }
+
+    /// Applies an [`AccountUpdate`] to the account with `id` and returns the
+    /// updated [`Account`].
+    ///
+    /// Only the display name and the two servers' host/port/security columns
+    /// are written; the protocol, usernames, credential references, and email
+    /// are left exactly as stored. The immutable columns are not part of the
+    /// `SET` list, so this can never re-key credentials or switch protocol.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`MailError::Configuration`] if no account has the given `id`,
+    /// and [`MailError::Database`] on any query failure or if the updated row
+    /// cannot be decoded back into a valid [`Account`].
+    pub async fn update(
+        &self,
+        id: AccountId,
+        update: &AccountUpdate,
+    ) -> Result<Account, MailError> {
+        let incoming_port = i64::from(update.incoming_endpoint.port().get());
+        let outgoing_port = i64::from(update.outgoing_endpoint.port().get());
+
+        let row = sqlx::query_as::<_, AccountRow>(sqlx::AssertSqlSafe(format!(
+            "UPDATE accounts SET \
+                display_name = ?, \
+                incoming_host = ?, incoming_port = ?, incoming_security = ?, \
+                outgoing_host = ?, outgoing_port = ?, outgoing_security = ? \
+             WHERE id = ? RETURNING {ACCOUNT_COLUMNS}"
+        )))
+        .bind(update.display_name.as_str())
+        .bind(update.incoming_endpoint.host())
+        .bind(incoming_port)
+        .bind(security_str(update.incoming_security))
+        .bind(update.outgoing_endpoint.host())
+        .bind(outgoing_port)
+        .bind(security_str(update.outgoing_security))
+        .bind(id.value())
+        .fetch_optional(self.pool)
+        .await
+        .map_err(|error| map_sqlx("update_account", error))?;
+
+        row.map(AccountRow::into_account)
+            .transpose()?
+            .ok_or_else(|| MailError::Configuration {
+                message: "cannot update an account that does not exist".to_owned(),
+            })
     }
 
     /// Fetches an account by id, or `None` if it does not exist.

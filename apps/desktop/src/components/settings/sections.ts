@@ -1,5 +1,6 @@
 import type { Component } from "vue";
 
+import AccountsSection from "./AccountsSection.vue";
 import AppearanceSection from "./AppearanceSection.vue";
 import NotificationsSection from "./NotificationsSection.vue";
 import Pop3DeleteSection from "./Pop3DeleteSection.vue";
@@ -37,4 +38,5 @@ export const settingsSections: SettingsSection[] = [
     title: "POP3 server deletion",
     component: Pop3DeleteSection,
   },
+  { id: "accounts", title: "Accounts", component: AccountsSection },
 ];

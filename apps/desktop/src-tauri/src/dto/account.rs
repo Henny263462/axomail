@@ -71,6 +71,124 @@ impl AccountSummaryDto {
     }
 }
 
+/// The receiving-server view of an [`AccountDetailDto`].
+///
+/// Carries the editable transport fields plus the immutable protocol and
+/// login name, so the account-management form can show them; it never
+/// carries the password or its credential reference.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct IncomingServerDetailDto {
+    /// Receiving protocol (immutable; shown, never edited).
+    pub protocol: IncomingProtocol,
+    /// Server host name.
+    pub host: String,
+    /// TCP port.
+    pub port: u16,
+    /// Transport security.
+    pub security: ConnectionSecurity,
+    /// Login name (immutable through the edit path; not secret).
+    pub username: String,
+}
+
+/// The sending-server view of an [`AccountDetailDto`].
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OutgoingServerDetailDto {
+    /// Server host name.
+    pub host: String,
+    /// TCP port.
+    pub port: u16,
+    /// Transport security.
+    pub security: ConnectionSecurity,
+    /// Login name (immutable through the edit path; not secret).
+    pub username: String,
+}
+
+/// The full, editable configuration of one account, without any secrets.
+///
+/// This is the read model behind the account-management section: it exposes
+/// exactly the fields the edit form renders (display name and both servers'
+/// host/port/security), plus the immutable protocol, login names, and email
+/// for context. Passwords and credential references never appear here.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AccountDetailDto {
+    /// Local identifier.
+    pub id: i64,
+    /// Name shown in the account list.
+    pub display_name: String,
+    /// Primary address (immutable through the edit path).
+    pub email: String,
+    /// Receiving configuration.
+    pub incoming: IncomingServerDetailDto,
+    /// Sending configuration.
+    pub outgoing: OutgoingServerDetailDto,
+}
+
+impl AccountDetailDto {
+    /// Builds a detail view from a domain account.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`MailError::Configuration`] if the account id is out of the
+    /// safe integer range.
+    pub fn from_domain(account: &Account) -> Result<Self, MailError> {
+        Ok(Self {
+            id: checked_id(account.id.value())?,
+            display_name: account.display_name.clone(),
+            email: account.email.as_str().to_owned(),
+            incoming: IncomingServerDetailDto {
+                protocol: account.incoming.protocol,
+                host: account.incoming.endpoint.host().to_owned(),
+                port: account.incoming.endpoint.port().get(),
+                security: account.incoming.security,
+                username: account.incoming.username.clone(),
+            },
+            outgoing: OutgoingServerDetailDto {
+                host: account.outgoing.endpoint.host().to_owned(),
+                port: account.outgoing.endpoint.port().get(),
+                security: account.outgoing.security,
+                username: account.outgoing.username.clone(),
+            },
+        })
+    }
+}
+
+/// One server's editable transport fields from the account-management form.
+///
+/// Unlike [`ServerInput`], this carries no password and no protocol: an edit
+/// can change only the host, port, and transport security. The protocol and
+/// credentials of an existing account are immutable through this path.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ServerEndpointInput {
+    /// Server host name.
+    pub host: String,
+    /// TCP port.
+    pub port: u16,
+    /// Transport security.
+    pub security: ConnectionSecurity,
+}
+
+/// Input for the `update_account` command.
+///
+/// Names exactly the mutable fields; the absence of protocol, username,
+/// email, and password fields is intentional — those cannot be changed by
+/// an edit, so the wire shape cannot even express such a change.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UpdateAccountInput {
+    /// Account to update.
+    pub account_id: i64,
+    /// New display name.
+    pub display_name: String,
+    /// New receiving transport configuration.
+    pub incoming: ServerEndpointInput,
+    /// New sending transport configuration.
+    pub outgoing: ServerEndpointInput,
+}
+
 /// One server's connection input from the account-setup form.
 ///
 /// Holds a plaintext password only transiently while the command stores it
