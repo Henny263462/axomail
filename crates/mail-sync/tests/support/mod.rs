@@ -63,6 +63,8 @@ impl FailKind {
 pub struct FakeWorld {
     plans: Mutex<HashMap<MailboxId, VecDeque<Pass>>>,
     connect_errors: Mutex<VecDeque<FailKind>>,
+    raw_messages: Mutex<HashMap<RemoteMessageId, Vec<u8>>>,
+    fetch_calls: Mutex<usize>,
     sync_calls: Mutex<HashMap<MailboxId, usize>>,
     connect_calls: Mutex<usize>,
     active: Mutex<HashMap<AccountId, usize>>,
@@ -94,6 +96,18 @@ impl FakeWorld {
     /// Queues an error to be returned by the next `connect` call.
     pub fn fail_connect(&self, kind: FailKind) {
         lock(&self.connect_errors).push_back(kind);
+    }
+
+    /// Scripts the raw RFC 5322 bytes a `fetch_message` call returns for a
+    /// remote id (used by the offline-download tests).
+    pub fn set_raw(&self, id: RemoteMessageId, bytes: impl Into<Vec<u8>>) {
+        lock(&self.raw_messages).insert(id, bytes.into());
+    }
+
+    /// Number of `fetch_message` calls observed overall.
+    #[must_use]
+    pub fn fetch_calls(&self) -> usize {
+        *lock(&self.fetch_calls)
     }
 
     /// Arms the mid-pass gate: a pass whose incoming
@@ -266,8 +280,15 @@ impl IncomingMailProvider for FakeProvider {
         }
     }
 
-    async fn fetch_message(&mut self, _id: &RemoteMessageId) -> Result<RawMessage, MailError> {
-        Err(unsupported("FETCH"))
+    async fn fetch_message(&mut self, id: &RemoteMessageId) -> Result<RawMessage, MailError> {
+        *lock(&self.world.fetch_calls) += 1;
+        match lock(&self.world.raw_messages).get(id).cloned() {
+            Some(bytes) => Ok(RawMessage {
+                remote_id: id.clone(),
+                bytes,
+            }),
+            None => Err(unsupported("FETCH")),
+        }
     }
 
     async fn select_mailbox(&mut self, mailbox: &MailboxName) -> Result<(), MailError> {
@@ -357,6 +378,7 @@ pub fn test_config() -> SyncConfig {
         max_parallel_jobs: 2,
         network_timeout: Duration::from_secs(30),
         batch_size: 100,
+        offline_download_batch: 25,
         max_attempts: 4,
         backoff_base: Duration::from_secs(2),
         backoff_cap: Duration::from_secs(60),

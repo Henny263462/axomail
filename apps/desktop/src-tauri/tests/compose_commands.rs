@@ -70,7 +70,7 @@ async fn send_message_happy_path_files_sent_copy_and_captures_data() {
         .unwrap();
 
     let input = compose_input(summary.id, &["bob@example.org"], "Meeting notes");
-    let outcome = send_message_impl(&store, &secrets, &roots, input)
+    let outcome = send_message_impl(&store, &secrets, &roots, input, false)
         .await
         .unwrap();
 
@@ -113,7 +113,7 @@ async fn send_message_permanent_failure_marks_failed_without_duplicate() {
         .unwrap();
 
     let input = compose_input(summary.id, &["bob@example.org"], "Undeliverable");
-    let outcome = send_message_impl(&store, &secrets, &roots, input)
+    let outcome = send_message_impl(&store, &secrets, &roots, input, false)
         .await
         .unwrap();
 

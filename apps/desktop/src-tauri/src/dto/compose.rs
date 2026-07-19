@@ -161,6 +161,10 @@ pub struct SendOutcomeDto {
     /// When set, the message was not sent now but queued for this Unix second
     /// (a "send later" outcome); `sent` is false and `error` is `None`.
     pub scheduled_at_unix: Option<i64>,
+    /// True when the message was queued because the app is working offline; it
+    /// stays in the outbox and is sent automatically on returning online.
+    /// `sent` is false and `error` is `None`.
+    pub queued_offline: bool,
 }
 
 impl SendOutcomeDto {
@@ -176,6 +180,7 @@ impl SendOutcomeDto {
             sent,
             error,
             scheduled_at_unix: None,
+            queued_offline: false,
         })
     }
 
@@ -191,6 +196,25 @@ impl SendOutcomeDto {
             sent: false,
             error: None,
             scheduled_at_unix: Some(at_unix),
+            queued_offline: false,
+        })
+    }
+
+    /// Builds a "queued while offline" outcome, validating the outbox id. The
+    /// message is in the outbox and sends automatically when the app is back
+    /// online.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`MailError::Configuration`] if the outbox id is out of the
+    /// safe integer range.
+    pub fn queued_offline(outbox_id: i64) -> Result<Self, MailError> {
+        Ok(Self {
+            outbox_id: checked_id(outbox_id)?,
+            sent: false,
+            error: None,
+            scheduled_at_unix: None,
+            queued_offline: true,
         })
     }
 }

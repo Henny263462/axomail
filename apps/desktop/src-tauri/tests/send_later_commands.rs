@@ -116,7 +116,7 @@ async fn send_message_defers_a_future_message_without_sending() {
     let send_at = now() + 3_600;
     let mut input = compose_input(summary.id, &["bob@example.org"], "Later");
     input.scheduled_at_unix = Some(send_at);
-    let outcome = send_message_impl(&store, &secrets, &roots, input)
+    let outcome = send_message_impl(&store, &secrets, &roots, input, false)
         .await
         .unwrap();
 

@@ -60,17 +60,7 @@ impl<'a> SearchRepo<'a> {
         message_id: MessageId,
         text: &str,
     ) -> Result<(), MailError> {
-        sqlx::query(
-            "INSERT INTO message_search_content (message_id, subject, correspondents, body)
-             VALUES (?, '', '', ?)
-             ON CONFLICT (message_id) DO UPDATE SET body = excluded.body",
-        )
-        .bind(message_id.value())
-        .bind(text)
-        .execute(self.pool)
-        .await
-        .map_err(|error| map_sqlx("index_message_body", error))?;
-        Ok(())
+        index_body(self.pool, message_id.value(), text).await
     }
 
     /// Full-text searches the index, ranking matches with BM25 (subject
@@ -170,6 +160,31 @@ impl<'a> SearchRepo<'a> {
         .map_err(|error| map_sqlx("index_progress", error))?;
         Ok(value.flatten().map(MessageId::new))
     }
+}
+
+/// Indexes (or re-indexes) a message's extracted plain-text body against any
+/// executor — the pool for the on-open reindex, or an open transaction for the
+/// sync-time offline download that flips `has_raw` and indexes the body
+/// atomically. Creates the content row if absent, preserving header text.
+pub(crate) async fn index_body<'e, E>(
+    executor: E,
+    message_id: i64,
+    text: &str,
+) -> Result<(), MailError>
+where
+    E: sqlx::Executor<'e, Database = sqlx::Sqlite>,
+{
+    sqlx::query(
+        "INSERT INTO message_search_content (message_id, subject, correspondents, body)
+         VALUES (?, '', '', ?)
+         ON CONFLICT (message_id) DO UPDATE SET body = excluded.body",
+    )
+    .bind(message_id)
+    .bind(text)
+    .execute(executor)
+    .await
+    .map_err(|error| map_sqlx("index_message_body", error))?;
+    Ok(())
 }
 
 /// Upserts the searchable content row for a message within an open

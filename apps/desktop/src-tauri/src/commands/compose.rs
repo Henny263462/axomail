@@ -45,6 +45,7 @@ pub async fn send_message_impl(
     secrets: &SharedSecretStore,
     extra_roots: &[Vec<u8>],
     input: ComposeInput,
+    offline: bool,
 ) -> Result<SendOutcomeDto, MailError> {
     if input.to.is_empty() {
         return Err(MailError::Configuration {
@@ -81,6 +82,12 @@ pub async fn send_message_impl(
     // from being submitted until it is due.
     if let Some(at) = scheduled {
         return SendOutcomeDto::scheduled(record.id.value(), at);
+    }
+
+    // Working offline: the message stays `queued` in the outbox and is sent by
+    // the drain once the app is back online. No network I/O happens now.
+    if offline {
+        return SendOutcomeDto::queued_offline(record.id.value());
     }
 
     // A freshly created row is `queued`, so this transition always succeeds.
@@ -389,9 +396,15 @@ pub async fn send_message(
     state: tauri::State<'_, AppState>,
     input: ComposeInput,
 ) -> Result<SendOutcomeDto, String> {
-    send_message_impl(state.store(), state.secrets(), &[], input)
-        .await
-        .map_err(map_command_error)
+    send_message_impl(
+        state.store(),
+        state.secrets(),
+        &[],
+        input,
+        state.is_offline(),
+    )
+    .await
+    .map_err(map_command_error)
 }
 
 /// Retries a failed or queued outbox item.

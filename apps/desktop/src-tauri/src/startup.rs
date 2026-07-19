@@ -87,9 +87,15 @@ pub async fn start_background_services(state: &AppState) {
     if let Err(error) = state.scheduler().launch(interval).await {
         tracing::warn!(error = %error, "could not launch the background scheduler");
     }
-    let resumed = resume_pending_outbox(state.store(), state.secrets(), &[]).await;
-    if resumed > 0 {
-        tracing::info!(count = resumed, "resumed queued outbox messages on startup");
+    // While offline, queued sends wait in the outbox; the poller drains them
+    // once the app is back online (the engine and scheduler are gated too).
+    if state.is_offline() {
+        tracing::info!("starting offline: background sync and outbox drain are paused");
+    } else {
+        let resumed = resume_pending_outbox(state.store(), state.secrets(), &[]).await;
+        if resumed > 0 {
+            tracing::info!(count = resumed, "resumed queued outbox messages on startup");
+        }
     }
     spawn_send_later_poller(state.clone());
 }
@@ -105,6 +111,11 @@ fn spawn_send_later_poller(state: AppState) {
         ticker.tick().await;
         loop {
             ticker.tick().await;
+            // Skip the drain entirely while offline: queued sends stay put and
+            // are picked up on the first tick after the app returns online.
+            if state.is_offline() {
+                continue;
+            }
             let sent = drain_due_outbox(state.store(), state.secrets(), &[]).await;
             if sent > 0 {
                 tracing::info!(count = sent, "submitted scheduled messages that came due");

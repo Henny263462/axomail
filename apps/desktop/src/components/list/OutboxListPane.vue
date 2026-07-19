@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useWorkOffline } from "../../composables/useWorkOffline";
 import { formatScheduleTime } from "../../lib/sendLater";
 import type { OutboxItemDto, OutboxState } from "../../types/mail";
 import EmptyState from "../common/EmptyState.vue";
@@ -6,6 +7,10 @@ import EmptyState from "../common/EmptyState.vue";
 defineProps<{
   items: OutboxItemDto[];
 }>();
+
+// The outbox reflects the shared Work Offline flag: while offline, a plain
+// queued row is labelled "Queued (offline)" to explain why it has not sent.
+const { offline } = useWorkOffline();
 
 const emit = defineEmits<{
   retry: [outboxId: number];
@@ -33,6 +38,18 @@ function isScheduled(item: OutboxItemDto): boolean {
 function scheduleLabel(item: OutboxItemDto): string {
   return item.scheduledUnix != null ? formatScheduleTime(item.scheduledUnix) : "";
 }
+
+/**
+ * Badge text for a row: an immediately-eligible queued row reads as
+ * "Queued (offline)" while the app is offline, so the user understands it is
+ * waiting on the connection rather than stuck.
+ */
+function badgeLabel(item: OutboxItemDto): string {
+  if (offline.value && item.state === "pending" && !isScheduled(item)) {
+    return "Queued (offline)";
+  }
+  return STATE_LABEL[item.state];
+}
 </script>
 
 <template>
@@ -57,7 +74,7 @@ function scheduleLabel(item: OutboxItemDto): string {
             class="badge"
             :class="`state-${item.state}`"
           >
-            {{ STATE_LABEL[item.state] }}
+            {{ badgeLabel(item) }}
           </span>
         </div>
         <span class="to">{{ item.toSummary }}</span>

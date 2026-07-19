@@ -218,6 +218,25 @@ export interface SendOutcomeDto {
   error: string | null;
   /** When set, the message was queued to send at this Unix second. */
   scheduledAtUnix?: number | null;
+  /**
+   * True when the message was queued because the app is working offline; it
+   * stays in the outbox and is sent automatically on returning online.
+   */
+  queuedOffline?: boolean;
+}
+
+/**
+ * How much of a mailbox is kept available offline. Mirrors the Rust
+ * `OfflineMode` (serde `snake_case`), so the string values must stay identical.
+ */
+export type OfflineMode = "none" | "recent" | "all";
+
+/** A mailbox's offline download policy, shown in folder properties. */
+export interface OfflinePolicyDto {
+  mailboxId: number;
+  mode: OfflineMode;
+  /** Age boundary (days) honoured only in `recent` mode. */
+  recentDays: number;
 }
 
 /**

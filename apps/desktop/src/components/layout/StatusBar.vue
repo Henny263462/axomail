@@ -1,5 +1,8 @@
 <script setup lang="ts">
+import { onMounted } from "vue";
+
 import { useAppVersion } from "../../composables/useAppVersion";
+import { useWorkOffline } from "../../composables/useWorkOffline";
 import { isTauri } from "../../lib/tauri";
 
 const props = withDefaults(
@@ -23,6 +26,22 @@ const emit = defineEmits<{
 
 const { version } = useAppVersion();
 const browserPreview = !isTauri();
+
+// Work Offline state is shared (see useWorkOffline): this bar owns the toggle,
+// the outbox list reads the same flag. Load the persisted value on mount.
+const { offline, load, toggle } = useWorkOffline();
+onMounted(() => {
+  void load();
+});
+
+/** Toggles Work Offline; a backend failure is swallowed (the flag rolls back). */
+async function onToggleOffline(): Promise<void> {
+  try {
+    await toggle();
+  } catch {
+    // The composable already rolled the flag back; nothing to surface here.
+  }
+}
 
 /** Accessible summary of the running indicator. */
 function syncLabel(): string {
@@ -62,6 +81,22 @@ function syncLabel(): string {
       Browser preview — mail features require the desktop app
     </span>
     <div class="controls">
+      <button
+        v-if="!browserPreview"
+        type="button"
+        class="offline-toggle"
+        :class="{ active: offline }"
+        :aria-pressed="offline"
+        :aria-label="
+          offline
+            ? 'Working offline — click to go back online'
+            : 'Working online — click to work offline'
+        "
+        :title="offline ? 'Working offline' : 'Work offline'"
+        @click="onToggleOffline"
+      >
+        {{ offline ? "Offline" : "Online" }}
+      </button>
       <span
         v-if="syncing"
         class="sync"
@@ -128,6 +163,27 @@ function syncLabel(): string {
   align-items: center;
   gap: var(--space-2);
   margin-left: auto;
+}
+
+.offline-toggle {
+  font-size: var(--text-xs);
+  line-height: 1;
+  color: var(--color-text-secondary);
+  padding: 2px var(--space-2);
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--color-border);
+  transition: background var(--transition-fast);
+}
+
+.offline-toggle:hover {
+  background: var(--color-bg-hover);
+  color: var(--color-text);
+}
+
+.offline-toggle.active {
+  color: var(--color-danger);
+  border-color: var(--color-danger);
+  font-weight: var(--weight-medium);
 }
 
 .sync {

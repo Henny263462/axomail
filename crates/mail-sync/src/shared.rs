@@ -6,11 +6,13 @@
 
 use std::collections::HashMap;
 use std::marker::PhantomData;
+use std::path::Path;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
 use axomail_core::AccountId;
 use axomail_storage::{Store, SyncJobId};
-use tokio::sync::{Mutex as AsyncMutex, Semaphore, broadcast};
+use tokio::sync::{Mutex as AsyncMutex, Notify, Semaphore, broadcast};
 use tokio_util::sync::CancellationToken;
 
 use crate::config::SyncConfig;
@@ -29,6 +31,16 @@ pub(crate) struct Shared<P, F> {
     pub(crate) factory: Arc<F>,
     /// Tuning parameters.
     pub(crate) config: SyncConfig,
+    /// Root under which raw message bodies are cached
+    /// (`<raw_root>/raw/<id>.eml`), when the composition root enabled the
+    /// offline body store. `None` disables sync-time body download.
+    pub(crate) raw_root: Option<Arc<Path>>,
+    /// Global "work offline" gate. When set, workers claim no jobs; going
+    /// back online notifies [`Self::resume`] to re-spawn pending work.
+    offline: Arc<AtomicBool>,
+    /// Pulsed when the engine returns online, so the dispatcher resumes any
+    /// jobs that stayed pending while offline.
+    pub(crate) resume: Arc<Notify>,
     /// Progress event fan-out.
     events: broadcast::Sender<SyncEvent>,
     /// Global parallelism bound.
@@ -47,18 +59,38 @@ where
     P: axomail_core::IncomingMailProvider,
 {
     /// Builds the shared state and the broadcast sender.
-    pub(crate) fn new(store: Store, factory: F, config: SyncConfig) -> Arc<Self> {
+    pub(crate) fn new(
+        store: Store,
+        factory: F,
+        config: SyncConfig,
+        offline: Arc<AtomicBool>,
+        raw_root: Option<Arc<Path>>,
+    ) -> Arc<Self> {
         let (events, _) = broadcast::channel(config.event_buffer.max(1));
         Arc::new(Self {
             store,
             factory: Arc::new(factory),
             config,
+            raw_root,
+            offline,
+            resume: Arc::new(Notify::new()),
             events,
             semaphore: Arc::new(Semaphore::new(config.max_parallel_jobs.max(1))),
             account_locks: Mutex::new(HashMap::new()),
             cancels: Mutex::new(HashMap::new()),
             _provider: PhantomData,
         })
+    }
+
+    /// Whether the engine is currently working offline (no new claims).
+    pub(crate) fn is_offline(&self) -> bool {
+        self.offline.load(Ordering::SeqCst)
+    }
+
+    /// Sets the offline flag, returning the previous value so the caller can
+    /// detect an online transition.
+    pub(crate) fn set_offline(&self, offline: bool) -> bool {
+        self.offline.swap(offline, Ordering::SeqCst)
     }
 
     /// Subscribes a new observer to progress events.

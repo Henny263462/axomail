@@ -8,6 +8,9 @@
 //! | `notifications_enabled` | `"true"`/`"false"` | `true` |
 //! | `sync_interval_minutes` | decimal integer, clamped `>= 1` | `10` |
 //! | `theme` | `"system"`/`"light"`/`"dark"` | `system` |
+//! | `auto_mark_read_enabled` | `"true"`/`"false"` | `true` |
+//! | `auto_mark_read_delay_ms` | decimal integer, clamped `<= 30000` | `0` |
+//! | `work_offline` | `"true"`/`"false"` | `false` |
 //! | `pop3_delete_policy.<accountId>` | `"true"`/`"false"` | `false` |
 //!
 //! The POP3 delete policy is the second of the two guards against POP3's
@@ -31,6 +34,8 @@ const KEY_THEME: &str = "theme";
 const KEY_AUTO_MARK_READ: &str = "auto_mark_read_enabled";
 /// Delay before auto-marking a displayed message read, in milliseconds.
 const KEY_AUTO_MARK_READ_DELAY: &str = "auto_mark_read_delay_ms";
+/// Whether the app is in Work Offline mode (no network jobs; queue writes).
+const KEY_WORK_OFFLINE: &str = "work_offline";
 /// Prefix of the per-account POP3 server-deletion policy key.
 const KEY_POP3_DELETE_PREFIX: &str = "pop3_delete_policy.";
 
@@ -156,6 +161,31 @@ pub async fn set_auto_mark_read(
             KEY_AUTO_MARK_READ_DELAY,
             &clamp_auto_mark_read_delay(delay_ms).to_string(),
         )
+        .await
+}
+
+/// Reads whether the app is in Work Offline mode (default `false`).
+///
+/// # Errors
+///
+/// Returns [`MailError::Database`] on any query failure.
+pub async fn work_offline(store: &Store) -> Result<bool, MailError> {
+    Ok(store
+        .settings()
+        .get(KEY_WORK_OFFLINE)
+        .await?
+        .is_some_and(|value| value == "true"))
+}
+
+/// Persists the Work Offline mode flag.
+///
+/// # Errors
+///
+/// Returns [`MailError::Database`] on any query failure.
+pub async fn set_work_offline(store: &Store, offline: bool) -> Result<(), MailError> {
+    store
+        .settings()
+        .set(KEY_WORK_OFFLINE, bool_str(offline))
         .await
 }
 
