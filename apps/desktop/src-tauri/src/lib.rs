@@ -145,6 +145,8 @@ pub fn run() {
             commands::tags::list_messages_for_tag,
             commands::settings::get_settings,
             commands::settings::update_settings,
+            commands::settings::get_list_threaded,
+            commands::settings::set_list_threaded,
             commands::settings::set_pop3_delete_policy,
             commands::offline::set_work_offline,
             commands::offline::get_work_offline,

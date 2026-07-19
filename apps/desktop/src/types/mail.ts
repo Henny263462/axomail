@@ -73,6 +73,18 @@ export interface MessageListItem {
   flagged: boolean;
   /** Sanitized plain-text preview, no markup. */
   preview: string | null;
+  /**
+   * Threading identity, used by the list to assemble conversation threads
+   * client-side. Always populated by the backend DTO; optional here only so
+   * lightweight test fixtures may omit them (thread assembly treats a missing
+   * value as "no threading headers", i.e. a singleton thread).
+   */
+  /** Own Message-ID without angle brackets, or null when absent. */
+  messageId?: string | null;
+  /** In-Reply-To message-ids in header order (usually one parent). */
+  inReplyTo?: string[];
+  /** References chain, oldest ancestor first. */
+  references?: string[];
   /** Tag chips for this row, in display order (empty when untagged). */
   tags: TagChip[];
 }

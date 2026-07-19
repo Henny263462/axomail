@@ -77,6 +77,28 @@ pub async fn update_settings_impl(
     Ok(())
 }
 
+/// Reads whether the message list groups messages into conversation threads.
+///
+/// This view preference lives outside [`SettingsDto`] on purpose: it is a
+/// single toggle owned by the list UI (track 3.4), so it has its own read/write
+/// pair rather than widening the batch-saved settings surface.
+///
+/// # Errors
+///
+/// Returns [`MailError::Database`] on any query failure.
+pub async fn get_list_threaded_impl(store: &Store) -> Result<bool, MailError> {
+    settings::list_threaded(store).await
+}
+
+/// Persists whether the message list groups messages into conversation threads.
+///
+/// # Errors
+///
+/// Returns [`MailError::Database`] on any query failure.
+pub async fn set_list_threaded_impl(store: &Store, threaded: bool) -> Result<(), MailError> {
+    settings::set_list_threaded(store, threaded).await
+}
+
 /// Sets one account's POP3 server-deletion policy after verifying the account
 /// exists and is a POP3 account. This explicit call is the only way to enable
 /// server deletion.
@@ -120,6 +142,25 @@ pub async fn update_settings(
     settings: SettingsDto,
 ) -> Result<(), String> {
     update_settings_impl(state.store(), state.scheduler(), settings)
+        .await
+        .map_err(map_command_error)
+}
+
+/// Reads whether the message list groups messages into conversation threads.
+#[tauri::command]
+pub async fn get_list_threaded(state: tauri::State<'_, AppState>) -> Result<bool, String> {
+    get_list_threaded_impl(state.store())
+        .await
+        .map_err(map_command_error)
+}
+
+/// Sets whether the message list groups messages into conversation threads.
+#[tauri::command]
+pub async fn set_list_threaded(
+    state: tauri::State<'_, AppState>,
+    threaded: bool,
+) -> Result<(), String> {
+    set_list_threaded_impl(state.store(), threaded)
         .await
         .map_err(map_command_error)
 }

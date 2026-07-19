@@ -22,7 +22,7 @@ import type { SidebarView } from "./components/sidebar/view";
 import { useComposeWorkflow } from "./composables/useComposeWorkflow";
 import { useDialogs } from "./composables/useDialogs";
 import { useMessageActions } from "./composables/useMessageActions";
-import { useMessageSelection } from "./composables/useMessageSelection";
+import { useMessageListLoading } from "./composables/useMessageListLoading";
 import { useSyncStatus } from "./composables/useSyncStatus";
 import { reconcileTheme } from "./composables/useTheme";
 import type {
@@ -35,8 +35,10 @@ import type {
 const shell = ref<InstanceType<typeof AppShell> | null>(null);
 
 const accounts = ref<AccountSummary[]>([]);
-// Only the currently selected mailbox's page is held; switching mailboxes
-// reloads from the backend rather than caching every mailbox client-side.
+// Only the currently selected mailbox's loaded pages are held; switching
+// mailboxes reloads from the backend rather than caching every mailbox
+// client-side. Infinite scroll appends further pages via the cursors owned by
+// the list-loading composable below.
 const messages = ref<MessageListItem[]>([]);
 const unifiedItems = ref<UnifiedItemDto[]>([]);
 const selectedMailboxId = ref<number | null>(null);
@@ -44,6 +46,15 @@ const selectedMessageId = ref<number | null>(null);
 const selectedTagId = ref<number | null>(null);
 const activeView = ref<SidebarView>("mailbox");
 const tagsRefreshKey = ref(0); // Bumped to reload the sidebar Tags group.
+
+// Next-page cursors + infinite-scroll appenders, the persisted threaded/flat
+// preference, and the multi-selection projection (for bulk actions, track 3.2).
+const listLoading = useMessageListLoading({
+  messages,
+  unifiedItems,
+  selectedMailboxId,
+  activeView,
+});
 
 // Open-state + payload for every app-level dialog; DialogHost mounts them.
 const dialogs = useDialogs<AppDialogMap>();
@@ -58,17 +69,6 @@ const compose = useComposeWorkflow({
   showList: () => shell.value?.showPane("list"),
 });
 const { drafts, outbox, selectedDraftId } = compose;
-
-// Shared multi-row selection for Wave 3 tracks 3.2/3.4, fed by the active
-// message-backed list's ids in order. Single-select stays the default; a track
-// wires the modifier clicks that expose multi-select in the rows.
-const listRowIds = computed<number[]>(() => {
-  if (activeView.value === "unified") return unifiedItems.value.map((m) => m.id);
-  if (activeView.value === "mailbox" || activeView.value === "tag")
-    return messages.value.map((m) => m.id);
-  return [];
-});
-const selection = useMessageSelection(listRowIds);
 
 // Optimistic star / auto-read / mark-all-read, operating on the lists above.
 const messageActions = useMessageActions({
@@ -186,6 +186,7 @@ async function onAccountsChanged(): Promise<void> {
 async function loadMessages(mailboxId: number): Promise<void> {
   if (usingFixtures.value) {
     messages.value = fixtureMessages.filter((m) => m.mailboxId === mailboxId);
+    listLoading.setMailboxCursor(null);
     return;
   }
   const page = await listMessages(mailboxId, null, 50);
@@ -195,12 +196,14 @@ async function loadMessages(mailboxId: number): Promise<void> {
     return;
   }
   messages.value = page?.items ?? [];
+  listLoading.setMailboxCursor(page?.nextCursor ?? null);
 }
 
 async function loadUnified(): Promise<void> {
   const page = await listUnifiedInbox(null, 50);
   if (activeView.value !== "unified") return;
   unifiedItems.value = page?.items ?? [];
+  listLoading.setUnifiedCursor(page?.nextCursor ?? null);
 }
 
 async function selectMailbox(mailboxId: number): Promise<void> {
@@ -234,9 +237,8 @@ async function selectTag(tagId: number): Promise<void> {
 
 function onSelectMessage(messageId: number): void {
   selectedMessageId.value = messageId;
-  // Keep the shared selection set in step (single-select gesture); multi-select
-  // stays dormant until a track wires modifier clicks into the list rows.
-  selection.selectOnly(messageId);
+  // The list owns the multi-selection (thread-aware) and updates it on the same
+  // click; here App only tracks the open message and reveals the reading pane.
   shell.value?.showPane("message");
   // Auto-mark-read (immediate or after the configured delay) is owned by the
   // message-actions composable; it no-ops for a search hit not in the lists.
@@ -332,9 +334,12 @@ function onSyncEvent(event: SyncEventDto): void {
         v-else-if="activeView === 'tag'"
         :messages="messages"
         :selected-message-id="selectedMessageId"
+        :threaded="listLoading.threaded.value"
         @select="onSelectMessage"
         @toggle-flag="messageActions.toggleStar"
         @mark-all-read="messageActions.markListRead"
+        @selection-change="listLoading.onSelectionChange"
+        @update:threaded="listLoading.onToggleThreaded"
       />
       <MailListRegion
         v-else
@@ -344,9 +349,15 @@ function onSyncEvent(event: SyncEventDto): void {
         :accounts="accounts"
         :selected-message-id="selectedMessageId"
         :selected-mailbox-id="selectedMailboxId"
+        :threaded="listLoading.threaded.value"
+        :has-more="listLoading.hasMore.value"
+        :loading-more="listLoading.loadingMore.value"
         @select="onSelectMessage"
         @toggle-flag="messageActions.toggleStar"
         @mark-all-read="onMarkAllRead"
+        @load-more="listLoading.onLoadMore"
+        @selection-change="listLoading.onSelectionChange"
+        @update:threaded="listLoading.onToggleThreaded"
       />
     </template>
     <template #message>

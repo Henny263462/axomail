@@ -22,20 +22,32 @@ import SearchBox from "./SearchBox.vue";
 import SearchResultsPane from "./SearchResultsPane.vue";
 import UnifiedListPane from "./UnifiedListPane.vue";
 
-const props = defineProps<{
-  view: "mailbox" | "unified";
-  messages: MessageListItem[];
-  unifiedItems: UnifiedItemDto[];
-  accounts: AccountSummary[];
-  selectedMessageId: number | null;
-  /** Identity of the shown mailbox; switching it resets an active search. */
-  selectedMailboxId: number | null;
-}>();
+const props = withDefaults(
+  defineProps<{
+    view: "mailbox" | "unified";
+    messages: MessageListItem[];
+    unifiedItems: UnifiedItemDto[];
+    accounts: AccountSummary[];
+    selectedMessageId: number | null;
+    /** Identity of the shown mailbox; switching it resets an active search. */
+    selectedMailboxId: number | null;
+    /** Whether conversations are grouped into threads (persisted preference). */
+    threaded?: boolean;
+    /** Whether a next page can be loaded for the current list (infinite scroll). */
+    hasMore?: boolean;
+    /** Whether a next-page fetch is in flight. */
+    loadingMore?: boolean;
+  }>(),
+  { threaded: false, hasMore: false, loadingMore: false },
+);
 
 const emit = defineEmits<{
   select: [messageId: number];
   toggleFlag: [messageId: number];
   markAllRead: [];
+  loadMore: [];
+  selectionChange: [messageIds: number[]];
+  "update:threaded": [value: boolean];
 }>();
 
 const { query, results, active, searching, clear } = useSearch();
@@ -103,16 +115,28 @@ const selectedMailboxName = computed(() => {
       :items="unifiedItems"
       :accounts="accounts"
       :selected-message-id="selectedMessageId"
+      :threaded="threaded"
+      :has-more="hasMore"
+      :loading-more="loadingMore"
       @select="emit('select', $event)"
       @toggle-flag="emit('toggleFlag', $event)"
+      @load-more="emit('loadMore')"
+      @selection-change="emit('selectionChange', $event)"
+      @update:threaded="emit('update:threaded', $event)"
     />
     <MessageListPane
       v-else
       :messages="messages"
       :selected-message-id="selectedMessageId"
+      :threaded="threaded"
+      :has-more="hasMore"
+      :loading-more="loadingMore"
       @select="emit('select', $event)"
       @toggle-flag="emit('toggleFlag', $event)"
       @mark-all-read="emit('markAllRead')"
+      @load-more="emit('loadMore')"
+      @selection-change="emit('selectionChange', $event)"
+      @update:threaded="emit('update:threaded', $event)"
     />
     <Teleport to="body">
       <FolderPropertiesDialog

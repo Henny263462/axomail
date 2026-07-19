@@ -31,6 +31,14 @@ pub struct MessageListItemDto {
     pub flagged: bool,
     /// Sanitized plain-text preview, no markup.
     pub preview: Option<String>,
+    /// Own `Message-ID` without angle brackets, or `None` when absent. Carried
+    /// so the list can assemble conversation threads client-side (track 3.4).
+    pub message_id: Option<String>,
+    /// `In-Reply-To` message-ids in header order (usually one parent).
+    pub in_reply_to: Vec<String>,
+    /// `References` chain, oldest ancestor first. Empty until the threading
+    /// columns are populated at ingest or backfilled on first open.
+    pub references: Vec<String>,
     /// Tag chips for this row, in display order (empty when untagged, or when
     /// the caller does not attach tags — e.g. the unified inbox).
     pub tags: Vec<TagChipDto>,
@@ -60,6 +68,9 @@ impl MessageListItemDto {
             seen: envelope.flags.seen,
             flagged: envelope.flags.flagged,
             preview: envelope.preview.clone(),
+            message_id: envelope.threading.message_id.clone(),
+            in_reply_to: envelope.threading.in_reply_to.clone(),
+            references: envelope.threading.references.clone(),
             tags: Vec::new(),
         })
     }
