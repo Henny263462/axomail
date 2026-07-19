@@ -116,6 +116,17 @@ export interface AttachmentMetaDto {
 }
 
 /**
+ * One deceptive-link ("scam") warning for the reading pane. Warning only:
+ * the sanitized body is never altered.
+ */
+export interface ScamFlagDto {
+  /** Stable machine kind: "deceptiveLink" or "ipAddressHost". */
+  kind: string;
+  /** Human-readable reason shown in the warning banner. */
+  detail: string;
+}
+
+/**
  * Full detail of one message, including the sanitized viewing payload.
  *
  * `textBody` and `sanitizedHtml` are the only body-bearing fields the
@@ -133,8 +144,15 @@ export interface MessageDetailDto {
   textBody: string | null;
   /** Sanitized HTML for the sandboxed iframe, or null when absent. */
   sanitizedHtml: string | null;
-  /** Count of external resources rewritten to inert placeholders. */
-  remoteBlocked: number;
+  /**
+   * Count of remote resources blocked during sanitization. When remote
+   * images are allowed this counts only the still-blocked data:/srcset.
+   */
+  remoteBlockedCount: number;
+  /** Whether remote http(s) images were kept for this render. */
+  remoteAllowed: boolean;
+  /** Deceptive-link warnings found in the sanitized DOM (warning only). */
+  scamFlags: ScamFlagDto[];
   /** True when scripts/forms/other active content were stripped. */
   hadActiveContent: boolean;
   attachments: AttachmentMetaDto[];

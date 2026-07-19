@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, watch } from "vue";
 
-import { getMessageDetail } from "../../api/messages";
+import { getMessageDetail, setRemoteContentAllowed } from "../../api/messages";
 import type { MessageDetailDto } from "../../types/mail";
 import EmptyState from "../common/EmptyState.vue";
 import MessageDetail from "./MessageDetail.vue";
@@ -18,11 +18,14 @@ const detail = ref<MessageDetailDto | null>(null);
 /**
  * Loads the detail for `id`, ignoring the result if the selection changed
  * while the request was in flight (last-write-wins by comparing ids).
+ *
+ * `allowRemote` is the allow-once override for this load; `null` defers to
+ * the stored per-sender decision.
  */
-async function load(id: number): Promise<void> {
+async function load(id: number, allowRemote: boolean | null): Promise<void> {
   state.value = "loading";
   detail.value = null;
-  const result = await getMessageDetail(id);
+  const result = await getMessageDetail(id, allowRemote);
   if (props.messageId !== id) return;
   if (result === null) {
     state.value = "error";
@@ -30,6 +33,22 @@ async function load(id: number): Promise<void> {
   }
   detail.value = result;
   state.value = "loaded";
+}
+
+/** Re-fetches the current message showing remote content just this once. */
+function showRemoteOnce(): void {
+  if (props.messageId !== null) void load(props.messageId, true);
+}
+
+/**
+ * Persists an "always allow" decision for `sender`, then re-fetches so the
+ * stored decision (now allowing) takes effect.
+ */
+async function alwaysAllowRemote(sender: string): Promise<void> {
+  const id = props.messageId;
+  if (id === null) return;
+  await setRemoteContentAllowed(sender, true);
+  if (props.messageId === id) void load(id, null);
 }
 
 watch(
@@ -40,7 +59,8 @@ watch(
       detail.value = null;
       return;
     }
-    void load(id);
+    // A fresh selection always starts from the stored decision (no override).
+    void load(id, null);
   },
   { immediate: true },
 );
@@ -71,6 +91,8 @@ watch(
     <MessageDetail
       v-else
       :detail="detail"
+      @show-remote-once="showRemoteOnce"
+      @always-allow-remote="alwaysAllowRemote"
     />
   </section>
 </template>

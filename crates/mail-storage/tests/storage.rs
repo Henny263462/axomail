@@ -312,3 +312,37 @@ async fn cursor_serializes_and_round_trips() {
 
     assert!(MessageCursor::parse_token("not-a-cursor").is_err());
 }
+
+#[tokio::test]
+async fn remote_content_allow_list_round_trips_case_insensitively() {
+    let store = Store::open_in_memory().await.unwrap();
+    let repo = store.remote_content();
+
+    // Default: an unknown sender is not allowed.
+    assert!(!repo.is_allowed("alice@example.org").await.unwrap());
+
+    // Allowing is stored normalized; a differently-cased/spaced lookup matches.
+    repo.set_allowed("  Alice@Example.ORG ", true)
+        .await
+        .unwrap();
+    assert!(repo.is_allowed("alice@example.org").await.unwrap());
+    assert!(repo.is_allowed("ALICE@EXAMPLE.ORG").await.unwrap());
+    assert_eq!(
+        repo.allowed_senders().await.unwrap(),
+        vec!["alice@example.org"]
+    );
+
+    // Re-allowing is idempotent (no duplicate row, no error).
+    repo.set_allowed("alice@example.org", true).await.unwrap();
+    assert_eq!(repo.allowed_senders().await.unwrap().len(), 1);
+
+    // Removing it returns to the blocked default; removing again is a no-op.
+    repo.set_allowed("alice@example.org", false).await.unwrap();
+    assert!(!repo.is_allowed("alice@example.org").await.unwrap());
+    repo.set_allowed("alice@example.org", false).await.unwrap();
+    assert!(repo.allowed_senders().await.unwrap().is_empty());
+
+    // An empty sender is rejected for writes and never allowed for reads.
+    assert!(repo.set_allowed("   ", true).await.is_err());
+    assert!(!repo.is_allowed("").await.unwrap());
+}

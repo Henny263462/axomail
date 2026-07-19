@@ -16,7 +16,9 @@
 //! - [`sanitize_message_html`] (and its byte-level counterpart
 //!   [`sanitize_message_html_bytes`]), the allowlist-based HTML sanitizer
 //!   for untrusted message bodies and layer one of the four-layer rendering
-//!   defense in ADR-0007.
+//!   defense in ADR-0007. [`sanitize_message_html_with_policy`] takes a
+//!   [`RemoteContentPolicy`] to keep remote images for an allowed sender;
+//!   [`detect_scam_indicators`] adds a warning-only deceptive-link pass.
 //!
 //! # Blocking I/O
 //!
@@ -33,12 +35,19 @@ mod html_policy;
 mod keyring_store;
 mod memory_store;
 mod redact;
+mod remote_policy;
+mod scam;
 mod secret_store;
 
 pub use credential::{Direction, credential_ref_for_account};
 pub use filename::sanitize_attachment_filename;
-pub use html::{SanitizedHtml, sanitize_message_html, sanitize_message_html_bytes};
+pub use html::{
+    SanitizedHtml, sanitize_message_html, sanitize_message_html_bytes,
+    sanitize_message_html_with_policy,
+};
 pub use keyring_store::KeyringSecretStore;
 pub use memory_store::InMemorySecretStore;
 pub use redact::{redact_email, redact_secretlike};
+pub use remote_policy::RemoteContentPolicy;
+pub use scam::{ScamIndicator, ScamIndicatorKind, detect_scam_indicators};
 pub use secret_store::SecretStore;

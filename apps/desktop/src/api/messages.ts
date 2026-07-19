@@ -37,9 +37,28 @@ export function markMessageSeen(
 /**
  * Loads the full detail of one message, including the sanitized viewing
  * payload. Resolves to `null` in the browser preview or on backend failure.
+ *
+ * `allowRemote` is the allow-once override: `true` shows remote images for
+ * this load regardless of the stored per-sender decision; omit it (or pass
+ * `null`) to defer to that decision.
  */
 export function getMessageDetail(
   messageId: number,
+  allowRemote: boolean | null = null,
 ): Promise<MessageDetailDto | null> {
-  return safeInvoke<MessageDetailDto>("get_message_detail", { messageId });
+  return safeInvoke<MessageDetailDto>("get_message_detail", {
+    messageId,
+    allowRemote,
+  });
+}
+
+/**
+ * Persists (or clears) an "always show remote content" decision for a sender.
+ * Resolves to `null` in the browser preview or on backend failure.
+ */
+export function setRemoteContentAllowed(
+  sender: string,
+  allowed: boolean,
+): Promise<null> {
+  return safeInvoke<null>("set_remote_content_allowed", { sender, allowed });
 }

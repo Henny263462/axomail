@@ -17,32 +17,45 @@
 //! - hyperlinks keep only `http`/`https`/`mailto` targets (for display) and
 //!   always carry `rel="noopener noreferrer"`; the frontend still intercepts
 //!   activation — the retained `href` is for display only;
-//! - inline `cid:` images are preserved (resolved locally later); every
-//!   remote `http(s)`/`data:` image or `srcset` is removed and counted in
-//!   [`SanitizedHtml::remote_blocked`] (tracking-pixel blocking by default).
+//! - inline `cid:` images are preserved (resolved locally later); remote
+//!   `http(s)` images are blocked and counted by default, or kept when the
+//!   caller passes an allowing [`RemoteContentPolicy`]; `data:` images and
+//!   every `srcset` are removed and counted in [`SanitizedHtml::remote_blocked`]
+//!   in *both* modes (tracking-pixel blocking; `data:` is never loaded).
+//!
+//! After sanitization a warning-only pass ([`crate::scam`]) walks the clean
+//! DOM for deceptive-link tells; its findings ride along in
+//! [`SanitizedHtml::scam_flags`] and never change the sanitized bytes.
 
 use std::borrow::Cow;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use crate::html_policy::message_policy;
+use crate::remote_policy::RemoteContentPolicy;
+use crate::scam::{ScamIndicator, detect_scam_indicators};
 
 /// Result of sanitizing one HTML message body.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SanitizedHtml {
     /// The sanitized, allowlisted HTML fragment, safe for `iframe srcdoc`.
     pub html: String,
-    /// Number of remote resources (images / media / `srcset` / `data:`
-    /// images) that were removed instead of loaded.
+    /// Number of remote resources that were removed instead of loaded. With
+    /// the default blocking policy this counts every remote `http(s)`/`data:`
+    /// image and `srcset`; when remote images are allowed it counts only the
+    /// resources still blocked in that mode (`data:` images and `srcset`).
     pub remote_blocked: usize,
     /// `true` when the input contained active content — scripts, forms,
     /// frames/embeds, or `on*` event handlers — that was stripped. A signal
     /// for the UI (for example, an "active content removed" badge); it is
     /// never a permission to render any of that content.
     pub had_active_content: bool,
+    /// Deceptive-link indicators found in the sanitized DOM (warning only;
+    /// empty for the common case). See [`crate::scam`].
+    pub scam_flags: Vec<ScamIndicator>,
 }
 
-/// Sanitizes an HTML message body into an allowlisted, render-safe fragment.
+/// Sanitizes an HTML message body with the default (block-all) remote policy.
 ///
 /// The transformation is deterministic and total: any `&str` yields a
 /// [`SanitizedHtml`] whose `html` contains no scripts, event handlers,
@@ -50,26 +63,42 @@ pub struct SanitizedHtml {
 /// See the module documentation for the full guarantee list.
 #[must_use]
 pub fn sanitize_message_html(html: &str) -> SanitizedHtml {
+    sanitize_message_html_with_policy(html, RemoteContentPolicy::block_all())
+}
+
+/// Sanitizes an HTML message body under an explicit [`RemoteContentPolicy`].
+///
+/// The only behavior the policy changes is whether remote `http(s)` `img@src`
+/// targets are kept (and therefore not counted as blocked). Every other rule —
+/// the tag/attribute allowlist, CSS and script removal, the link scheme
+/// allowlist, and the blocking of `data:` images and `srcset` — is identical
+/// in both modes.
+#[must_use]
+pub fn sanitize_message_html_with_policy(html: &str, policy: RemoteContentPolicy) -> SanitizedHtml {
     let had_active_content = detect_active_content(html);
 
     let remote = Arc::new(AtomicUsize::new(0));
     let counter = Arc::clone(&remote);
+    let allow_remote_images = policy.allow_remote_images;
 
     let mut builder = message_policy();
     builder.attribute_filter(move |element, attribute, value| {
-        filter_attribute(element, attribute, value, &counter)
+        filter_attribute(element, attribute, value, allow_remote_images, &counter)
     });
 
     let cleaned = builder.clean(html).to_string();
+    let scam_flags = detect_scam_indicators(&cleaned);
 
     SanitizedHtml {
         html: cleaned,
         remote_blocked: remote.load(Ordering::Relaxed),
         had_active_content,
+        scam_flags,
     }
 }
 
-/// Sanitizes raw bytes, converting them to text lossily first.
+/// Sanitizes raw bytes with the default (block-all) policy, converting them to
+/// text lossily first.
 ///
 /// Message bodies arrive as bytes whose declared charset may be wrong or
 /// whose content may be malformed; invalid UTF-8 is replaced with the
@@ -84,17 +113,26 @@ pub fn sanitize_message_html_bytes(bytes: &[u8]) -> SanitizedHtml {
 /// scheme checks. Only attributes that already survived the policy reach
 /// here; this stage enforces the resource and link rules and tallies
 /// blocked remote content into `counter`.
+///
+/// `allow_remote_images` relaxes exactly one arm: remote `http(s)` image
+/// sources are kept (and not counted) instead of blocked. `data:` images and
+/// `srcset` are still stripped and counted regardless, and no other arm is
+/// affected.
 fn filter_attribute<'v>(
     element: &str,
     attribute: &str,
     value: &'v str,
+    allow_remote_images: bool,
     counter: &AtomicUsize,
 ) -> Option<Cow<'v, str>> {
     match (element, attribute) {
-        // Images: keep inline `cid:` sources; block and count remote or
-        // `data:` sources (tracking-pixel defense).
+        // Images: keep inline `cid:` sources. Remote `http(s)` sources are
+        // kept only when the policy allows them (and then not counted, since
+        // they are loaded); otherwise they are blocked and counted. `data:`
+        // sources are always blocked and counted — never loaded.
         ("img", "src") => match url_scheme(value).as_deref() {
             Some("cid") => Some(Cow::Borrowed(value)),
+            Some("http" | "https") if allow_remote_images => Some(Cow::Borrowed(value)),
             Some("http" | "https" | "data") => {
                 counter.fetch_add(1, Ordering::Relaxed);
                 None

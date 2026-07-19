@@ -12,6 +12,7 @@ pub mod detail;
 pub mod drafts;
 pub mod messages;
 pub mod meta;
+pub mod remote_content;
 pub mod search;
 pub mod settings;
 pub mod sync;
