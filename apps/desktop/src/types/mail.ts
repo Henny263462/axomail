@@ -10,7 +10,16 @@
  * numbers are exact only up to 2^53-1. The command layer asserts that
  * every ID crossing the IPC boundary fits Number.MAX_SAFE_INTEGER and
  * fails loudly otherwise, so `number` is safe here.
+ *
+ * Account-setup/auth and sender-identity view models live in the sibling
+ * `account.ts` / `identity.ts` modules (size gate) and are re-exported here so
+ * `../types/mail` stays the single import surface.
  */
+
+import type { AuthMechanism } from "./account";
+
+export * from "./account";
+export * from "./identity";
 
 export interface MailboxSummary {
   id: number;
@@ -18,9 +27,6 @@ export interface MailboxSummary {
   role: "inbox" | "drafts" | "sent" | "trash" | "archive" | "junk" | "custom";
   unreadCount: number;
 }
-
-/** How an account authenticates to its servers. */
-export type AuthMechanism = "password" | "oauth2";
 
 export interface AccountSummary {
   id: number;
@@ -50,147 +56,6 @@ export interface MessageListPage {
   items: MessageListItem[];
   /** Opaque cursor for the following page, or null on the last page. */
   nextCursor: string | null;
-}
-
-/** Incoming-mail protocol chosen during account setup. */
-export type IncomingProtocol = "imap" | "pop3";
-
-/** Transport security for a mail server connection. */
-export type TransportSecurity = "tls" | "starttls";
-
-/** Incoming (IMAP/POP3) server configuration for a new account. */
-export interface IncomingServerConfig {
-  protocol: IncomingProtocol;
-  host: string;
-  port: number;
-  security: TransportSecurity;
-  username: string;
-  /**
-   * Plaintext password, sent once to the backend which stores it in the
-   * OS keychain. Never logged, echoed, or persisted in the frontend.
-   */
-  password: string;
-}
-
-/** Outgoing (SMTP) server configuration for a new account. */
-export interface OutgoingServerConfig {
-  host: string;
-  port: number;
-  security: TransportSecurity;
-  username: string;
-  /**
-   * Plaintext password, sent once to the backend which stores it in the
-   * OS keychain. Never logged, echoed, or persisted in the frontend.
-   */
-  password: string;
-}
-
-/** A supported OAuth2 provider preset, or fully custom endpoints. */
-export type OAuthProvider = "gmail" | "microsoft" | "custom";
-
-/**
- * OAuth2 configuration from the setup form. Only non-secret values: a
- * provider preset (or custom), the user's own public client id, and optional
- * endpoint/scope overrides. Tokens are never carried here — they are obtained
- * by the separate browser sign-in and stored in the OS keychain.
- */
-export interface OAuthInput {
-  provider: OAuthProvider;
-  clientId: string;
-  /** Required for `custom`; overrides a preset when present. */
-  authUrl?: string;
-  tokenUrl?: string;
-  scopes?: string[];
-}
-
-/** The authentication choice for a new account. */
-export interface AuthInput {
-  mechanism: AuthMechanism;
-  /** Present only when `mechanism` is `oauth2`. */
-  oauth?: OAuthInput;
-}
-
-/**
- * Payload for the `create_account` command. Mirrors the Rust
- * `CreateAccountInput` exactly (serde `camelCase`).
- */
-export interface CreateAccountInput {
-  displayName: string;
-  email: string;
-  auth: AuthInput;
-  incoming: IncomingServerConfig;
-  outgoing: OutgoingServerConfig;
-}
-
-/** Outcome of the OAuth2 browser sign-in (`oauth_authorize`). */
-export type OAuthAuthorizeStatus = "authorized" | "denied" | "timedOut";
-
-export interface OAuthAuthorizeResult {
-  status: OAuthAuthorizeStatus;
-}
-
-/**
- * Result of a live connection test. Nothing is persisted by the command;
- * each side reports independently so the user sees which server failed.
- */
-export interface ConnectionTestResult {
-  incomingOk: boolean;
-  incomingError: string | null;
-  outgoingOk: boolean;
-  outgoingError: string | null;
-}
-
-/**
- * Receiving-server view of an {@link AccountDetail}. `protocol` and
- * `username` are shown for context but are immutable through the edit path.
- */
-export interface IncomingServerDetail {
-  protocol: IncomingProtocol;
-  host: string;
-  port: number;
-  security: TransportSecurity;
-  username: string;
-}
-
-/** Sending-server view of an {@link AccountDetail}. */
-export interface OutgoingServerDetail {
-  host: string;
-  port: number;
-  security: TransportSecurity;
-  username: string;
-}
-
-/**
- * Full, editable configuration of one account, mirroring the Rust
- * `AccountDetailDto`. Carries no password or credential reference: only the
- * display name and both servers' host/port/security are editable, with the
- * protocol, login names, and email shown for context.
- */
-export interface AccountDetail {
-  id: number;
-  displayName: string;
-  email: string;
-  incoming: IncomingServerDetail;
-  outgoing: OutgoingServerDetail;
-}
-
-/** One server's editable transport fields for {@link UpdateAccountInput}. */
-export interface ServerEndpointInput {
-  host: string;
-  port: number;
-  security: TransportSecurity;
-}
-
-/**
- * Payload for the `update_account` command. Mirrors the Rust
- * `UpdateAccountInput`: it can change only the display name and each
- * server's host/port/security — never the protocol, username, or password.
- */
-export interface UpdateAccountInput {
-  accountId: number;
-  displayName: string;
-  incoming: ServerEndpointInput;
-  outgoing: ServerEndpointInput;
 }
 
 /** One addressee of a message (display name optional). */
@@ -253,60 +118,6 @@ export interface MessageDetailDto {
   inReplyTo: string[];
   /** References chain, oldest ancestor first. */
   references: string[];
-}
-
-/** Where a signature sits relative to quoted text in a reply. */
-export type SignaturePlacement = "below_quote" | "above_quote";
-
-/** Whether a reply body is typed above or below the quote. */
-export type ReplyPosition = "above" | "below";
-
-/** How a forwarded message carries the original. */
-export type ForwardMode = "inline" | "attachment";
-
-/** Archive sub-folder granularity. */
-export type ArchiveGranularity = "flat" | "yearly" | "monthly";
-
-/** One sender identity, as returned by `list_identities`. */
-export interface IdentityDto {
-  id: number;
-  accountId: number;
-  email: string;
-  displayName: string;
-  replyTo: string | null;
-  signatureText: string | null;
-  signaturePlacement: SignaturePlacement;
-  replyPosition: ReplyPosition;
-  forwardMode: ForwardMode;
-  archiveGranularity: ArchiveGranularity;
-  isDefault: boolean;
-  sortPosition: number;
-  sentDest: number | null;
-  draftsDest: number | null;
-  templatesDest: number | null;
-  archiveDest: number | null;
-}
-
-/**
- * Payload for `create_identity`/`update_identity`. Mirrors the Rust
- * `IdentityInput` (serde `camelCase`); mailbox destinations are optional and
- * consumed by a later wave.
- */
-export interface IdentityInput {
-  accountId: number;
-  email: string;
-  displayName: string;
-  replyTo: string | null;
-  signatureText: string | null;
-  signaturePlacement: SignaturePlacement;
-  replyPosition: ReplyPosition;
-  forwardMode: ForwardMode;
-  archiveGranularity: ArchiveGranularity;
-  makeDefault: boolean;
-  sentDest?: number | null;
-  draftsDest?: number | null;
-  templatesDest?: number | null;
-  archiveDest?: number | null;
 }
 
 /**

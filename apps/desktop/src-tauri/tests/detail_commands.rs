@@ -131,7 +131,7 @@ async fn detail_exposes_threading_and_backfills_the_columns_on_open() {
     assert!(envelope.threading.is_empty(), "starts without threading");
     cache_raw(raw_root.path(), message_id, THREADED_REPLY);
 
-    let detail = get_message_detail_impl(&store, &factory, raw_root.path(), message_id)
+    let detail = get_message_detail_impl(&store, &factory, raw_root.path(), message_id, None)
         .await
         .unwrap();
 
