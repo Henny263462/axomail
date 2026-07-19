@@ -19,6 +19,12 @@ pub(crate) struct ScannedHeaders {
     pub(crate) from: Vec<Address>,
     /// Parsed `Date:` header, if present and recognizable.
     pub(crate) date: Option<UtcTimestamp>,
+    /// `Message-ID` without angle brackets, if present.
+    pub(crate) message_id: Option<String>,
+    /// `In-Reply-To` message-ids in header order, without angle brackets.
+    pub(crate) in_reply_to: Vec<String>,
+    /// `References` chain, oldest first, without angle brackets.
+    pub(crate) references: Vec<String>,
 }
 
 /// Scans the header block of `raw` (as returned by `TOP number 0`).
@@ -30,6 +36,9 @@ pub(crate) fn scan(raw: &[u8]) -> ScannedHeaders {
     let mut subject = None;
     let mut from = Vec::new();
     let mut date = None;
+    let mut message_id = None;
+    let mut in_reply_to = Vec::new();
+    let mut references = Vec::new();
 
     for (name, value) in unfold(&text) {
         let lower = name.to_ascii_lowercase();
@@ -37,6 +46,11 @@ pub(crate) fn scan(raw: &[u8]) -> ScannedHeaders {
             "subject" if subject.is_none() => subject = Some(value.trim().to_owned()),
             "from" if from.is_empty() => from = parse_from(&value),
             "date" if date.is_none() => date = date::parse(value.trim()),
+            "message-id" if message_id.is_none() => {
+                message_id = parse_ids(&value).into_iter().next()
+            }
+            "in-reply-to" if in_reply_to.is_empty() => in_reply_to = parse_ids(&value),
+            "references" if references.is_empty() => references = parse_ids(&value),
             _ => {}
         }
     }
@@ -45,7 +59,22 @@ pub(crate) fn scan(raw: &[u8]) -> ScannedHeaders {
         subject,
         from,
         date,
+        message_id,
+        in_reply_to,
+        references,
     }
+}
+
+/// Splits a message-id list header (`Message-ID`, `In-Reply-To`,
+/// `References`) into its ids in document order, stripping the angle
+/// brackets. Blank tokens (from a malformed header) are dropped.
+fn parse_ids(value: &str) -> Vec<String> {
+    value
+        .split_whitespace()
+        .map(|token| token.trim_matches(['<', '>']).trim())
+        .filter(|id| !id.is_empty())
+        .map(str::to_owned)
+        .collect()
 }
 
 /// A stable, content-derived identity for a message on a server that does
@@ -159,6 +188,41 @@ mod tests {
         );
         assert_eq!(scanned.from[0].email.as_str(), "alice@example.org");
         assert!(scanned.date.is_some());
+    }
+
+    #[test]
+    fn message_without_threading_headers_yields_empty_chains() {
+        let scanned = scan(SAMPLE);
+        assert!(scanned.message_id.is_none());
+        assert!(scanned.in_reply_to.is_empty());
+        assert!(scanned.references.is_empty());
+    }
+
+    #[test]
+    fn scans_threading_headers_stripping_brackets_and_unfolding() {
+        const REPLY: &[u8] = concat!(
+            "From: bob@example.org\r\n",
+            "Subject: Re: Lunch\r\n",
+            "Message-ID: <reply-9@example.org>\r\n",
+            "In-Reply-To: <root-0@example.org>\r\n",
+            "References: <root-0@example.org>\r\n",
+            " <mid-1@example.org>\r\n",
+            "Date: Tue, 14 Jul 2026 10:00:00 +0000\r\n",
+            "\r\n",
+            "body\r\n",
+        )
+        .as_bytes();
+
+        let scanned = scan(REPLY);
+        assert_eq!(scanned.message_id.as_deref(), Some("reply-9@example.org"));
+        assert_eq!(scanned.in_reply_to, vec!["root-0@example.org".to_owned()]);
+        assert_eq!(
+            scanned.references,
+            vec![
+                "root-0@example.org".to_owned(),
+                "mid-1@example.org".to_owned()
+            ]
+        );
     }
 
     #[test]

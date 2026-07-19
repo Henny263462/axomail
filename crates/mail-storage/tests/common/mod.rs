@@ -8,7 +8,7 @@ use std::num::NonZeroU16;
 use axomail_core::{
     Address, ConnectionSecurity, CredentialRef, EmailAddress, IncomingProtocol,
     IncomingServerConfig, MailboxName, MailboxRole, MessageFlags, OutgoingServerConfig,
-    RemoteEnvelope, RemoteMessageId, ServerEndpoint, UtcTimestamp,
+    RemoteEnvelope, RemoteMessageId, ServerEndpoint, ThreadingHeaders, UtcTimestamp,
 };
 use axomail_storage::{NewAccount, NewMailbox, NewMessage};
 
@@ -120,5 +120,30 @@ pub fn remote_envelope(uid: u32, uid_validity: u32, subject: &str) -> RemoteEnve
         date: Some(UtcTimestamp::from_unix_seconds(uid.into())),
         flags: MessageFlags::default(),
         size_bytes: Some(1024),
+        threading: None,
+    }
+}
+
+/// Builds a POP3 [`RemoteEnvelope`] carrying explicit threading identity,
+/// the shape a full-header scan produces, for exercising the ingest → read
+/// round-trip of the migration-0006 columns.
+pub fn pop3_envelope_with_threading(
+    uidl: &str,
+    subject: &str,
+    threading: ThreadingHeaders,
+) -> RemoteEnvelope {
+    RemoteEnvelope {
+        remote_id: RemoteMessageId::Pop3 {
+            uidl: uidl.to_owned(),
+        },
+        subject: Some(subject.to_owned()),
+        from: vec![Address::from_email(
+            EmailAddress::parse("grace@example.org").unwrap(),
+        )],
+        to: Vec::new(),
+        date: Some(UtcTimestamp::from_unix_seconds(1_700_000_000)),
+        flags: MessageFlags::default(),
+        size_bytes: Some(512),
+        threading: Some(threading),
     }
 }

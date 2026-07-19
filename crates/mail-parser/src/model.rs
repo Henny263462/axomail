@@ -1,6 +1,6 @@
 //! Parsed message model produced by [`parse_message`](crate::parse_message).
 
-use axomail_core::{Address, UtcTimestamp};
+use axomail_core::{Address, ThreadingHeaders, UtcTimestamp};
 use serde::{Deserialize, Serialize};
 
 /// A fully parsed MIME message in axomail's internal representation.
@@ -25,6 +25,11 @@ pub struct ParsedMessage {
     pub date: Option<UtcTimestamp>,
     /// Decoded `Message-ID` without surrounding angle brackets, if present.
     pub message_id: Option<String>,
+    /// `In-Reply-To` message-ids in header order, without angle brackets.
+    /// Usually one parent, but the header may carry several.
+    pub in_reply_to: Vec<String>,
+    /// `References` chain (oldest ancestor first), without angle brackets.
+    pub references: Vec<String>,
     /// Decoded `text/plain` body, if the message has one.
     pub text_body: Option<String>,
     /// Decoded `text/html` body, if the message has one. Untrusted markup.
@@ -39,6 +44,20 @@ pub struct ParsedMessage {
     /// addresses), so callers can surface a "some data could not be read"
     /// hint without failing the whole message.
     pub parse_warnings: Vec<String>,
+}
+
+impl ParsedMessage {
+    /// Collects the message's threading identity (Message-ID, In-Reply-To,
+    /// References) into a [`ThreadingHeaders`] for storage and thread
+    /// assembly.
+    #[must_use]
+    pub fn threading_headers(&self) -> ThreadingHeaders {
+        ThreadingHeaders {
+            message_id: self.message_id.clone(),
+            in_reply_to: self.in_reply_to.clone(),
+            references: self.references.clone(),
+        }
+    }
 }
 
 /// A single attachment or inline part extracted from a message.

@@ -88,6 +88,12 @@ pub struct MessageDetailDto {
     pub had_active_content: bool,
     /// Downloadable attachment metadata (inline parts are excluded).
     pub attachments: Vec<AttachmentMetaDto>,
+    /// `Message-ID` without angle brackets, if the message declared one.
+    pub message_id: Option<String>,
+    /// `In-Reply-To` message-ids in header order (usually one parent).
+    pub in_reply_to: Vec<String>,
+    /// `References` chain, oldest ancestor first.
+    pub references: Vec<String>,
 }
 
 impl MessageDetailDto {
@@ -125,6 +131,9 @@ impl MessageDetailDto {
             had_active_content: sanitized.as_ref().is_some_and(|s| s.had_active_content),
             sanitized_html: sanitized.map(|s| s.html),
             attachments,
+            message_id: parsed.message_id.clone(),
+            in_reply_to: parsed.in_reply_to.clone(),
+            references: parsed.references.clone(),
         })
     }
 }

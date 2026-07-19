@@ -29,7 +29,7 @@ pub use address::{Address, EmailAddress};
 pub use error::{ErrorClass, MailError};
 pub use id::{AccountId, AttachmentId, CredentialRef, MailboxId, MessageId, RemoteMessageId};
 pub use mailbox::{Mailbox, MailboxName, MailboxRole};
-pub use message::{MessageEnvelope, MessageFlags, UtcTimestamp};
+pub use message::{MessageEnvelope, MessageFlags, ThreadingHeaders, UtcTimestamp};
 pub use provider::{IncomingMailProvider, OutgoingMailProvider};
 pub use provider_types::{
     MailboxSyncState, OutgoingAttachment, OutgoingMessage, RawMessage, RemoteEnvelope,

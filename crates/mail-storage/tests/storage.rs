@@ -4,9 +4,9 @@
 
 mod common;
 
-use axomail_core::{MailboxRole, MessageFlags};
+use axomail_core::{MailboxRole, MessageFlags, SyncOutcome, ThreadingHeaders};
 use axomail_storage::{MessageCursor, MessagePage, Store};
-use common::{sample_account, sample_mailbox, sample_message};
+use common::{pop3_envelope_with_threading, sample_account, sample_mailbox, sample_message};
 
 /// Opens a fresh temp-file store, returning it and the temp dir to keep
 /// the file alive for the test's duration.
@@ -311,4 +311,207 @@ async fn cursor_serializes_and_round_trips() {
     assert_eq!(from_token, cursor);
 
     assert!(MessageCursor::parse_token("not-a-cursor").is_err());
+}
+
+/// Threading identity carried by an envelope (POP3 full-header scan) is
+/// persisted at ingest and reconstructed on read (migration 0006).
+#[tokio::test]
+async fn threading_identity_round_trips_through_ingest() {
+    let store = Store::open_in_memory().await.unwrap();
+    let account = store
+        .accounts()
+        .insert(&sample_account("Work", "klaus@theferbers.eu"))
+        .await
+        .unwrap();
+    let mailbox = store
+        .mailboxes()
+        .upsert(&sample_mailbox(account.id, "INBOX"))
+        .await
+        .unwrap();
+
+    let headers = ThreadingHeaders {
+        message_id: Some("reply-2@example.org".to_owned()),
+        in_reply_to: vec!["root-0@example.org".to_owned()],
+        references: vec![
+            "root-0@example.org".to_owned(),
+            "mid-1@example.org".to_owned(),
+        ],
+    };
+    let outcome = SyncOutcome {
+        uid_validity: None,
+        highest_uid: None,
+        has_more: false,
+        new_envelopes: vec![pop3_envelope_with_threading("uidl-1", "Re: Hello", headers)],
+        flag_updates: Vec::new(),
+        removed: Vec::new(),
+        present_remote_ids: None,
+    };
+    assert_eq!(
+        store
+            .ingest()
+            .apply(mailbox.id, &outcome)
+            .await
+            .unwrap()
+            .inserted,
+        1
+    );
+
+    let page = store
+        .messages()
+        .list_page(mailbox.id, None, 10)
+        .await
+        .unwrap();
+    let stored = &page.items[0].threading;
+    assert_eq!(stored.message_id.as_deref(), Some("reply-2@example.org"));
+    assert_eq!(stored.in_reply_to, vec!["root-0@example.org".to_owned()]);
+    assert_eq!(
+        stored.references,
+        vec![
+            "root-0@example.org".to_owned(),
+            "mid-1@example.org".to_owned()
+        ]
+    );
+    assert_eq!(stored.parent_id(), Some("mid-1@example.org"));
+}
+
+/// The lazy backfill writes threading once; a message that already carries
+/// it (or was ingested with it) is never overwritten.
+#[tokio::test]
+async fn backfill_threading_is_idempotent_and_first_write_wins() {
+    let store = Store::open_in_memory().await.unwrap();
+    let account = store
+        .accounts()
+        .insert(&sample_account("Work", "klaus@theferbers.eu"))
+        .await
+        .unwrap();
+    let mailbox = store
+        .mailboxes()
+        .upsert(&sample_mailbox(account.id, "INBOX"))
+        .await
+        .unwrap();
+    // A local insert leaves the threading columns NULL (not yet extracted).
+    let message = store
+        .messages()
+        .insert(&sample_message(mailbox.id, "hello", Some(1)))
+        .await
+        .unwrap();
+    assert!(message.threading.is_empty());
+
+    let first = ThreadingHeaders {
+        message_id: Some("self@example.org".to_owned()),
+        in_reply_to: vec!["parent@example.org".to_owned()],
+        references: vec!["parent@example.org".to_owned()],
+    };
+    // First backfill populates the row.
+    assert!(
+        store
+            .messages()
+            .backfill_threading(message.id, &first)
+            .await
+            .unwrap()
+    );
+
+    // A second backfill with different headers is a guarded no-op.
+    let second = ThreadingHeaders {
+        message_id: Some("other@example.org".to_owned()),
+        in_reply_to: Vec::new(),
+        references: Vec::new(),
+    };
+    assert!(
+        !store
+            .messages()
+            .backfill_threading(message.id, &second)
+            .await
+            .unwrap()
+    );
+
+    let fetched = store.messages().get(message.id).await.unwrap().unwrap();
+    assert_eq!(
+        fetched.threading.message_id.as_deref(),
+        Some("self@example.org")
+    );
+    assert_eq!(
+        fetched.threading.references,
+        vec!["parent@example.org".to_owned()]
+    );
+}
+
+/// `find_by_message_id` resolves within an account and ignores foreign
+/// accounts and unknown ids.
+#[tokio::test]
+async fn find_by_message_id_is_account_scoped() {
+    let store = Store::open_in_memory().await.unwrap();
+    let account_a = store
+        .accounts()
+        .insert(&sample_account("A", "a@theferbers.eu"))
+        .await
+        .unwrap();
+    let account_b = store
+        .accounts()
+        .insert(&sample_account("B", "b@theferbers.eu"))
+        .await
+        .unwrap();
+    let mailbox_a = store
+        .mailboxes()
+        .upsert(&sample_mailbox(account_a.id, "INBOX"))
+        .await
+        .unwrap();
+    let mailbox_b = store
+        .mailboxes()
+        .upsert(&sample_mailbox(account_b.id, "INBOX"))
+        .await
+        .unwrap();
+
+    let headers = ThreadingHeaders {
+        message_id: Some("shared@example.org".to_owned()),
+        in_reply_to: Vec::new(),
+        references: Vec::new(),
+    };
+    let outcome = |uidl: &str| SyncOutcome {
+        uid_validity: None,
+        highest_uid: None,
+        has_more: false,
+        new_envelopes: vec![pop3_envelope_with_threading(
+            uidl,
+            "Shared",
+            headers.clone(),
+        )],
+        flag_updates: Vec::new(),
+        removed: Vec::new(),
+        present_remote_ids: None,
+    };
+    store
+        .ingest()
+        .apply(mailbox_a.id, &outcome("a-1"))
+        .await
+        .unwrap();
+    store
+        .ingest()
+        .apply(mailbox_b.id, &outcome("b-1"))
+        .await
+        .unwrap();
+
+    let in_a = store
+        .messages()
+        .find_by_message_id(account_a.id, "shared@example.org")
+        .await
+        .unwrap();
+    let in_b = store
+        .messages()
+        .find_by_message_id(account_b.id, "shared@example.org")
+        .await
+        .unwrap();
+    assert!(in_a.is_some());
+    assert!(in_b.is_some());
+    assert_ne!(in_a, in_b, "each account resolves to its own row");
+
+    // An unknown id under a real account misses.
+    assert_eq!(
+        store
+            .messages()
+            .find_by_message_id(account_a.id, "missing@example.org")
+            .await
+            .unwrap(),
+        None
+    );
 }

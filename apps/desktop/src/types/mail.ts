@@ -138,6 +138,12 @@ export interface MessageDetailDto {
   /** True when scripts/forms/other active content were stripped. */
   hadActiveContent: boolean;
   attachments: AttachmentMetaDto[];
+  /** Message-ID without angle brackets, or null when the message had none. */
+  messageId: string | null;
+  /** In-Reply-To message-ids in header order (usually one parent). */
+  inReplyTo: string[];
+  /** References chain, oldest ancestor first. */
+  references: string[];
 }
 
 /**

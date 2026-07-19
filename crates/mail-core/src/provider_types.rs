@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 use crate::address::Address;
 use crate::id::{MailboxId, RemoteMessageId};
 use crate::mailbox::{MailboxName, MailboxRole};
-use crate::message::{MessageFlags, UtcTimestamp};
+use crate::message::{MessageFlags, ThreadingHeaders, UtcTimestamp};
 
 /// A mailbox as reported by the remote server during discovery.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -69,6 +69,10 @@ pub struct RemoteEnvelope {
     pub flags: MessageFlags,
     /// Size in bytes, if reported.
     pub size_bytes: Option<u64>,
+    /// Threading identity, when the adapter scanned the full header block
+    /// (POP3). `None` when only a server envelope was available (IMAP),
+    /// leaving the storage layer to backfill it on first open.
+    pub threading: Option<ThreadingHeaders>,
 }
 
 /// Result of one synchronization pass, to be persisted by the caller.

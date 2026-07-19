@@ -1,7 +1,9 @@
 //! Message parsing entry point and part extraction.
 
 use axomail_core::{MailError, UtcTimestamp};
-use mail_parser::{ContentType, Message, MessageParser, MessagePart, MimeHeaders, PartType};
+use mail_parser::{
+    ContentType, HeaderValue, Message, MessageParser, MessagePart, MimeHeaders, PartType,
+};
 
 use crate::address::{collect_addresses, first_address};
 use crate::model::{ParsedAttachment, ParsedMessage};
@@ -45,6 +47,8 @@ pub fn parse_message(bytes: &[u8]) -> Result<ParsedMessage, MailError> {
         reply_to,
         date: extract_date(&message),
         message_id: message.message_id().map(str::to_owned),
+        in_reply_to: collect_ids(message.in_reply_to()),
+        references: collect_ids(message.references()),
         text_body,
         html_body,
         preview,
@@ -70,6 +74,24 @@ fn extract_html_body(message: &Message<'_>) -> Option<String> {
         PartType::Html(html) => Some(html.as_ref().to_owned()),
         _ => None,
     })
+}
+
+/// Collects the message-ids of an id-list header (`In-Reply-To`,
+/// `References`) in document order, without angle brackets.
+///
+/// `mail_parser` already strips the brackets and yields either a single
+/// [`HeaderValue::Text`] or a [`HeaderValue::TextList`]; `as_text_list`
+/// normalizes both. Blank tokens (from a malformed header) are dropped.
+fn collect_ids(value: &HeaderValue<'_>) -> Vec<String> {
+    value
+        .as_text_list()
+        .map(|ids| {
+            ids.iter()
+                .map(|id| id.trim().to_owned())
+                .filter(|id| !id.is_empty())
+                .collect()
+        })
+        .unwrap_or_default()
 }
 
 /// Maps a valid `Date` header to a UTC timestamp; invalid or missing dates

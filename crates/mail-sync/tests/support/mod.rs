@@ -394,6 +394,7 @@ pub fn envelope(uid: u32, uid_validity: u32, subject: &str, seen: bool) -> Remot
             ..MessageFlags::default()
         },
         size_bytes: Some(1024),
+        threading: None,
     }
 }
 

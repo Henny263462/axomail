@@ -18,6 +18,7 @@ use sqlx::{SqliteConnection, SqlitePool};
 use crate::error_map::map_sqlx;
 use crate::message_rows::RemoteColumns;
 use crate::sync_state::{read_state, write_state};
+use crate::threading_json::ThreadingColumns;
 
 /// Actual row-level effect of applying one [`SyncOutcome`].
 ///
@@ -150,6 +151,14 @@ async fn insert_envelope(
             message: "ingest_message: size out of range".to_owned(),
         })?;
 
+    // Threading identity is persisted only when the adapter scanned the
+    // full header block (POP3). An envelope-only pass (IMAP) leaves the
+    // columns NULL, and the lazy backfill on first open fills them in.
+    let threading = match &envelope.threading {
+        Some(headers) => ThreadingColumns::from_headers(headers)?,
+        None => ThreadingColumns::unextracted(),
+    };
+
     // `ON CONFLICT DO NOTHING` covers the IMAP unique index on
     // (mailbox_id, remote_uid_validity, remote_uid); a skipped row yields
     // no `RETURNING` output, so recipients are only written for genuine
@@ -159,8 +168,9 @@ async fn insert_envelope(
              mailbox_id, remote_kind, remote_uid, remote_uid_validity, remote_uidl,
              subject, date_unix,
              flag_seen, flag_answered, flag_flagged, flag_draft, flag_deleted,
-             size_bytes, preview, has_raw
-         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, 0)
+             size_bytes, preview, has_raw,
+             message_id, in_reply_to, references_json
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, 0, ?, ?, ?)
          ON CONFLICT DO NOTHING
          RETURNING id",
     )
@@ -177,6 +187,9 @@ async fn insert_envelope(
     .bind(envelope.flags.draft)
     .bind(envelope.flags.deleted)
     .bind(size)
+    .bind(threading.message_id)
+    .bind(threading.in_reply_to)
+    .bind(threading.references_json)
     .fetch_optional(&mut *conn)
     .await
     .map_err(|error| map_sqlx("ingest_message", error))?;
