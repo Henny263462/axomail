@@ -9,7 +9,7 @@ import {
   messageTagOptions,
   setMessageTag,
 } from "../src/api/tags";
-import MessageListItem from "../src/components/list/MessageListItem.vue";
+import MessageRow from "../src/components/list/MessageRow.vue";
 import MessageTagArea from "../src/components/message/MessageTagArea.vue";
 import TagChips from "../src/components/message/TagChips.vue";
 import TagPicker from "../src/components/message/TagPicker.vue";
@@ -85,7 +85,7 @@ describe("TagChips", () => {
   });
 });
 
-describe("MessageListItem chips", () => {
+describe("MessageRow chips", () => {
   it("renders tag chips for a row that carries tags", () => {
     const message: MessageListItemModel = {
       id: 1,
@@ -99,8 +99,14 @@ describe("MessageListItem chips", () => {
       preview: null,
       tags: [{ id: 5, displayName: "Work", color: "#e08a3c" }],
     };
-    const wrapper = mount(MessageListItem, {
-      props: { message, selected: false },
+    const wrapper = mount(MessageRow, {
+      props: {
+        message,
+        rowDomId: "row-1",
+        checked: false,
+        current: false,
+        active: false,
+      },
     });
     expect(wrapper.find(".chip").exists()).toBe(true);
     expect(wrapper.text()).toContain("Work");

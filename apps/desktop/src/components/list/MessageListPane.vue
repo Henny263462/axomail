@@ -1,96 +1,51 @@
 <script setup lang="ts">
-import { computed } from "vue";
-
+/**
+ * The single-mailbox / tag-filter list pane: a thin configuration of the
+ * shared {@link ThreadedMessageList} (mailbox labelling, a "Mark all read"
+ * header, no per-row account tag).
+ */
 import type { MessageListItem as MessageListItemModel } from "../../types/mail";
-import EmptyState from "../common/EmptyState.vue";
-import MessageListItem from "./MessageListItem.vue";
+import ThreadedMessageList from "./ThreadedMessageList.vue";
 
-const props = defineProps<{
-  messages: MessageListItemModel[];
-  selectedMessageId: number | null;
-}>();
+withDefaults(
+  defineProps<{
+    messages: MessageListItemModel[];
+    selectedMessageId: number | null;
+    /** Whether conversations are grouped into threads. */
+    threaded?: boolean;
+    /** Whether a next page can be loaded (infinite scroll). */
+    hasMore?: boolean;
+    /** Whether a next-page fetch is in flight. */
+    loadingMore?: boolean;
+  }>(),
+  { threaded: false, hasMore: false, loadingMore: false },
+);
 
 const emit = defineEmits<{
   select: [messageId: number];
   toggleFlag: [messageId: number];
   markAllRead: [];
+  loadMore: [];
+  selectionChange: [messageIds: number[]];
+  "update:threaded": [value: boolean];
 }>();
-
-const hasUnread = computed(() => props.messages.some((m) => !m.seen));
 </script>
 
 <template>
-  <section
-    class="list"
-    aria-label="Message list"
-  >
-    <div
-      v-if="messages.length > 0"
-      class="toolbar"
-    >
-      <button
-        type="button"
-        class="mark-read"
-        :disabled="!hasUnread"
-        @click="emit('markAllRead')"
-      >
-        Mark all read
-      </button>
-    </div>
-    <EmptyState
-      v-if="messages.length === 0"
-      title="No messages"
-      detail="Messages appear here once an account is set up and synchronized."
-    />
-    <ul v-else>
-      <MessageListItem
-        v-for="message in messages"
-        :key="message.id"
-        :message="message"
-        :selected="message.id === selectedMessageId"
-        @select="emit('select', $event)"
-        @toggle-flag="emit('toggleFlag', $event)"
-      />
-    </ul>
-  </section>
+  <ThreadedMessageList
+    :messages="messages"
+    :selected-message-id="selectedMessageId"
+    :threaded="threaded"
+    list-label="Message list"
+    empty-detail="Messages appear here once an account is set up and synchronized."
+    :show-mark-all-read="true"
+    :has-more="hasMore"
+    :loading-more="loadingMore"
+    @select="emit('select', $event)"
+    @toggle-flag="emit('toggleFlag', $event)"
+    @mark-all-read="emit('markAllRead')"
+    @load-more="emit('loadMore')"
+    @selection-change="emit('selectionChange', $event)"
+    @update:threaded="emit('update:threaded', $event)"
+  />
 </template>
-
-<style scoped>
-.list {
-  display: flex;
-  flex-direction: column;
-  height: 100%;
-  overflow-y: auto;
-  border-right: 1px solid var(--color-border);
-  background: var(--color-bg);
-}
-
-.toolbar {
-  display: flex;
-  justify-content: flex-end;
-  padding: var(--space-1) var(--space-2);
-  border-bottom: 1px solid var(--color-border);
-  position: sticky;
-  top: 0;
-  background: var(--color-bg);
-  z-index: 1;
-}
-
-.mark-read {
-  font-size: var(--text-xs);
-  font-weight: var(--weight-medium);
-  color: var(--color-accent);
-  padding: var(--space-1) var(--space-2);
-  border-radius: var(--radius-sm);
-  transition: background var(--transition-fast);
-}
-
-.mark-read:hover:not(:disabled) {
-  background: var(--color-bg-hover);
-}
-
-.mark-read:disabled {
-  color: var(--color-text-tertiary);
-  cursor: default;
-}
-</style>

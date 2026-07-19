@@ -11,6 +11,7 @@
 //! | `auto_mark_read_enabled` | `"true"`/`"false"` | `true` |
 //! | `auto_mark_read_delay_ms` | decimal integer, clamped `<= 30000` | `0` |
 //! | `work_offline` | `"true"`/`"false"` | `false` |
+//! | `list_threaded` | `"true"`/`"false"` | `false` |
 //! | `pop3_delete_policy.<accountId>` | `"true"`/`"false"` | `false` |
 //!
 //! The POP3 delete policy is the second of the two guards against POP3's
@@ -36,6 +37,8 @@ const KEY_AUTO_MARK_READ: &str = "auto_mark_read_enabled";
 const KEY_AUTO_MARK_READ_DELAY: &str = "auto_mark_read_delay_ms";
 /// Whether the app is in Work Offline mode (no network jobs; queue writes).
 const KEY_WORK_OFFLINE: &str = "work_offline";
+/// Whether the message list groups messages into conversation threads.
+const KEY_LIST_THREADED: &str = "list_threaded";
 /// Prefix of the per-account POP3 server-deletion policy key.
 const KEY_POP3_DELETE_PREFIX: &str = "pop3_delete_policy.";
 
@@ -51,6 +54,9 @@ const DEFAULT_AUTO_MARK_READ: bool = true;
 pub const DEFAULT_AUTO_MARK_READ_DELAY_MS: u32 = 0;
 /// Ceiling on the auto-mark-read delay (30 s); longer values are pointless.
 pub const MAX_AUTO_MARK_READ_DELAY_MS: u32 = 30_000;
+/// The message list starts flat (not threaded) so a fresh install behaves like
+/// the pre-threading UI until the user opts in.
+const DEFAULT_LIST_THREADED: bool = false;
 
 /// Clamps a requested auto-mark-read delay to the supported ceiling.
 #[must_use]
@@ -186,6 +192,32 @@ pub async fn set_work_offline(store: &Store, offline: bool) -> Result<(), MailEr
     store
         .settings()
         .set(KEY_WORK_OFFLINE, bool_str(offline))
+        .await
+}
+
+/// Reads whether the message list groups messages into threads (default
+/// `false`, i.e. a flat newest-first list).
+///
+/// # Errors
+///
+/// Returns [`MailError::Database`] on any query failure.
+pub async fn list_threaded(store: &Store) -> Result<bool, MailError> {
+    Ok(store
+        .settings()
+        .get(KEY_LIST_THREADED)
+        .await?
+        .map_or(DEFAULT_LIST_THREADED, |value| value == "true"))
+}
+
+/// Persists whether the message list groups messages into threads.
+///
+/// # Errors
+///
+/// Returns [`MailError::Database`] on any query failure.
+pub async fn set_list_threaded(store: &Store, threaded: bool) -> Result<(), MailError> {
+    store
+        .settings()
+        .set(KEY_LIST_THREADED, bool_str(threaded))
         .await
 }
 

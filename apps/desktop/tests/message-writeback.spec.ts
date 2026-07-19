@@ -10,7 +10,7 @@ import {
 } from "../src/api/messages";
 import AutoReadSection from "../src/components/settings/AutoReadSection.vue";
 import type { SettingsSectionContext } from "../src/components/settings/context";
-import MessageListItem from "../src/components/list/MessageListItem.vue";
+import MessageRow from "../src/components/list/MessageRow.vue";
 import MessageListPane from "../src/components/list/MessageListPane.vue";
 import MessageViewPane from "../src/components/message/MessageViewPane.vue";
 import { useMessageActions } from "../src/composables/useMessageActions";
@@ -95,10 +95,20 @@ beforeEach(() => {
   markMailboxReadMock.mockResolvedValue(0);
 });
 
-describe("MessageListItem star", () => {
+function rowProps(message: MessageListItemModel) {
+  return {
+    message,
+    rowDomId: "row-1",
+    checked: false,
+    current: false,
+    active: false,
+  };
+}
+
+describe("MessageRow star", () => {
   it("reflects flagged as aria-pressed and emits toggleFlag on click", async () => {
-    const wrapper = mount(MessageListItem, {
-      props: { message: listItem({ flagged: true }), selected: false },
+    const wrapper = mount(MessageRow, {
+      props: rowProps(listItem({ flagged: true })),
     });
     const star = wrapper.get("button.star");
     expect(star.attributes("aria-pressed")).toBe("true");
@@ -111,8 +121,8 @@ describe("MessageListItem star", () => {
   });
 
   it("labels an unstarred message for adding a star", () => {
-    const wrapper = mount(MessageListItem, {
-      props: { message: listItem({ flagged: false }), selected: false },
+    const wrapper = mount(MessageRow, {
+      props: rowProps(listItem({ flagged: false })),
     });
     expect(wrapper.get("button.star").attributes("aria-label")).toBe("Add star");
   });
@@ -124,6 +134,7 @@ describe("MessageListPane mark all read", () => {
       props: {
         messages: [listItem({ id: 1, seen: false })],
         selectedMessageId: null,
+        threaded: false,
       },
     });
     const button = wrapper.get("button.mark-read");
@@ -137,6 +148,7 @@ describe("MessageListPane mark all read", () => {
       props: {
         messages: [listItem({ id: 1, seen: true })],
         selectedMessageId: null,
+        threaded: false,
       },
     });
     expect(wrapper.get("button.mark-read").attributes("disabled")).toBeDefined();

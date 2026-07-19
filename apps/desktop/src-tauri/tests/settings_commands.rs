@@ -10,7 +10,8 @@ use std::sync::atomic::AtomicBool;
 use axomail_core::MailError;
 use axomail_desktop_lib::commands::accounts::create_account_impl;
 use axomail_desktop_lib::commands::settings::{
-    get_settings_impl, set_pop3_delete_policy_impl, update_settings_impl,
+    get_list_threaded_impl, get_settings_impl, set_list_threaded_impl, set_pop3_delete_policy_impl,
+    update_settings_impl,
 };
 use axomail_desktop_lib::composition::AppProviderFactory;
 use axomail_desktop_lib::dto::{Pop3DeletePolicyDto, SettingsDto, ThemePreference};
@@ -137,6 +138,24 @@ async fn update_round_trips_clamps_and_pushes_interval_to_scheduler() {
             .unwrap()
             .notifications_enabled
     );
+}
+
+#[tokio::test]
+async fn list_threaded_defaults_off_and_round_trips() {
+    let store = Store::open_in_memory().await.unwrap();
+
+    // A fresh install lists flat until the user opts into threading.
+    assert!(
+        !get_list_threaded_impl(&store).await.unwrap(),
+        "threading defaults off"
+    );
+
+    set_list_threaded_impl(&store, true).await.unwrap();
+    assert!(get_list_threaded_impl(&store).await.unwrap());
+
+    // Toggling back to flat persists just as well.
+    set_list_threaded_impl(&store, false).await.unwrap();
+    assert!(!get_list_threaded_impl(&store).await.unwrap());
 }
 
 #[tokio::test]

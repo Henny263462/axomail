@@ -1,62 +1,51 @@
 <script setup lang="ts">
-import { computed } from "vue";
-
+/**
+ * The unified-inbox list pane: the shared {@link ThreadedMessageList}
+ * configured to tag every row with its account's display name.
+ */
 import type { AccountSummary, UnifiedItemDto } from "../../types/mail";
-import EmptyState from "../common/EmptyState.vue";
-import MessageListItem from "./MessageListItem.vue";
+import ThreadedMessageList from "./ThreadedMessageList.vue";
 
-const props = defineProps<{
-  items: UnifiedItemDto[];
-  /** Accounts, used to label each item with its account display name. */
-  accounts: AccountSummary[];
-  selectedMessageId: number | null;
-}>();
+withDefaults(
+  defineProps<{
+    items: UnifiedItemDto[];
+    /** Accounts, used to label each row with its account display name. */
+    accounts: AccountSummary[];
+    selectedMessageId: number | null;
+    /** Whether conversations are grouped into threads. */
+    threaded?: boolean;
+    /** Whether a next page can be loaded (infinite scroll). */
+    hasMore?: boolean;
+    /** Whether a next-page fetch is in flight. */
+    loadingMore?: boolean;
+  }>(),
+  { threaded: false, hasMore: false, loadingMore: false },
+);
 
 const emit = defineEmits<{
   select: [messageId: number];
   toggleFlag: [messageId: number];
+  loadMore: [];
+  selectionChange: [messageIds: number[]];
+  "update:threaded": [value: boolean];
 }>();
-
-const namesByAccount = computed(() => {
-  const map = new Map<number, string>();
-  for (const account of props.accounts) map.set(account.id, account.displayName);
-  return map;
-});
-
-function accountName(accountId: number): string {
-  return namesByAccount.value.get(accountId) ?? `Account ${accountId}`;
-}
 </script>
 
 <template>
-  <section
-    class="list"
-    aria-label="Unified inbox"
-  >
-    <EmptyState
-      v-if="items.length === 0"
-      title="No messages"
-      detail="Messages from every account's inbox appear here once synchronized."
-    />
-    <ul v-else>
-      <MessageListItem
-        v-for="item in items"
-        :key="item.id"
-        :message="item"
-        :account-name="accountName(item.accountId)"
-        :selected="item.id === selectedMessageId"
-        @select="emit('select', $event)"
-        @toggle-flag="emit('toggleFlag', $event)"
-      />
-    </ul>
-  </section>
+  <ThreadedMessageList
+    :messages="items"
+    :accounts="accounts"
+    :show-account="true"
+    :selected-message-id="selectedMessageId"
+    :threaded="threaded"
+    list-label="Unified inbox"
+    empty-detail="Messages from every account's inbox appear here once synchronized."
+    :has-more="hasMore"
+    :loading-more="loadingMore"
+    @select="emit('select', $event)"
+    @toggle-flag="emit('toggleFlag', $event)"
+    @load-more="emit('loadMore')"
+    @selection-change="emit('selectionChange', $event)"
+    @update:threaded="emit('update:threaded', $event)"
+  />
 </template>
-
-<style scoped>
-.list {
-  height: 100%;
-  overflow-y: auto;
-  border-right: 1px solid var(--color-border);
-  background: var(--color-bg);
-}
-</style>
