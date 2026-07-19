@@ -125,6 +125,7 @@ pub fn run() {
             commands::compose::list_outbox,
             commands::reply::prepare_reply,
             commands::reply::mark_reply_source,
+            commands::attachments::stat_attachments,
             commands::outbox_schedule::send_outbox_now,
             commands::outbox_schedule::cancel_scheduled_send,
             commands::identities::list_identities,

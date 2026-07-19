@@ -193,14 +193,32 @@ export interface ComposeInput {
   bcc: string[];
   subject: string;
   textBody: string;
+  /**
+   * Sanitized HTML alternative body. Sent as the `multipart/alternative` HTML
+   * part on an immediate send; not persisted (the durable draft/outbox is
+   * text-only), so a deferred send falls back to `textBody`.
+   */
+  htmlBody?: string | null;
+  /**
+   * Absolute paths of files to attach, chosen through the native open-file
+   * dialog. The backend reads the bytes with `std::fs` at send time; the
+   * webview never reads file content. Attachments ride only on an immediate
+   * send.
+   */
+  attachments?: string[];
   /** Unix second to send at, for a "send later" message. */
   scheduledAtUnix?: number | null;
   /** `In-Reply-To` header value (source Message-ID) when this is a reply. */
   inReplyTo?: string | null;
   /** `References` chain (oldest first) when this is a reply. */
   references?: string[];
-  /** Attachments to include (e.g. a forwarded message as message/rfc822). */
-  attachments?: ComposeAttachmentDto[];
+  /**
+   * Inline attachments carried as base64 content rather than a filesystem path
+   * — today a forwarded message round-tripped as a `message/rfc822` part (from
+   * the reply/forward prefill). Combined server-side with the picked-file
+   * {@link attachments} into one `multipart/mixed`; immediate-send only.
+   */
+  forwardedAttachments?: ComposeAttachmentDto[];
 }
 
 /**
@@ -240,6 +258,17 @@ export interface ComposerPrefillDto {
   references: string[];
   attachments: ComposeAttachmentDto[];
   source: PrefillSourceDto;
+}
+
+/**
+ * Name/size metadata for a candidate attachment, returned by `stat_attachments`
+ * so the composer can show a chip before the file is ever read. The `path` is
+ * handed back unchanged at send time.
+ */
+export interface AttachmentCandidateDto {
+  path: string;
+  filename: string;
+  sizeBytes: number;
 }
 
 /** A saved draft, as returned by `list_drafts`. */

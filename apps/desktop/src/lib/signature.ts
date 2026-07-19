@@ -48,6 +48,17 @@ function stripTrailingSignature(body: string): string {
 }
 
 /**
+ * Removes a trailing signature block from `body`, returning just the text above
+ * it. Used when loading a stored draft into the editor: the signature was baked
+ * in when the draft was saved, so it is stripped before editing and re-appended
+ * per identity at send time — never duplicated. Returns `body` unchanged when it
+ * carries no delimiter line.
+ */
+export function withoutSignature(body: string): string {
+  return stripTrailingSignature(body);
+}
+
+/**
  * Swaps the signature block at the end of `body`, then appends `newBlock`.
  *
  * When `oldBlock` is a tracked in-session block, it is stripped only if the

@@ -1,13 +1,16 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from "vue";
+import { computed, onMounted, ref, watch } from "vue";
 
 import { saveDraft, sendMessage } from "../../api/compose";
 import { listIdentities } from "../../api/identities";
 import { markReplySource } from "../../api/reply";
-import { applySignature, signatureBlock } from "../../lib/signature";
+import { signatureBlock, withoutSignature } from "../../lib/signature";
+import { mentionsAttachmentKeyword, signatureHtml } from "../../lib/htmlBody";
+import { useDraftAutosave } from "../../composables/useDraftAutosave";
 import { useFocusTrap } from "../../composables/useFocusTrap";
 import type {
   AccountSummary,
+  AttachmentCandidateDto,
   ComposeAttachmentDto,
   ComposeInput,
   ComposerPrefillDto,
@@ -15,6 +18,7 @@ import type {
   IdentityDto,
   PrefillSourceDto,
 } from "../../types/mail";
+import ComposeAttachments from "./ComposeAttachments.vue";
 import ComposeBody from "./ComposeBody.vue";
 import ComposeFields from "./ComposeFields.vue";
 import ComposerActions from "./ComposerActions.vue";
@@ -37,38 +41,55 @@ const emit = defineEmits<{
   saved: [draftId: number];
 }>();
 
-const to = ref("");
-const cc = ref("");
-const bcc = ref("");
-const subject = ref("");
-const body = ref("");
+const draft = props.draft ?? null;
+const isDraft = draft !== null;
 
-// The account the composed message belongs to and, when editing, the draft
-// id updated on save. A draft carries its own account, overriding the prop.
-const accountId = ref(props.accountId);
-const draftId = ref<number | null>(null);
+const to = ref(draft?.to.join(", ") ?? "");
+const cc = ref(draft?.cc.join(", ") ?? "");
+const bcc = ref(draft?.bcc.join(", ") ?? "");
+const subject = ref(draft?.subject ?? "");
+// The editor holds the body WITHOUT the signature. A stored draft baked the
+// signature into its text, so strip it on load; the chosen identity's signature
+// is re-appended per send/save, never duplicated. A reply/forward prefill is the
+// exception: its body already has the signature placed by the quote builder, so
+// build-time appending is suppressed (see `hasPrefill`).
+const bodyText = ref(draft !== null ? withoutSignature(draft.textBody) : "");
+const bodyHtml = ref<string | null>(null);
+// Picked files, shown as chips; sent as absolute paths the backend reads.
+const attachments = ref<AttachmentCandidateDto[]>([]);
 
-// Sender identities and the chosen one. The signature block currently in the
-// body is tracked so switching identity swaps it in place (see signature.ts).
+// The account the composed message belongs to and, when editing, the draft id.
+// A draft carries its own account, overriding the prop.
+const accountId = ref(draft?.accountId ?? props.accountId);
+const draftId = ref<number | null>(draft?.id ?? null);
+
 const identities = ref<IdentityDto[]>([]);
 const selectedIdentityId = ref<number | null>(null);
-const currentSignature = ref("");
+/** Plain signature text of the chosen identity, or empty when none applies. */
+const currentSignatureText = computed(
+  () =>
+    identities.value.find((identity) => identity.id === selectedIdentityId.value)
+      ?.signatureText ?? "",
+);
 
-// Reply/forward context, carried through to the send: the threading headers,
-// any attachments (a forwarded message), the source to mark on success, and the
-// identity the prefill guessed. `hasPrefill` disables the new-message signature
-// handling, since a prefill's body already has the signature placed.
+// Reply/forward context carried through to the send: the threading headers, the
+// forwarded message (an inline message/rfc822 part, distinct from picked files),
+// the source to mark on success, and the identity the prefill guessed.
+// `hasPrefill` disables the new-message signature handling, since a prefill's
+// body already has the signature placed.
 const inReplyTo = ref<string | null>(null);
 const references = ref<string[]>([]);
-const attachments = ref<ComposeAttachmentDto[]>([]);
+const forwardedAttachments = ref<ComposeAttachmentDto[]>([]);
 const replySource = ref<PrefillSourceDto | null>(null);
 const prefillIdentityId = ref<number | null>(null);
 const hasPrefill = ref(false);
 
 const sending = ref(false);
 const savingDraft = ref(false);
+const finished = ref(false);
 const errorMessage = ref("");
 const statusMessage = ref("");
+const attachmentWarning = ref("");
 
 const fields = ref<InstanceType<typeof ComposeFields> | null>(null);
 const root = ref<HTMLElement | null>(null);
@@ -83,12 +104,17 @@ const dialogTitle = computed(() => {
   return "New message";
 });
 
+// Attaching a file resolves the "you mentioned an attachment" reminder.
+watch(
+  () => attachments.value.length,
+  (count) => {
+    if (count > 0) attachmentWarning.value = "";
+  },
+);
+
 onMounted(async () => {
-  const draft = props.draft ?? null;
   const prefill = props.prefill ?? null;
-  if (draft !== null) {
-    loadDraft(draft);
-  } else if (prefill !== null) {
+  if (draft === null && prefill !== null) {
     loadPrefill(prefill);
   }
   const loaded = await listIdentities();
@@ -99,35 +125,35 @@ onMounted(async () => {
   fields.value?.focus();
 });
 
-/** Fills the form from an existing draft. */
-function loadDraft(draft: DraftDto): void {
-  accountId.value = draft.accountId;
-  draftId.value = draft.id;
-  to.value = draft.to.join(", ");
-  cc.value = draft.cc.join(", ");
-  bcc.value = draft.bcc.join(", ");
-  subject.value = draft.subject;
-  body.value = draft.textBody;
-}
+useDraftAutosave({
+  snapshot: () =>
+    JSON.stringify([to.value, cc.value, bcc.value, subject.value, bodyText.value]),
+  isEmpty: isComposerEmpty,
+  isBusy: () => sending.value || savingDraft.value,
+  isFinished: () => finished.value,
+  save: autosave,
+});
 
-/** Fills the form from a reply/forward prefill and stores its send context. */
+/** Fills the form from a reply/forward prefill and stores its send context. The
+ * prefill body already carries the placed signature (built server-side per the
+ * identity's reply prefs), so build-time signature appending is suppressed. */
 function loadPrefill(prefill: ComposerPrefillDto): void {
   hasPrefill.value = true;
   accountId.value = prefill.accountId;
   to.value = prefill.to.join(", ");
   cc.value = prefill.cc.join(", ");
   subject.value = prefill.subject;
-  body.value = prefill.body;
+  bodyText.value = prefill.body;
   inReplyTo.value = prefill.inReplyTo;
   references.value = prefill.references;
-  attachments.value = prefill.attachments;
+  forwardedAttachments.value = prefill.attachments;
   replySource.value = prefill.source;
   prefillIdentityId.value = prefill.identityId;
 }
 
 /** Picks the initial identity — the prefill's guess when present, else the
- * account default — and seeds its signature only for a brand-new blank message
- * (a draft keeps its saved body; a prefill already has the signature placed). */
+ * account default. The signature is applied at build time (never baked into the
+ * editor body), so identity selection does not rewrite the body here. */
 function preselectIdentity(): void {
   const forAccount = identities.value.filter(
     (identity) => identity.accountId === accountId.value,
@@ -138,30 +164,17 @@ function preselectIdentity(): void {
       : undefined;
   const chosen =
     guessed ?? forAccount.find((identity) => identity.isDefault) ?? forAccount[0];
-  if (chosen === undefined) {
-    selectedIdentityId.value = null;
-    return;
-  }
-  selectedIdentityId.value = chosen.id;
-  if (draftId.value === null && !hasPrefill.value) {
-    const block = signatureBlock(chosen.signatureText);
-    body.value = applySignature(body.value, "", block);
-    currentSignature.value = block;
-  }
+  selectedIdentityId.value = chosen?.id ?? null;
 }
 
-/** Switches the From identity: updates the account and swaps the signature.
- * For a reply/forward the body already carries the placed signature, so the
- * switch changes only the sender (no in-body signature rewrite). */
+/** Switches the From identity, updating the account it sends from. The signature
+ * is merged at build time from {@link currentSignatureText}, so no in-body
+ * rewrite is needed here. */
 function onIdentityChange(identityId: number): void {
   const identity = identities.value.find((item) => item.id === identityId);
   if (identity === undefined) return;
   selectedIdentityId.value = identityId;
   accountId.value = identity.accountId;
-  if (hasPrefill.value) return;
-  const block = signatureBlock(identity.signatureText);
-  body.value = applySignature(body.value, currentSignature.value, block);
-  currentSignature.value = block;
 }
 
 function close(): void {
@@ -176,14 +189,32 @@ function splitAddresses(raw: string): string[] {
     .filter((part) => part.length > 0);
 }
 
+/** True when nothing worth keeping has been entered. */
+function isComposerEmpty(): boolean {
+  return (
+    [to.value, cc.value, bcc.value, subject.value, bodyText.value].every(
+      (value) => value.trim().length === 0,
+    ) && attachments.value.length === 0
+  );
+}
+
+/** Builds the compose payload, merging the identity signature into the body. A
+ * reply/forward prefill already carries its signature, so it is not re-appended
+ * (`hasPrefill`). Picked files ride `attachments` (paths); a forwarded message
+ * rides `forwardedAttachments` (inline base64) — the backend merges both. */
 function buildInput(scheduledAtUnix?: number): ComposeInput {
+  const signature = hasPrefill.value ? "" : currentSignatureText.value;
+  const html =
+    bodyHtml.value === null ? null : bodyHtml.value + signatureHtml(signature);
   const input: ComposeInput = {
     accountId: accountId.value,
     to: splitAddresses(to.value),
     cc: splitAddresses(cc.value),
     bcc: splitAddresses(bcc.value),
     subject: subject.value.trim(),
-    textBody: body.value,
+    textBody: bodyText.value + signatureBlock(signature),
+    htmlBody: html !== null && html.trim().length > 0 ? html : null,
+    attachments: attachments.value.map((item) => item.path),
   };
   if (selectedIdentityId.value !== null) {
     input.identityId = selectedIdentityId.value;
@@ -199,22 +230,27 @@ function buildInput(scheduledAtUnix?: number): ComposeInput {
   if (references.value.length > 0) {
     input.references = references.value;
   }
-  if (attachments.value.length > 0) {
-    input.attachments = attachments.value;
+  if (forwardedAttachments.value.length > 0) {
+    input.forwardedAttachments = forwardedAttachments.value;
   }
   return input;
 }
 
 /** Submits a compose payload, immediately or scheduled. */
 async function submit(input: ComposeInput): Promise<void> {
-  // Sending and draft-saving are mutually exclusive: a Save racing a
-  // successful Send would resurrect the message as an unintended draft.
   if (sending.value || savingDraft.value) return;
   statusMessage.value = "";
   if (input.to.length === 0) {
     errorMessage.value = "Add at least one recipient.";
     return;
   }
+  // Attachment-keyword reminder: warn once, then honour a repeated send.
+  if (attachmentWarning.value === "" && shouldRemindAttachment()) {
+    attachmentWarning.value =
+      "Your message mentions an attachment, but none is attached. Send again to send anyway.";
+    return;
+  }
+  attachmentWarning.value = "";
   errorMessage.value = "";
   sending.value = true;
   try {
@@ -228,6 +264,7 @@ async function submit(input: ComposeInput): Promise<void> {
     // or forwarded (the flag reflects a delivered reply, not a queued one).
     if (outcome.sent) {
       await markSourceSent();
+      finished.value = true;
       emit("sent", { draftId: draftId.value });
       return;
     }
@@ -237,6 +274,7 @@ async function submit(input: ComposeInput): Promise<void> {
       (outcome.scheduledAtUnix ?? null) !== null ||
       outcome.queuedOffline === true
     ) {
+      finished.value = true;
       emit("sent", { draftId: draftId.value });
       return;
     }
@@ -247,11 +285,20 @@ async function submit(input: ComposeInput): Promise<void> {
 }
 
 /** After a successful reply/forward send, marks the source message answered
- * ($Forwarded for a forward). A no-op for a plain new message. */
+ * ($Forwarded for a forward). A no-op for a plain new message or draft. */
 async function markSourceSent(): Promise<void> {
   const source = replySource.value;
   if (source === null) return;
   await markReplySource(source.messageId, source.mark);
+}
+
+/** True when the body hints at an attachment but none is attached. */
+function shouldRemindAttachment(): boolean {
+  return (
+    attachments.value.length === 0 &&
+    (mentionsAttachmentKeyword(bodyText.value) ||
+      mentionsAttachmentKeyword(subject.value))
+  );
 }
 
 function onSend(): Promise<void> {
@@ -278,6 +325,15 @@ async function onSaveDraft(): Promise<void> {
     emit("saved", id);
   } finally {
     savingDraft.value = false;
+  }
+}
+
+/** Timer-driven save used by {@link useDraftAutosave}; quiet on failure. */
+async function autosave(): Promise<void> {
+  const id = await saveDraft(buildInput(), draftId.value);
+  if (id !== null) {
+    draftId.value = id;
+    statusMessage.value = "Draft autosaved.";
   }
 }
 </script>
@@ -319,7 +375,23 @@ async function onSaveDraft(): Promise<void> {
           v-model:bcc="bcc"
           v-model:subject="subject"
         />
-        <ComposeBody v-model="body" />
+        <ComposeBody
+          v-model:text="bodyText"
+          v-model:html="bodyHtml"
+          :signature-text="currentSignatureText"
+          :is-draft="isDraft"
+        />
+        <ComposeAttachments
+          v-model="attachments"
+          @error="errorMessage = $event"
+        />
+        <p
+          v-if="attachmentWarning !== ''"
+          class="warning"
+          role="alert"
+        >
+          {{ attachmentWarning }}
+        </p>
         <ComposerActions
           :saving-draft="savingDraft"
           :sending="sending"
@@ -367,5 +439,14 @@ async function onSaveDraft(): Promise<void> {
   display: flex;
   flex-direction: column;
   gap: var(--space-3);
+}
+
+.warning {
+  font-size: var(--text-sm);
+  color: var(--color-warning, var(--color-text));
+  background: var(--color-bg-subtle);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-sm);
+  padding: var(--space-2);
 }
 </style>

@@ -45,8 +45,21 @@ pub struct ComposeInput {
     pub bcc: Vec<String>,
     /// Subject line.
     pub subject: String,
-    /// Plain-text body.
+    /// Plain-text body (always present; the mandatory alternative).
     pub text_body: String,
+    /// Optional sanitized HTML body. When present and non-blank on an immediate
+    /// send it is sent as the `multipart/alternative` HTML part; it is
+    /// re-sanitized server-side before assembly and is **not** persisted (the
+    /// durable outbox/draft is text-only), so a deferred send falls back to the
+    /// text alternative.
+    #[serde(default)]
+    pub html_body: Option<String>,
+    /// Absolute filesystem paths of files to attach, chosen through the native
+    /// open-file dialog. The bytes are read by a Rust `std::fs` command at send
+    /// time (never by the webview); the filename shown to recipients is
+    /// sanitized. Attachments ride only on the immediate send path.
+    #[serde(default)]
+    pub attachments: Vec<String>,
     /// Unix second at which to send a "send later" message. When present and
     /// in the future, the message is queued and withheld until then rather
     /// than submitted immediately.
@@ -61,9 +74,29 @@ pub struct ComposeInput {
     /// outgoing MIME on the immediate-send path.
     #[serde(default)]
     pub references: Vec<String>,
-    /// Attachments to include (e.g. a forwarded message as `message/rfc822`).
+    /// Inline attachments carried as base64 content rather than a filesystem
+    /// path — today a forwarded message round-tripped as a `message/rfc822`
+    /// part (from the reply/forward prefill). These are decoded server-side and
+    /// combined with the picked-file [`attachments`](Self::attachments) into one
+    /// `multipart/mixed` message. Like picked files, they ride only the
+    /// immediate-send path.
     #[serde(default)]
-    pub attachments: Vec<ComposeAttachmentDto>,
+    pub forwarded_attachments: Vec<ComposeAttachmentDto>,
+}
+
+/// Metadata for one candidate attachment, returned by `stat_attachments` so the
+/// composer can show a name/size chip before the file is ever read into a
+/// message. No bytes cross the IPC boundary here. (Distinct from
+/// `detail::AttachmentMetaDto`, which describes a *received* message's parts.)
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AttachmentCandidateDto {
+    /// The absolute path the composer passes back at send time.
+    pub path: String,
+    /// Filename sanitized for display and for the eventual MIME part.
+    pub filename: String,
+    /// Size in bytes, as reported by the filesystem.
+    pub size_bytes: u64,
 }
 
 /// A stored draft, as listed by `list_drafts`.

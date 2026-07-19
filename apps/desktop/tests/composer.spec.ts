@@ -1,6 +1,7 @@
 import { flushPromises, mount, type VueWrapper } from "@vue/test-utils";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { onFilesDropped, pickAttachments, statAttachments } from "../src/api/attachments";
 import { saveDraft, sendMessage } from "../src/api/compose";
 import { listIdentities } from "../src/api/identities";
 import ComposerDialog from "../src/components/compose/ComposerDialog.vue";
@@ -13,10 +14,18 @@ vi.mock("../src/api/compose", () => ({
 vi.mock("../src/api/identities", () => ({
   listIdentities: vi.fn(),
 }));
+vi.mock("../src/api/attachments", () => ({
+  pickAttachments: vi.fn(),
+  statAttachments: vi.fn(),
+  onFilesDropped: vi.fn(() => () => {}),
+}));
 
 const sendMessageMock = vi.mocked(sendMessage);
 const saveDraftMock = vi.mocked(saveDraft);
 const listIdentitiesMock = vi.mocked(listIdentities);
+const pickAttachmentsMock = vi.mocked(pickAttachments);
+const statAttachmentsMock = vi.mocked(statAttachments);
+const onFilesDroppedMock = vi.mocked(onFilesDropped);
 
 /** Builds an identity DTO with sensible defaults for the picker tests. */
 function identity(over: Partial<IdentityDto>): IdentityDto {
@@ -49,18 +58,32 @@ function saveDraftButton(wrapper: VueWrapper) {
   return button;
 }
 
+function attachButton(wrapper: VueWrapper) {
+  const button = wrapper
+    .findAll("button")
+    .find((candidate) => candidate.text().includes("Attach files"));
+  if (button === undefined) throw new Error("attach-files button missing");
+  return button;
+}
+
+/** Switches the body editor to the plain-text surface (a testable textarea). */
+async function usePlainBody(wrapper: VueWrapper): Promise<void> {
+  await wrapper.get(".mode-toggle").trigger("click");
+}
+
 beforeEach(() => {
   vi.clearAllMocks();
   sendMessageMock.mockResolvedValue({ outboxId: 1, sent: true, error: null });
   saveDraftMock.mockResolvedValue(88);
-  // No identities by default: the From picker stays hidden and the compose
-  // payload carries no identityId, matching the pre-identity contract.
   listIdentitiesMock.mockResolvedValue(null);
+  onFilesDroppedMock.mockReturnValue(() => {});
 });
 
 describe("ComposerDialog send", () => {
-  it("splits recipients and submits the exact ComposeInput", async () => {
+  it("splits recipients and submits html + attachment fields", async () => {
     const wrapper = mount(ComposerDialog, { props: { accountId: 42 } });
+    await flushPromises();
+    await usePlainBody(wrapper);
 
     await wrapper.get("#compose-to").setValue("a@x.com, b@y.com ");
     await wrapper.get("#compose-cc").setValue(" c@z.com");
@@ -76,12 +99,33 @@ describe("ComposerDialog send", () => {
       bcc: [],
       subject: "Hi there",
       textBody: "Hello world",
+      htmlBody: null,
+      attachments: [],
     });
     expect(wrapper.emitted("sent")?.[0]).toEqual([{ draftId: null }]);
   });
 
+  it("sends a sanitized HTML body from the rich editor", async () => {
+    const wrapper = mount(ComposerDialog, { props: { accountId: 42 } });
+    await flushPromises();
+
+    await wrapper.get("#compose-to").setValue("a@x.com");
+    const editor = wrapper.get("#compose-editor");
+    (editor.element as HTMLElement).innerHTML =
+      "<p>Hello <b>bold</b></p><script>alert(1)</script>";
+    await editor.trigger("input");
+    await wrapper.get("form").trigger("submit");
+    await flushPromises();
+
+    const payload = sendMessageMock.mock.calls[0]?.[0];
+    expect(payload?.htmlBody).toContain("<b>bold</b>");
+    expect(payload?.htmlBody).not.toContain("script");
+    expect(payload?.textBody).toContain("Hello bold");
+  });
+
   it("blocks sending without a recipient", async () => {
     const wrapper = mount(ComposerDialog, { props: { accountId: 42 } });
+    await flushPromises();
     await wrapper.get("#compose-subject").setValue("No recipients");
     await wrapper.get("form").trigger("submit");
     await flushPromises();
@@ -99,6 +143,7 @@ describe("ComposerDialog send", () => {
       error: "SMTP server refused the message.",
     });
     const wrapper = mount(ComposerDialog, { props: { accountId: 42 } });
+    await flushPromises();
     await wrapper.get("#compose-to").setValue("a@x.com");
     await wrapper.get("form").trigger("submit");
     await flushPromises();
@@ -107,6 +152,68 @@ describe("ComposerDialog send", () => {
       "SMTP server refused the message.",
     );
     expect(wrapper.emitted("sent")).toBeUndefined();
+  });
+});
+
+describe("ComposerDialog attachments", () => {
+  it("adds a picked attachment and includes its path on send", async () => {
+    pickAttachmentsMock.mockResolvedValue(["/home/k/report.pdf"]);
+    statAttachmentsMock.mockResolvedValue([
+      { path: "/home/k/report.pdf", filename: "report.pdf", sizeBytes: 2048 },
+    ]);
+    const wrapper = mount(ComposerDialog, { props: { accountId: 42 } });
+    await flushPromises();
+
+    await wrapper.get("#compose-to").setValue("a@x.com");
+    await attachButton(wrapper).trigger("click");
+    await flushPromises();
+
+    // A chip appears for the picked file.
+    expect(wrapper.text()).toContain("report.pdf");
+
+    await wrapper.get("form").trigger("submit");
+    await flushPromises();
+
+    const payload = sendMessageMock.mock.calls[0]?.[0];
+    expect(payload?.attachments).toEqual(["/home/k/report.pdf"]);
+  });
+
+  it("warns once when the body mentions an attachment but none is attached", async () => {
+    const wrapper = mount(ComposerDialog, { props: { accountId: 42 } });
+    await flushPromises();
+    await usePlainBody(wrapper);
+    await wrapper.get("#compose-to").setValue("a@x.com");
+    await wrapper.get("#compose-body").setValue("The file is attached below.");
+
+    await wrapper.get("form").trigger("submit");
+    await flushPromises();
+
+    // First send is intercepted by the reminder.
+    expect(sendMessageMock).not.toHaveBeenCalled();
+    expect(wrapper.get(".warning").text()).toContain("none is attached");
+
+    // Sending again honours the warning.
+    await wrapper.get("form").trigger("submit");
+    await flushPromises();
+    expect(sendMessageMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not warn when a file is already attached", async () => {
+    pickAttachmentsMock.mockResolvedValue(["/home/k/a.pdf"]);
+    statAttachmentsMock.mockResolvedValue([
+      { path: "/home/k/a.pdf", filename: "a.pdf", sizeBytes: 10 },
+    ]);
+    const wrapper = mount(ComposerDialog, { props: { accountId: 42 } });
+    await flushPromises();
+    await usePlainBody(wrapper);
+    await wrapper.get("#compose-to").setValue("a@x.com");
+    await wrapper.get("#compose-body").setValue("See attached.");
+    await attachButton(wrapper).trigger("click");
+    await flushPromises();
+
+    await wrapper.get("form").trigger("submit");
+    await flushPromises();
+    expect(sendMessageMock).toHaveBeenCalledTimes(1);
   });
 });
 
@@ -126,7 +233,6 @@ describe("ComposerDialog drafts", () => {
     const wrapper = mount(ComposerDialog, {
       props: { accountId: 42, draft },
     });
-    // Prefill happens in onMounted; let the bound inputs update.
     await flushPromises();
 
     expect((wrapper.get("#compose-to").element as HTMLInputElement).value).toBe(
@@ -135,6 +241,10 @@ describe("ComposerDialog drafts", () => {
     expect(
       (wrapper.get("#compose-subject").element as HTMLInputElement).value,
     ).toBe("Saved earlier");
+    // A draft opens in plain-text mode, so its textarea is present.
+    expect(
+      (wrapper.get("#compose-body").element as HTMLTextAreaElement).value,
+    ).toBe("Half-written body");
 
     await saveDraftButton(wrapper).trigger("click");
     await flushPromises();
@@ -147,6 +257,8 @@ describe("ComposerDialog drafts", () => {
         bcc: [],
         subject: "Saved earlier",
         textBody: "Half-written body",
+        htmlBody: null,
+        attachments: [],
       },
       88,
     );
@@ -156,6 +268,7 @@ describe("ComposerDialog drafts", () => {
 
   it("creates a new draft with a null id from a blank composer", async () => {
     const wrapper = mount(ComposerDialog, { props: { accountId: 7 } });
+    await flushPromises();
     await wrapper.get("#compose-to").setValue("new@example.org");
     await saveDraftButton(wrapper).trigger("click");
     await flushPromises();
@@ -176,7 +289,6 @@ describe("ComposerDialog identities", () => {
     const wrapper = mount(ComposerDialog, { props: { accountId: 42 } });
     await flushPromises();
 
-    // The From picker is shown with the default selected.
     expect(
       (wrapper.get("#compose-from").element as HTMLSelectElement).value,
     ).toBe("7");
@@ -203,30 +315,34 @@ describe("ComposerDialog identities", () => {
     await wrapper.get("form").trigger("submit");
     await flushPromises();
 
-    // The chosen identity carries its own account across.
     expect(sendMessageMock).toHaveBeenCalledWith(
       expect.objectContaining({ identityId: 8, accountId: 99 }),
     );
   });
 
-  it("inserts the default identity's signature into a new message", async () => {
+  it("appends the default identity's signature to the sent body", async () => {
     listIdentitiesMock.mockResolvedValue([
       identity({ id: 7, isDefault: true, signatureText: "Cheers,\nKlaus" }),
     ]);
     const wrapper = mount(ComposerDialog, { props: { accountId: 42 } });
     await flushPromises();
 
-    const body = wrapper.get("#compose-body").element as HTMLTextAreaElement;
-    expect(body.value).toContain("-- \nCheers,\nKlaus");
+    // The signature is previewed, not baked into the editable body.
+    expect(wrapper.get(".signature-body").text()).toContain("Cheers,");
+
+    await wrapper.get("#compose-to").setValue("a@x.com");
+    await wrapper.get("form").trigger("submit");
+    await flushPromises();
+
+    const payload = sendMessageMock.mock.calls[0]?.[0];
+    expect(payload?.textBody).toContain("-- \nCheers,\nKlaus");
   });
 
-  it("replaces a draft's baked-in signature on identity switch, never duplicating", async () => {
+  it("swaps the previewed signature on identity switch", async () => {
     listIdentitiesMock.mockResolvedValue([
       identity({ id: 7, accountId: 3, isDefault: true, signatureText: "Klaus" }),
       identity({ id: 8, accountId: 3, signatureText: "Sales Team" }),
     ]);
-    // The saved draft already carries the first identity's signature in its
-    // body; the composer does not re-insert one for a loaded draft.
     const draftWithSig: DraftDto = {
       id: 88,
       accountId: 3,
@@ -242,21 +358,19 @@ describe("ComposerDialog identities", () => {
     });
     await flushPromises();
 
-    await wrapper.get("#compose-from").setValue("8");
+    // The baked-in signature was stripped from the editable body on load.
+    expect(
+      (wrapper.get("#compose-body").element as HTMLTextAreaElement).value,
+    ).toBe("Hello there");
 
-    const body = (wrapper.get("#compose-body").element as HTMLTextAreaElement)
-      .value;
-    // The new identity's signature replaced the old one in place.
-    expect(body).toContain("-- \nSales Team");
-    expect(body).not.toContain("Klaus");
-    // Exactly one signature delimiter, and the user's body is preserved above it.
-    expect(body.match(/-- \n/g)).toHaveLength(1);
-    expect(body).toContain("Hello there");
+    await wrapper.get("#compose-from").setValue("8");
+    const preview = wrapper.get(".signature-body").text();
+    expect(preview).toContain("Sales Team");
+    expect(preview).not.toContain("Klaus");
   });
 });
 
 describe("ComposerDialog send later", () => {
-  /** A datetime-local string roughly one hour in the future, in local time. */
   function futureLocal(): string {
     const d = new Date(Date.now() + 3_600_000);
     const pad = (n: number) => String(n).padStart(2, "0");
@@ -290,8 +404,6 @@ describe("ComposerDialog send later", () => {
     await wrapper.get("#send-later-custom").trigger("keydown", { key: "Enter" });
     await flushPromises();
 
-    // Exactly one call, and it carries a schedule — never an immediate send
-    // (an immediate send would omit scheduledAtUnix).
     expect(sendMessageMock).toHaveBeenCalledTimes(1);
     expect(sendMessageMock).toHaveBeenCalledWith(
       expect.objectContaining({ scheduledAtUnix: expect.any(Number) }),

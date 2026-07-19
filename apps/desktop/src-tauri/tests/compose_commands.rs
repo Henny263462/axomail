@@ -9,10 +9,11 @@ use axomail_desktop_lib::commands::accounts::{create_account_impl, list_accounts
 use axomail_desktop_lib::commands::compose::{
     list_outbox_impl, retry_outbox_impl, send_message_impl,
 };
-use axomail_desktop_lib::dto::{AccountSummaryDto, CreateAccountInput};
+use axomail_desktop_lib::dto::{AccountSummaryDto, ComposeAttachmentDto, CreateAccountInput};
 use axomail_desktop_lib::state::SharedSecretStore;
 use axomail_storage::{NewOutbox, OutboxId, OutboxState, Store};
 use axomail_test_support::{ScriptedServer, Step, TestTlsIdentity};
+use base64::Engine;
 use common::{compose_input, outgoing_account_input, secret_stores, seed_standard_folders};
 
 /// Creates an account and adds the standard folders (IMAP seeds only the
@@ -231,4 +232,198 @@ async fn retry_outbox_rejects_an_unknown_id() {
         error,
         axomail_core::MailError::Configuration { .. }
     ));
+}
+
+#[tokio::test]
+async fn send_message_with_html_and_attachment_builds_multipart() {
+    let store = Store::open_in_memory().await.unwrap();
+    let (_concrete, secrets) = secret_stores();
+    let identity = TestTlsIdentity::generate().unwrap();
+    let server = ScriptedServer::spawn_tls(smtp_steps(true, "250 2.1.5 ok"), &identity)
+        .await
+        .unwrap();
+    let roots = vec![identity.root_der().to_vec()];
+
+    let summary =
+        account_with_folders(&store, &secrets, outgoing_account_input(server.port())).await;
+
+    // A real file on disk is the attachment source (dialog picks path, Rust
+    // reads bytes). A traversal-shaped basename must land sanitized in the MIME.
+    let dir = tempfile::tempdir().unwrap();
+    let file_path = dir.path().join("quarterly.pdf");
+    std::fs::write(&file_path, b"%PDF-1.7 attachment payload").unwrap();
+
+    let mut input = compose_input(summary.id, &["bob@example.org"], "Rich message");
+    input.text_body = "Plain text alternative.".to_owned();
+    // The HTML carries a hostile <script>; the send path must sanitize it out.
+    input.html_body = Some("<p>Hello in <b>HTML</b></p><script>alert(1)</script>".to_owned());
+    input.attachments = vec![file_path.to_str().unwrap().to_owned()];
+
+    let outcome = send_message_impl(&store, &secrets, &roots, input, false)
+        .await
+        .unwrap()
+        .outcome;
+    assert!(outcome.sent, "rich send should succeed");
+
+    let transcript = server.transcripts().into_iter().next().unwrap();
+    let received = transcript.received_text();
+    assert!(
+        received.contains("multipart/alternative"),
+        "expected a text+html alternative part"
+    );
+    assert!(
+        received.contains("multipart/mixed"),
+        "expected a mixed part wrapping the attachment"
+    );
+    assert!(received.contains("Plain text alternative."));
+    assert!(received.contains("<b>HTML</b>"));
+    // The attachment name (base64 content aside) appears in the part headers.
+    assert!(
+        received.contains("quarterly.pdf"),
+        "attachment filename should be present"
+    );
+    // The injected script was stripped by the server-side sanitizer.
+    assert!(
+        !received.contains("alert(1)"),
+        "hostile script must not reach the wire: {received}"
+    );
+}
+
+/// A forwarded message (inline base64 `message/rfc822`) and a user-picked file
+/// (path read by Rust) combine into a single `multipart/mixed` tree — the two
+/// attachment transports unified across tracks 3.1 and 3.5.
+#[tokio::test]
+async fn forward_with_picked_file_builds_one_mixed_tree() {
+    let store = Store::open_in_memory().await.unwrap();
+    let (_concrete, secrets) = secret_stores();
+    let identity = TestTlsIdentity::generate().unwrap();
+    let server = ScriptedServer::spawn_tls(smtp_steps(true, "250 2.1.5 ok"), &identity)
+        .await
+        .unwrap();
+    let roots = vec![identity.root_der().to_vec()];
+
+    let summary =
+        account_with_folders(&store, &secrets, outgoing_account_input(server.port())).await;
+
+    // A user-picked file: the dialog gives a path, Rust reads the bytes.
+    let dir = tempfile::tempdir().unwrap();
+    let file_path = dir.path().join("agenda.pdf");
+    std::fs::write(&file_path, b"%PDF-1.7 picked file payload").unwrap();
+
+    // A forwarded message rides as an inline base64 message/rfc822 part.
+    let original = b"From: carol@example.net\r\nSubject: Original\r\n\r\nBody of forwarded note.\r\n";
+    let forwarded = ComposeAttachmentDto {
+        filename: "Original.eml".to_owned(),
+        mime_type: "message/rfc822".to_owned(),
+        content_base64: base64::engine::general_purpose::STANDARD.encode(original),
+    };
+
+    let mut input = compose_input(summary.id, &["bob@example.org"], "Fwd: Original");
+    input.text_body = "See the attached message and file.".to_owned();
+    input.attachments = vec![file_path.to_str().unwrap().to_owned()];
+    input.forwarded_attachments = vec![forwarded];
+
+    let outcome = send_message_impl(&store, &secrets, &roots, input, false)
+        .await
+        .unwrap()
+        .outcome;
+    assert!(outcome.sent, "forward + picked file should send");
+
+    let transcript = server.transcripts().into_iter().next().unwrap();
+    let received = transcript.received_text();
+    // One mixed tree carrying BOTH the picked file and the forwarded message.
+    assert!(
+        received.contains("multipart/mixed"),
+        "expected a mixed wrapper: {received}"
+    );
+    assert!(
+        received.contains("agenda.pdf"),
+        "picked-file part missing: {received}"
+    );
+    assert!(
+        received.contains("message/rfc822"),
+        "forwarded rfc822 part missing: {received}"
+    );
+    assert!(
+        received.contains("Original.eml"),
+        "forwarded filename missing: {received}"
+    );
+}
+
+#[tokio::test]
+async fn scheduled_send_with_attachment_is_rejected_before_queueing() {
+    let store = Store::open_in_memory().await.unwrap();
+    let (_concrete, secrets) = secret_stores();
+    let summary = create_account_impl(&store, &secrets, outgoing_account_input(2525))
+        .await
+        .unwrap();
+
+    let dir = tempfile::tempdir().unwrap();
+    let file_path = dir.path().join("deck.pdf");
+    std::fs::write(&file_path, b"payload").unwrap();
+
+    let mut input = compose_input(summary.id, &["bob@example.org"], "Later with file");
+    input.attachments = vec![file_path.to_str().unwrap().to_owned()];
+    // Far in the future so it is treated as a scheduled send.
+    input.scheduled_at_unix = Some(i64::MAX);
+
+    let error = send_message_impl(&store, &secrets, &[], input, false)
+        .await
+        .expect_err("a scheduled send with an attachment must be rejected");
+    assert!(matches!(
+        error,
+        axomail_core::MailError::Configuration { .. }
+    ));
+    // Nothing was queued: the rejection happened before any outbox row.
+    assert!(list_outbox_impl(&store).await.unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn offline_send_with_attachment_is_rejected() {
+    let store = Store::open_in_memory().await.unwrap();
+    let (_concrete, secrets) = secret_stores();
+    let summary = create_account_impl(&store, &secrets, outgoing_account_input(2525))
+        .await
+        .unwrap();
+
+    let dir = tempfile::tempdir().unwrap();
+    let file_path = dir.path().join("photo.png");
+    std::fs::write(&file_path, b"\x89PNG payload").unwrap();
+
+    let mut input = compose_input(summary.id, &["bob@example.org"], "Offline with file");
+    input.attachments = vec![file_path.to_str().unwrap().to_owned()];
+
+    let error = send_message_impl(&store, &secrets, &[], input, true)
+        .await
+        .expect_err("an offline send with an attachment must be rejected");
+    assert!(matches!(
+        error,
+        axomail_core::MailError::Configuration { .. }
+    ));
+    assert!(list_outbox_impl(&store).await.unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn html_only_message_may_be_scheduled_as_text() {
+    let store = Store::open_in_memory().await.unwrap();
+    let (_concrete, secrets) = secret_stores();
+    let summary = create_account_impl(&store, &secrets, outgoing_account_input(2525))
+        .await
+        .unwrap();
+
+    let mut input = compose_input(summary.id, &["bob@example.org"], "Later, formatted");
+    input.html_body = Some("<p>Bold <b>plans</b></p>".to_owned());
+    input.scheduled_at_unix = Some(i64::MAX);
+
+    // No attachment: an HTML-only message degrades to its persisted text
+    // alternative and is accepted as a scheduled send.
+    let outcome = send_message_impl(&store, &secrets, &[], input, false)
+        .await
+        .unwrap()
+        .outcome;
+    assert!(!outcome.sent);
+    assert_eq!(outcome.scheduled_at_unix, Some(i64::MAX));
+    let items = list_outbox_impl(&store).await.unwrap();
+    assert_eq!(items.len(), 1);
+    assert_eq!(items[0].state, "pending");
 }

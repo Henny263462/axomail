@@ -154,9 +154,10 @@ describe("ComposerDialog reply prefill", () => {
     expect(
       (wrapper.get("#compose-subject").element as HTMLInputElement).value,
     ).toBe("Re: Weekly sync");
-    expect(
-      (wrapper.get("#compose-body").element as HTMLTextAreaElement).value,
-    ).toContain("> Original line.");
+    // The rich editor (contenteditable) holds the quoted body.
+    expect(wrapper.get("#compose-editor").element.textContent).toContain(
+      "> Original line.",
+    );
     // The title reflects the reply mode.
     expect(wrapper.get("#composer-title").text()).toBe("Reply");
   });
@@ -221,7 +222,7 @@ describe("ComposerDialog forward prefill", () => {
     expect(sendMessageMock).toHaveBeenCalledWith(
       expect.objectContaining({
         to: ["dave@example.org"],
-        attachments: [
+        forwardedAttachments: [
           {
             filename: "Weekly sync.eml",
             mimeType: "message/rfc822",

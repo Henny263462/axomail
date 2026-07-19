@@ -37,20 +37,26 @@ pub struct Submission {
 /// Length at which the stored Sent-copy preview is truncated.
 const PREVIEW_LEN: usize = 200;
 
-/// Per-send data that is not persisted on the outbox row.
+/// Per-send content that rides only on the immediate send path.
 ///
-/// Threading headers (reply) and a forwarded `message/rfc822` part live here
-/// because the outbox schema carries no columns for them (no migration this
-/// wave). They are supplied on the immediate-send path from the compose input;
-/// the retry/drain path submits with [`SendExtras::default`], so a scheduled or
-/// offline reply/forward sends without these extras — a documented limitation.
-#[derive(Debug, Default, Clone)]
-pub(super) struct SendExtras {
+/// The durable outbox row is text-only (no migration this wave), so the reply
+/// threading headers, the HTML alternative, and any attachments (picked files
+/// and a forwarded `message/rfc822` part) are threaded in-memory into the one
+/// live submission rather than persisted. A retry (which rebuilds from the
+/// stored row) or a deferred send therefore uses [`MessageExtras::default`] —
+/// the plain-text alternative — never a silently stripped copy. A scheduled or
+/// offline reply consequently sends without its threading headers, a documented
+/// limitation; a deferred send carrying attachments is rejected up front.
+#[derive(Debug, Default)]
+pub(super) struct MessageExtras {
     /// `In-Reply-To` (source Message-ID, no angle brackets).
     pub in_reply_to: Option<String>,
     /// `References` chain (oldest first).
     pub references: Vec<String>,
-    /// Attachments to include on this message.
+    /// Sanitized HTML alternative, or `None` for a text-only message.
+    pub html_body: Option<String>,
+    /// Attachments to include: picked files read from disk and any forwarded
+    /// `message/rfc822` parts, each with a sanitized name and MIME type.
     pub attachments: Vec<OutgoingAttachment>,
 }
 
@@ -61,14 +67,16 @@ pub(super) struct SendExtras {
 /// The message is rendered once so the identical bytes go to SMTP and to the
 /// local Sent copy; on success a [`SentCopyPlan`] is returned (for IMAP accounts
 /// with a resolvable Sent folder) so the caller can upload the copy to the
-/// server on a background task.
+/// server on a background task. `extras` carries the threading headers, HTML
+/// alternative, and attachments for a first, immediate send; retries pass
+/// [`MessageExtras::default`].
 pub(super) async fn submit_record(
     store: &Store,
     secrets: &SharedSecretStore,
     extra_roots: &[Vec<u8>],
     account: &Account,
     record: &OutboxRecord,
-    extras: &SendExtras,
+    extras: MessageExtras,
 ) -> Result<Submission, MailError> {
     // Resolve the identity the row was queued under; a deleted identity nulls
     // the reference (ON DELETE SET NULL), so this falls back to the account.
@@ -141,15 +149,16 @@ async fn build_provider(
 }
 
 /// Assembles the outgoing message from the account, stored row, chosen
-/// identity, and per-send extras. The identity, when present, supplies the From
-/// and Reply-To; otherwise the account's own address is used. `extras` carries
-/// the threading headers and any attachments (e.g. a forwarded message), which
-/// are not persisted on the outbox row (see [`SendExtras`]).
+/// identity, and the immediate-send `extras` (threading headers, HTML
+/// alternative, and attachments). The identity, when present, supplies the From
+/// and Reply-To; otherwise the account's own address is used. The plain-text
+/// body always comes from the durable row; the `extras` are not persisted on
+/// the outbox row (see [`MessageExtras`]).
 fn build_message(
     account: &Account,
     record: &OutboxRecord,
     identity: Option<&Identity>,
-    extras: &SendExtras,
+    extras: MessageExtras,
 ) -> Result<OutgoingMessage, MailError> {
     let (from, reply_to) = sender_headers(account, identity)?;
     Ok(OutgoingMessage {
@@ -160,10 +169,10 @@ fn build_message(
         reply_to,
         subject: record.subject.clone(),
         text_body: record.body_text.clone(),
-        html_body: None,
-        attachments: extras.attachments.clone(),
-        in_reply_to: extras.in_reply_to.clone(),
-        references: extras.references.clone(),
+        html_body: extras.html_body,
+        attachments: extras.attachments,
+        in_reply_to: extras.in_reply_to,
+        references: extras.references,
     })
 }
 

@@ -2,15 +2,16 @@
 //! scheduled or the app is offline) submit it immediately.
 
 use axomail_core::{Account, MailError, OutgoingAttachment};
-use axomail_security::sanitize_attachment_filename;
+use axomail_security::{sanitize_attachment_filename, sanitize_message_html};
 use axomail_storage::{Identity, IdentityId, NewOutbox, Store};
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD;
 
 use super::append::spawn_sent_copy_append;
 use super::shared::{
-    SendExtras, Submission, load_account, now_unix, parse_addresses, submit_record,
+    MessageExtras, Submission, load_account, now_unix, parse_addresses, submit_record,
 };
+use crate::commands::attachments::load_attachments;
 use crate::commands::map_command_error;
 use crate::dto::{ComposeAttachmentDto, ComposeInput, SendOutcomeDto};
 use crate::state::{AppState, SharedSecretStore};
@@ -46,25 +47,50 @@ pub async fn send_message_impl(
             message: "a message needs at least one primary (To) recipient".to_owned(),
         });
     }
-    // Validate every address and decode every attachment before writing
-    // anything, so malformed input fails the command before any row is created.
+    // Validate every address before writing anything.
     parse_addresses(&input.to)?;
     parse_addresses(&input.cc)?;
     parse_addresses(&input.bcc)?;
-    let attachments = decode_attachments(&input.attachments)?;
 
     let account = load_account(store, input.account_id).await?;
     let identity = resolve_identity(store, &account, input.identity_id).await?;
     // A schedule strictly in the future defers the send; a past/now instant is
     // treated as "send now".
     let scheduled = input.scheduled_at_unix.filter(|&at| at > now_unix());
+    let deferred = scheduled.is_some() || offline;
 
-    // Move the reply/forward threading headers out of the input before the row
-    // is built (partial move; the outbox row consumes the remaining fields).
-    // The extras are applied only on the immediate-send path below — a scheduled
-    // or offline send drains later from the row, which carries none of them.
-    let in_reply_to = input.in_reply_to;
-    let references = input.references;
+    // The durable outbox row is text-only (no migration this wave). Attachments —
+    // both picked files and a forwarded message/rfc822 part — therefore cannot
+    // survive to a later, worker-driven submission, so a deferred send that
+    // carries them is rejected up front rather than sent silently stripped. An
+    // HTML alternative degrades to the persisted text; reply threading headers
+    // are dropped on a deferred send (a documented limitation).
+    let has_attachments = !input.attachments.is_empty() || !input.forwarded_attachments.is_empty();
+    if deferred && has_attachments {
+        return Err(MailError::Configuration {
+            message: "attachments can only be sent now, not scheduled or queued while offline; \
+                      remove them or send while connected"
+                .to_owned(),
+        });
+    }
+
+    // Read attachments and sanitize the HTML only for an immediate send. Reading
+    // up front means an unreadable or oversized attachment fails the command
+    // before any outbox row is written (like recipient validation). Picked files
+    // (paths read by Rust) and forwarded rfc822 parts (inline base64) are
+    // combined into one attachment list, producing a single multipart/mixed.
+    let extras = if deferred {
+        MessageExtras::default()
+    } else {
+        let mut attachments = read_attachments(input.attachments.clone()).await?;
+        attachments.extend(decode_attachments(&input.forwarded_attachments)?);
+        MessageExtras {
+            in_reply_to: input.in_reply_to.clone(),
+            references: input.references.clone(),
+            html_body: sanitize_html_body(input.html_body.as_deref()),
+            attachments,
+        }
+    };
 
     let record = store
         .outbox()
@@ -101,15 +127,11 @@ pub async fn send_message_impl(
             Some("the message could not be queued for sending".to_owned()),
         )?));
     }
-    let extras = SendExtras {
-        in_reply_to,
-        references,
-        attachments,
-    };
-    submit_record(store, secrets, extra_roots, &account, &record, &extras).await
+    submit_record(store, secrets, extra_roots, &account, &record, extras).await
 }
 
-/// Decodes the composer's base64 attachments into outgoing MIME parts,
+/// Decodes the composer's inline base64 attachments (a forwarded message
+/// round-tripped as a `message/rfc822` part) into outgoing MIME parts,
 /// sanitizing each filename.
 ///
 /// # Errors
@@ -134,6 +156,38 @@ fn decode_attachments(
             })
         })
         .collect()
+}
+
+/// Sanitizes a composer-supplied HTML body to the allowlisted subset before it
+/// is sent (defense in depth over the editor's own client-side allowlist,
+/// ADR-0007). A blank or empty-after-sanitizing body yields `None` so the
+/// message stays text-only.
+fn sanitize_html_body(html: Option<&str>) -> Option<String> {
+    let raw = html?;
+    if raw.trim().is_empty() {
+        return None;
+    }
+    let cleaned = sanitize_message_html(raw).html;
+    (!cleaned.trim().is_empty()).then_some(cleaned)
+}
+
+/// Reads picked-file attachment bytes off the async runtime's blocking pool
+/// (`std::fs` is synchronous). Enforces the total size cap and sanitizes each
+/// filename.
+///
+/// # Errors
+///
+/// Propagates [`MailError::Configuration`] (over the size cap) or
+/// [`MailError::Filesystem`] (unreadable file) from [`load_attachments`].
+async fn read_attachments(paths: Vec<String>) -> Result<Vec<OutgoingAttachment>, MailError> {
+    if paths.is_empty() {
+        return Ok(Vec::new());
+    }
+    tokio::task::spawn_blocking(move || load_attachments(&paths))
+        .await
+        .map_err(|error| MailError::Filesystem {
+            message: format!("attachment read task failed: {error}"),
+        })?
 }
 
 /// Wraps an outcome that has no Sent copy to upload (scheduled, offline, or a
