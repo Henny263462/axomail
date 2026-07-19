@@ -1,15 +1,19 @@
 <script setup lang="ts">
-import { onMounted, ref } from "vue";
+import { computed, onMounted, ref } from "vue";
 
 import { saveDraft, sendMessage } from "../../api/compose";
 import { listIdentities } from "../../api/identities";
+import { markReplySource } from "../../api/reply";
 import { applySignature, signatureBlock } from "../../lib/signature";
 import { useFocusTrap } from "../../composables/useFocusTrap";
 import type {
   AccountSummary,
+  ComposeAttachmentDto,
   ComposeInput,
+  ComposerPrefillDto,
   DraftDto,
   IdentityDto,
+  PrefillSourceDto,
 } from "../../types/mail";
 import ComposeBody from "./ComposeBody.vue";
 import ComposeFields from "./ComposeFields.vue";
@@ -21,6 +25,8 @@ const props = defineProps<{
   accountId: number;
   /** Draft being edited; when present its fields prefill the form. */
   draft?: DraftDto | null;
+  /** Reply/forward prefill; when present it seeds the form (see prepare_reply). */
+  prefill?: ComposerPrefillDto | null;
   /** Accounts, used only to label the From picker's identity groups. */
   accounts?: AccountSummary[];
 }>();
@@ -48,6 +54,17 @@ const identities = ref<IdentityDto[]>([]);
 const selectedIdentityId = ref<number | null>(null);
 const currentSignature = ref("");
 
+// Reply/forward context, carried through to the send: the threading headers,
+// any attachments (a forwarded message), the source to mark on success, and the
+// identity the prefill guessed. `hasPrefill` disables the new-message signature
+// handling, since a prefill's body already has the signature placed.
+const inReplyTo = ref<string | null>(null);
+const references = ref<string[]>([]);
+const attachments = ref<ComposeAttachmentDto[]>([]);
+const replySource = ref<PrefillSourceDto | null>(null);
+const prefillIdentityId = ref<number | null>(null);
+const hasPrefill = ref(false);
+
 const sending = ref(false);
 const savingDraft = ref(false);
 const errorMessage = ref("");
@@ -57,16 +74,22 @@ const fields = ref<InstanceType<typeof ComposeFields> | null>(null);
 const root = ref<HTMLElement | null>(null);
 const { onKeydown } = useFocusTrap(root, close);
 
+/** Title reflecting the mode: editing a draft, replying, forwarding, or new. */
+const dialogTitle = computed(() => {
+  if (draftId.value !== null) return "Edit draft";
+  if (replySource.value !== null) {
+    return replySource.value.mark === "forwarded" ? "Forward" : "Reply";
+  }
+  return "New message";
+});
+
 onMounted(async () => {
   const draft = props.draft ?? null;
+  const prefill = props.prefill ?? null;
   if (draft !== null) {
-    accountId.value = draft.accountId;
-    draftId.value = draft.id;
-    to.value = draft.to.join(", ");
-    cc.value = draft.cc.join(", ");
-    bcc.value = draft.bcc.join(", ");
-    subject.value = draft.subject;
-    body.value = draft.textBody;
+    loadDraft(draft);
+  } else if (prefill !== null) {
+    loadPrefill(prefill);
   }
   const loaded = await listIdentities();
   if (loaded !== null) {
@@ -76,31 +99,66 @@ onMounted(async () => {
   fields.value?.focus();
 });
 
-/** Picks the default identity for the current account and seeds its signature
- * (only for a brand-new message; a draft keeps its saved body). */
+/** Fills the form from an existing draft. */
+function loadDraft(draft: DraftDto): void {
+  accountId.value = draft.accountId;
+  draftId.value = draft.id;
+  to.value = draft.to.join(", ");
+  cc.value = draft.cc.join(", ");
+  bcc.value = draft.bcc.join(", ");
+  subject.value = draft.subject;
+  body.value = draft.textBody;
+}
+
+/** Fills the form from a reply/forward prefill and stores its send context. */
+function loadPrefill(prefill: ComposerPrefillDto): void {
+  hasPrefill.value = true;
+  accountId.value = prefill.accountId;
+  to.value = prefill.to.join(", ");
+  cc.value = prefill.cc.join(", ");
+  subject.value = prefill.subject;
+  body.value = prefill.body;
+  inReplyTo.value = prefill.inReplyTo;
+  references.value = prefill.references;
+  attachments.value = prefill.attachments;
+  replySource.value = prefill.source;
+  prefillIdentityId.value = prefill.identityId;
+}
+
+/** Picks the initial identity — the prefill's guess when present, else the
+ * account default — and seeds its signature only for a brand-new blank message
+ * (a draft keeps its saved body; a prefill already has the signature placed). */
 function preselectIdentity(): void {
   const forAccount = identities.value.filter(
     (identity) => identity.accountId === accountId.value,
   );
-  const chosen = forAccount.find((identity) => identity.isDefault) ?? forAccount[0];
+  const guessed =
+    hasPrefill.value && prefillIdentityId.value !== null
+      ? forAccount.find((identity) => identity.id === prefillIdentityId.value)
+      : undefined;
+  const chosen =
+    guessed ?? forAccount.find((identity) => identity.isDefault) ?? forAccount[0];
   if (chosen === undefined) {
     selectedIdentityId.value = null;
     return;
   }
   selectedIdentityId.value = chosen.id;
-  if (draftId.value === null) {
+  if (draftId.value === null && !hasPrefill.value) {
     const block = signatureBlock(chosen.signatureText);
     body.value = applySignature(body.value, "", block);
     currentSignature.value = block;
   }
 }
 
-/** Switches the From identity: updates the account and swaps the signature. */
+/** Switches the From identity: updates the account and swaps the signature.
+ * For a reply/forward the body already carries the placed signature, so the
+ * switch changes only the sender (no in-body signature rewrite). */
 function onIdentityChange(identityId: number): void {
   const identity = identities.value.find((item) => item.id === identityId);
   if (identity === undefined) return;
   selectedIdentityId.value = identityId;
   accountId.value = identity.accountId;
+  if (hasPrefill.value) return;
   const block = signatureBlock(identity.signatureText);
   body.value = applySignature(body.value, currentSignature.value, block);
   currentSignature.value = block;
@@ -133,6 +191,17 @@ function buildInput(scheduledAtUnix?: number): ComposeInput {
   if (scheduledAtUnix !== undefined) {
     input.scheduledAtUnix = scheduledAtUnix;
   }
+  // Reply/forward context is applied only on the immediate-send path (the
+  // backend does not persist it on the outbox row).
+  if (inReplyTo.value !== null) {
+    input.inReplyTo = inReplyTo.value;
+  }
+  if (references.value.length > 0) {
+    input.references = references.value;
+  }
+  if (attachments.value.length > 0) {
+    input.attachments = attachments.value;
+  }
   return input;
 }
 
@@ -155,10 +224,16 @@ async function submit(input: ComposeInput): Promise<void> {
         "Sending needs the desktop app; it is unavailable in the browser preview.";
       return;
     }
+    // Only a message that actually left the machine marks its source answered
+    // or forwarded (the flag reflects a delivered reply, not a queued one).
+    if (outcome.sent) {
+      await markSourceSent();
+      emit("sent", { draftId: draftId.value });
+      return;
+    }
     // A scheduled or offline-queued message never leaves now, but it did leave
     // the composer: it waits in the outbox (offline sends flush on reconnect).
     if (
-      outcome.sent ||
       (outcome.scheduledAtUnix ?? null) !== null ||
       outcome.queuedOffline === true
     ) {
@@ -169,6 +244,14 @@ async function submit(input: ComposeInput): Promise<void> {
   } finally {
     sending.value = false;
   }
+}
+
+/** After a successful reply/forward send, marks the source message answered
+ * ($Forwarded for a forward). A no-op for a plain new message. */
+async function markSourceSent(): Promise<void> {
+  const source = replySource.value;
+  if (source === null) return;
+  await markReplySource(source.messageId, source.mark);
 }
 
 function onSend(): Promise<void> {
@@ -215,7 +298,7 @@ async function onSaveDraft(): Promise<void> {
         id="composer-title"
         class="title"
       >
-        {{ draftId === null ? "New message" : "Edit draft" }}
+        {{ dialogTitle }}
       </h2>
 
       <form

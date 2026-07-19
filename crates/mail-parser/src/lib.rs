@@ -20,6 +20,8 @@ mod model;
 mod parse;
 mod preview;
 mod redact;
+mod text;
 
 pub use model::{ParsedAttachment, ParsedMessage};
 pub use parse::parse_message;
+pub use text::html_to_plain_text;

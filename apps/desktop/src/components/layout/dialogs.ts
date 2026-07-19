@@ -1,9 +1,14 @@
-import type { DraftDto } from "../../types/mail";
+import type { ComposerPrefillDto, DraftDto } from "../../types/mail";
 
-/** Payload for opening the composer: which account, and an optional draft. */
+/**
+ * Payload for opening the composer: which account, an optional draft, and an
+ * optional reply/forward prefill. A `prefill` (from `prepare_reply`) seeds the
+ * recipients, subject, body, threading headers, and a forwarded attachment.
+ */
 export interface ComposerPayload {
   accountId: number;
   draft: DraftDto | null;
+  prefill?: ComposerPrefillDto | null;
 }
 
 /**

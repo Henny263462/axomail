@@ -28,7 +28,12 @@ const emit = defineEmits<{
 // The composer is only mounted while open; the fallback keeps the prop types
 // total without leaking a half-open state.
 const composer = computed(
-  () => props.dialogs.payload("composer") ?? { accountId: 0, draft: null },
+  () =>
+    props.dialogs.payload("composer") ?? {
+      accountId: 0,
+      draft: null,
+      prefill: null,
+    },
 );
 </script>
 
@@ -42,6 +47,7 @@ const composer = computed(
     v-if="dialogs.isOpen('composer')"
     :account-id="composer.accountId"
     :draft="composer.draft"
+    :prefill="composer.prefill ?? null"
     :accounts="accounts"
     @close="dialogs.close('composer')"
     @sent="emit('composerSent', $event)"

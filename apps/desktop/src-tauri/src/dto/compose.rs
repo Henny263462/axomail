@@ -6,6 +6,23 @@ use serde::{Deserialize, Serialize};
 
 use super::checked_id;
 
+/// An attachment carried by a composed message.
+///
+/// The content is base64-encoded so it survives the JSON IPC boundary. Used
+/// today by the reply/forward prefill (a forwarded message is round-tripped as
+/// a `message/rfc822` part); the general attachment picker (track 3.5) reuses
+/// the same shape.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ComposeAttachmentDto {
+    /// File name presented to recipients (already sanitized by the producer).
+    pub filename: String,
+    /// MIME type (e.g. `message/rfc822`, `application/pdf`).
+    pub mime_type: String,
+    /// Base64-encoded raw content (standard alphabet, with padding).
+    pub content_base64: String,
+}
+
 /// Content of one composed message, as submitted by the composer.
 ///
 /// Recipients are plain address strings; the send path parses and validates
@@ -35,6 +52,18 @@ pub struct ComposeInput {
     /// than submitted immediately.
     #[serde(default)]
     pub scheduled_at_unix: Option<i64>,
+    /// `In-Reply-To` header value (source Message-ID, no angle brackets) when
+    /// this is a reply. Applied to the outgoing MIME on the immediate-send
+    /// path.
+    #[serde(default)]
+    pub in_reply_to: Option<String>,
+    /// `References` chain (oldest first) when this is a reply. Applied to the
+    /// outgoing MIME on the immediate-send path.
+    #[serde(default)]
+    pub references: Vec<String>,
+    /// Attachments to include (e.g. a forwarded message as `message/rfc822`).
+    #[serde(default)]
+    pub attachments: Vec<ComposeAttachmentDto>,
 }
 
 /// A stored draft, as listed by `list_drafts`.

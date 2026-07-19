@@ -69,6 +69,21 @@ pub fn flagged_op(flagged: bool) -> (PendingOpKind, String) {
     )
 }
 
+/// Builds the `(kind, payload)` for setting or clearing `\Answered`.
+///
+/// Used after a reply is sent to mark the source message answered so the flag
+/// propagates to the server (and thus to the sender's other clients).
+#[must_use]
+pub fn answered_op(answered: bool) -> (PendingOpKind, String) {
+    system_flag_op(
+        SystemFlags {
+            answered: true,
+            ..SystemFlags::default()
+        },
+        answered,
+    )
+}
+
 /// Builds the `(kind, payload)` for adding or removing one IMAP keyword (tag)
 /// on a message. `add = true` issues `+FLAGS (keyword)`; `add = false` issues
 /// `-FLAGS (keyword)`. Used by the tag/untag command to enqueue a keyword op
@@ -195,6 +210,16 @@ mod tests {
         let delta = flag_delta(&op(kind, &payload)).unwrap();
         assert!(delta.remove.system.seen);
         assert!(delta.add.is_empty());
+    }
+
+    #[test]
+    fn answered_op_targets_the_answered_system_flag() {
+        let (kind, payload) = answered_op(true);
+        assert_eq!(kind, PendingOpKind::AddFlags);
+        let delta = flag_delta(&op(kind, &payload)).unwrap();
+        assert!(delta.add.system.answered);
+        assert!(!delta.add.system.seen);
+        assert!(delta.remove.is_empty());
     }
 
     #[test]

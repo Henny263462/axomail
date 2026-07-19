@@ -8,9 +8,15 @@ import {
   retryOutbox,
   sendOutboxNow,
 } from "../api/compose";
+import { prepareForward, prepareReply, prepareReplyAll } from "../api/reply";
 import type { AppDialogMap } from "../components/layout/dialogs";
 import type { SidebarView } from "../components/sidebar/view";
-import type { AccountSummary, DraftDto, OutboxItemDto } from "../types/mail";
+import type {
+  AccountSummary,
+  ComposerPrefillDto,
+  DraftDto,
+  OutboxItemDto,
+} from "../types/mail";
 import type { DialogController } from "./useDialogs";
 
 /**
@@ -89,6 +95,29 @@ export function useComposeWorkflow(deps: Deps) {
     deps.dialogs.open("composer", { accountId: draft.accountId, draft });
   }
 
+  /** Opens the composer pre-filled from a reply/forward prefill. A `null`
+   * prefill (browser preview, or a load failure) opens nothing. */
+  function openPrefill(prefill: ComposerPrefillDto | null): void {
+    if (prefill === null) return;
+    deps.dialogs.open("composer", {
+      accountId: prefill.accountId,
+      draft: null,
+      prefill,
+    });
+  }
+
+  async function openReply(messageId: number): Promise<void> {
+    openPrefill(await prepareReply(messageId));
+  }
+
+  async function openReplyAll(messageId: number): Promise<void> {
+    openPrefill(await prepareReplyAll(messageId));
+  }
+
+  async function openForward(messageId: number): Promise<void> {
+    openPrefill(await prepareForward(messageId));
+  }
+
   async function onComposerSent(payload: {
     draftId: number | null;
   }): Promise<void> {
@@ -130,6 +159,9 @@ export function useComposeWorkflow(deps: Deps) {
     selectOutbox,
     openCompose,
     openDraft,
+    openReply,
+    openReplyAll,
+    openForward,
     onComposerSent,
     onComposerSaved,
     onRetryOutbox,

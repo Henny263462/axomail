@@ -93,6 +93,9 @@ pub fn compose_input(account_id: i64, to: &[&str], subject: &str) -> ComposeInpu
         subject: subject.to_owned(),
         text_body: "Hello from the axomail composer test.".to_owned(),
         scheduled_at_unix: None,
+        in_reply_to: None,
+        references: Vec::new(),
+        attachments: Vec::new(),
     }
 }
 

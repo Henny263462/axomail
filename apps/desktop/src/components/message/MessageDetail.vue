@@ -14,6 +14,9 @@ const emit = defineEmits<{
   (event: "show-remote-once"): void;
   (event: "always-allow-remote", sender: string): void;
   (event: "toggle-star"): void;
+  (event: "reply"): void;
+  (event: "reply-all"): void;
+  (event: "forward"): void;
 }>();
 
 const toLine = computed(() => formatRecipients(props.detail.to));
@@ -35,6 +38,34 @@ function alwaysAllow(): void {
 
 <template>
   <article class="detail">
+    <div
+      class="action-bar"
+      role="toolbar"
+      aria-label="Message actions"
+    >
+      <button
+        type="button"
+        class="action"
+        @click="emit('reply')"
+      >
+        Reply
+      </button>
+      <button
+        type="button"
+        class="action"
+        @click="emit('reply-all')"
+      >
+        Reply all
+      </button>
+      <button
+        type="button"
+        class="action"
+        @click="emit('forward')"
+      >
+        Forward
+      </button>
+    </div>
+
     <header class="header">
       <div class="subject-row">
         <h1 class="subject">
@@ -149,6 +180,32 @@ function alwaysAllow(): void {
 <style scoped>
 .detail {
   padding: var(--space-5);
+}
+
+.action-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-bottom: var(--space-4);
+}
+
+.action {
+  padding: var(--space-1) var(--space-3);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--color-bg);
+  font-size: var(--text-sm);
+  color: var(--color-text);
+  cursor: pointer;
+}
+
+.action:hover {
+  background: var(--color-bg-hover);
+}
+
+.action:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
 }
 
 .header {

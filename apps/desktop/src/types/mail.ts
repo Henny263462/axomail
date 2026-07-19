@@ -195,6 +195,51 @@ export interface ComposeInput {
   textBody: string;
   /** Unix second to send at, for a "send later" message. */
   scheduledAtUnix?: number | null;
+  /** `In-Reply-To` header value (source Message-ID) when this is a reply. */
+  inReplyTo?: string | null;
+  /** `References` chain (oldest first) when this is a reply. */
+  references?: string[];
+  /** Attachments to include (e.g. a forwarded message as message/rfc822). */
+  attachments?: ComposeAttachmentDto[];
+}
+
+/**
+ * An attachment carried by a composed message. Content is base64-encoded to
+ * survive the IPC boundary. Produced today by the reply/forward prefill.
+ */
+export interface ComposeAttachmentDto {
+  filename: string;
+  mimeType: string;
+  contentBase64: string;
+}
+
+/** Which reply operation a composer prefill is prepared for. */
+export type ReplyMode = "reply" | "replyAll" | "forward";
+
+/** How a source message is marked once its reply/forward is sent. */
+export type SourceMark = "answered" | "forwarded";
+
+/** The source message a reply/forward came from, and how to mark it on send. */
+export interface PrefillSourceDto {
+  messageId: number;
+  mark: SourceMark;
+}
+
+/**
+ * Everything the composer needs to open pre-filled for a reply or forward,
+ * returned by `prepare_reply`.
+ */
+export interface ComposerPrefillDto {
+  accountId: number;
+  identityId: number | null;
+  to: string[];
+  cc: string[];
+  subject: string;
+  body: string;
+  inReplyTo: string | null;
+  references: string[];
+  attachments: ComposeAttachmentDto[];
+  source: PrefillSourceDto;
 }
 
 /** A saved draft, as returned by `list_drafts`. */

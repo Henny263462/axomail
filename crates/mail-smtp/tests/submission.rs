@@ -392,6 +392,8 @@ fn sample_message() -> OutgoingMessage {
             mime_type: "application/pdf".to_owned(),
             bytes: PDF_BYTES.to_vec(),
         }],
+        in_reply_to: None,
+        references: vec![],
     }
 }
 

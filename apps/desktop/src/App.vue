@@ -354,6 +354,9 @@ function onSyncEvent(event: SyncEventDto): void {
         v-if="messageView"
         :message-id="viewedMessageId"
         @flag-changed="messageActions.syncStar($event.messageId, $event.flagged)"
+        @reply="compose.openReply"
+        @reply-all="compose.openReplyAll"
+        @forward="compose.openForward"
       />
       <EmptyState
         v-else-if="activeView === 'drafts'"

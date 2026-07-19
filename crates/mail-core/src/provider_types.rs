@@ -195,6 +195,14 @@ pub struct OutgoingMessage {
     pub html_body: Option<String>,
     /// File attachments.
     pub attachments: Vec<OutgoingAttachment>,
+    /// `In-Reply-To`: the Message-ID (without angle brackets) of the message
+    /// this one replies to. Written as a threading header by the SMTP adapter
+    /// when present; `None` for a fresh message or a forward.
+    pub in_reply_to: Option<String>,
+    /// `References`: the ancestor Message-IDs (without angle brackets), oldest
+    /// first, ending with the direct parent. Written as a threading header by
+    /// the SMTP adapter when non-empty; empty for a fresh message or forward.
+    pub references: Vec<String>,
 }
 
 /// Acknowledgment for a submitted message.
