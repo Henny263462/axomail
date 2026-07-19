@@ -2,7 +2,7 @@
 
 use axomail_core::{Address, MailError};
 use axomail_parser::{ParsedAttachment, ParsedMessage};
-use axomail_security::sanitize_message_html;
+use axomail_security::{RemoteContentPolicy, ScamIndicator, sanitize_message_html_with_policy};
 use serde::Serialize;
 
 use super::checked_id;
@@ -55,12 +55,38 @@ impl AttachmentMetaDto {
     }
 }
 
+/// One deceptive-link ("scam") indicator surfaced to the reading pane.
+///
+/// Warning-only: the sanitized body is unchanged. `kind` is a stable slug
+/// (`deceptiveLink` / `ipAddressHost`) the UI can style or localize; `detail`
+/// is the secret-free, human-readable reason shown in the warning banner.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ScamFlagDto {
+    /// Stable machine-readable indicator kind.
+    pub kind: String,
+    /// Human-readable explanation for the warning banner.
+    pub detail: String,
+}
+
+impl ScamFlagDto {
+    /// Converts a security-layer indicator into its DTO form.
+    fn from_indicator(indicator: &ScamIndicator) -> Self {
+        Self {
+            kind: indicator.kind.slug().to_owned(),
+            detail: indicator.detail.clone(),
+        }
+    }
+}
+
 /// Full detail of one message, ready for the reading pane.
 ///
-/// `sanitizedHtml` is the output of [`sanitize_message_html`] and is safe to
-/// hand to the sandboxed `iframe srcdoc` renderer (ADR-0007); `remoteBlocked`
-/// and `hadActiveContent` drive the "images blocked" / "active content
-/// removed" badges.
+/// `sanitizedHtml` is the output of the sanitizer and is safe to hand to the
+/// sandboxed `iframe srcdoc` renderer (ADR-0007). `remoteBlockedCount` and
+/// `hadActiveContent` drive the "images blocked" / "active content removed"
+/// badges; `remoteAllowed` reports whether remote images were kept for this
+/// render (allow-once or an allowed sender); `scamFlags` carries any
+/// deceptive-link warnings.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct MessageDetailDto {
@@ -82,8 +108,13 @@ pub struct MessageDetailDto {
     pub text_body: Option<String>,
     /// Sanitized HTML body, if the message had one.
     pub sanitized_html: Option<String>,
-    /// Count of remote resources blocked during sanitization.
-    pub remote_blocked: i64,
+    /// Count of remote resources blocked during sanitization (with remote
+    /// images allowed, this counts only the still-blocked `data:`/`srcset`).
+    pub remote_blocked_count: i64,
+    /// Whether remote `http(s)` images were kept for this render.
+    pub remote_allowed: bool,
+    /// Deceptive-link warnings found in the sanitized DOM (warning only).
+    pub scam_flags: Vec<ScamFlagDto>,
     /// Whether active content (scripts, forms, ...) was stripped.
     pub had_active_content: bool,
     /// Downloadable attachment metadata (inline parts are excluded).
@@ -97,14 +128,22 @@ pub struct MessageDetailDto {
 }
 
 impl MessageDetailDto {
-    /// Builds a detail DTO from a parsed message, sanitizing any HTML body.
+    /// Builds a detail DTO from a parsed message, sanitizing any HTML body
+    /// under `policy` (which decides whether remote images are kept).
     ///
     /// # Errors
     ///
     /// Returns [`MailError::Configuration`] if the message id or an
     /// attachment size is out of the safe integer range.
-    pub fn from_parsed(message_id: i64, parsed: &ParsedMessage) -> Result<Self, MailError> {
-        let sanitized = parsed.html_body.as_deref().map(sanitize_message_html);
+    pub fn from_parsed(
+        message_id: i64,
+        parsed: &ParsedMessage,
+        policy: RemoteContentPolicy,
+    ) -> Result<Self, MailError> {
+        let sanitized = parsed
+            .html_body
+            .as_deref()
+            .map(|html| sanitize_message_html_with_policy(html, policy));
         let sender = parsed.from.first();
         let attachments = parsed
             .attachments
@@ -112,6 +151,12 @@ impl MessageDetailDto {
             .filter(|part| !part.inline)
             .map(AttachmentMetaDto::from_parsed)
             .collect::<Result<Vec<_>, _>>()?;
+        let scam_flags = sanitized.as_ref().map_or_else(Vec::new, |s| {
+            s.scam_flags
+                .iter()
+                .map(ScamFlagDto::from_indicator)
+                .collect()
+        });
         Ok(Self {
             id: checked_id(message_id)?,
             subject: parsed.subject.clone(),
@@ -125,9 +170,11 @@ impl MessageDetailDto {
             cc: parsed.cc.iter().map(RecipientDto::from_address).collect(),
             date_unix: parsed.date.map(axomail_core::UtcTimestamp::unix_seconds),
             text_body: parsed.text_body.clone(),
-            remote_blocked: sanitized
+            remote_blocked_count: sanitized
                 .as_ref()
                 .map_or(0, |s| i64::try_from(s.remote_blocked).unwrap_or(i64::MAX)),
+            remote_allowed: policy.allow_remote_images,
+            scam_flags,
             had_active_content: sanitized.as_ref().is_some_and(|s| s.had_active_content),
             sanitized_html: sanitized.map(|s| s.html),
             attachments,

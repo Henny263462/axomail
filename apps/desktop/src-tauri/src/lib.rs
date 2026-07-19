@@ -88,6 +88,7 @@ pub fn run() {
             commands::messages::list_messages,
             commands::messages::mark_message_seen,
             commands::detail::get_message_detail,
+            commands::remote_content::set_remote_content_allowed,
             commands::sync::sync_account,
             commands::compose::send_message,
             commands::compose::retry_outbox,

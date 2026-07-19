@@ -15,6 +15,7 @@ use axomail_core::{
     SyncRequest,
 };
 use axomail_parser::parse_message;
+use axomail_security::RemoteContentPolicy;
 use axomail_storage::Store;
 use axomail_sync::ProviderFactory;
 
@@ -28,6 +29,11 @@ const FETCH_SELECT_BATCH: u32 = 50;
 /// Loads the full detail of a message, fetching and caching its body if
 /// necessary.
 ///
+/// Remote images are blocked unless `allow_remote` overrides it (allow-once)
+/// or the message's sender is on the persistent allow list. An explicit
+/// `allow_remote` value always wins over the stored per-sender decision; when
+/// it is `None`, the stored decision applies.
+///
 /// # Errors
 ///
 /// Returns [`MailError::Configuration`] if the message is unknown or has no
@@ -38,6 +44,7 @@ pub async fn get_message_detail_impl<P, F>(
     factory: &F,
     raw_root: &Path,
     message_id: i64,
+    allow_remote: Option<bool>,
 ) -> Result<MessageDetailDto, MailError>
 where
     P: IncomingMailProvider + 'static,
@@ -84,7 +91,33 @@ where
         tracing::warn!(%message_id, %error, "failed to backfill threading identity");
     }
 
-    MessageDetailDto::from_parsed(message_id, &parsed)
+    let policy = resolve_remote_policy(store, &parsed, allow_remote).await?;
+    MessageDetailDto::from_parsed(message_id, &parsed, policy)
+}
+
+/// Decides the remote-content policy for this render: an explicit
+/// `allow_remote` override wins; otherwise the sender's persisted allow-list
+/// entry decides, defaulting to blocking.
+async fn resolve_remote_policy(
+    store: &Store,
+    parsed: &axomail_parser::ParsedMessage,
+    allow_remote: Option<bool>,
+) -> Result<RemoteContentPolicy, MailError> {
+    let allow_remote_images = match allow_remote {
+        Some(explicit) => explicit,
+        None => match parsed.from.first() {
+            Some(sender) => {
+                store
+                    .remote_content()
+                    .is_allowed(sender.email.as_str())
+                    .await?
+            }
+            None => false,
+        },
+    };
+    Ok(RemoteContentPolicy {
+        allow_remote_images,
+    })
 }
 
 /// Fetches the raw body for a message that is not cached yet, caches it, and
@@ -203,12 +236,23 @@ async fn cache_atomically(path: &Path, bytes: &[u8]) -> Result<(), MailError> {
 }
 
 /// Loads the full detail of a message for the reading pane.
+///
+/// `allow_remote` is the allow-once override: `Some(true)` shows remote images
+/// for this load regardless of the stored per-sender decision; `None` defers
+/// to that decision.
 #[tauri::command]
 pub async fn get_message_detail(
     state: tauri::State<'_, AppState>,
     message_id: i64,
+    allow_remote: Option<bool>,
 ) -> Result<MessageDetailDto, String> {
-    get_message_detail_impl(state.store(), state.factory(), state.raw_root(), message_id)
-        .await
-        .map_err(map_command_error)
+    get_message_detail_impl(
+        state.store(),
+        state.factory(),
+        state.raw_root(),
+        message_id,
+        allow_remote,
+    )
+    .await
+    .map_err(map_command_error)
 }

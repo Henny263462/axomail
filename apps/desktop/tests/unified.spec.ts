@@ -94,7 +94,9 @@ const detail: MessageDetailDto = {
   dateUnix: 1_752_100_000,
   textBody: "note body",
   sanitizedHtml: null,
-  remoteBlocked: 0,
+  remoteBlockedCount: 0,
+  remoteAllowed: false,
+  scamFlags: [],
   hadActiveContent: false,
   attachments: [],
   messageId: "work-note-1@example.org",
@@ -150,7 +152,7 @@ describe("App unified inbox", () => {
     await wrapper.get("button.item").trigger("click");
     await flushPromises();
 
-    expect(getMessageDetailMock).toHaveBeenCalledWith(202);
+    expect(getMessageDetailMock).toHaveBeenCalledWith(202, null);
     expect(wrapper.get('[aria-label="Message"]').text()).toContain("Work note");
   });
 });

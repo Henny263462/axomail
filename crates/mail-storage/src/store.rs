@@ -31,6 +31,7 @@ use crate::mailboxes::MailboxRepo;
 use crate::messages::MessageRepo;
 use crate::outbox::OutboxRepo;
 use crate::pop3_uidl::Pop3UidlRepo;
+use crate::remote_content::RemoteContentRepo;
 use crate::search::SearchRepo;
 use crate::settings::SettingsRepo;
 use crate::sync_jobs::SyncJobRepo;
@@ -185,6 +186,12 @@ impl Store {
     #[must_use]
     pub fn search(&self) -> SearchRepo<'_> {
         SearchRepo::new(&self.pool)
+    }
+
+    /// The per-sender remote-content allow-list repository.
+    #[must_use]
+    pub fn remote_content(&self) -> RemoteContentRepo<'_> {
+        RemoteContentRepo::new(&self.pool)
     }
 
     /// The cross-account unified-inbox repository.
