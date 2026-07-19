@@ -76,7 +76,17 @@ impl IncomingMailProvider for RecordingProvider {
     ) -> Result<(), MailError> {
         Err(MailError::Cancelled)
     }
+    async fn copy_message(
+        &mut self,
+        _id: &RemoteMessageId,
+        _target: &MailboxName,
+    ) -> Result<(), MailError> {
+        Err(MailError::Cancelled)
+    }
     async fn delete_message(&mut self, _id: &RemoteMessageId) -> Result<(), MailError> {
+        Err(MailError::Cancelled)
+    }
+    async fn expunge_mailbox(&mut self, _mailbox: &MailboxName) -> Result<(), MailError> {
         Err(MailError::Cancelled)
     }
     async fn append_message(

@@ -146,11 +146,35 @@ impl IncomingMailProvider for ImapProvider {
         message_ops::move_to(connected, uid, &encoded_target, timeout).await
     }
 
+    async fn copy_message(
+        &mut self,
+        id: &RemoteMessageId,
+        target: &MailboxName,
+    ) -> Result<(), MailError> {
+        let uid = self.resolve_uid(id)?;
+        let timeout = self.config.timeout;
+        let encoded_target = utf7::encode(target.as_str());
+        let connected = self.require_session()?;
+        message_ops::copy_to(connected, uid, &encoded_target, timeout).await
+    }
+
     async fn delete_message(&mut self, id: &RemoteMessageId) -> Result<(), MailError> {
         let uid = self.resolve_uid(id)?;
         let timeout = self.config.timeout;
         let connected = self.require_session()?;
         message_ops::delete(connected, uid, timeout).await
+    }
+
+    async fn expunge_mailbox(&mut self, mailbox: &MailboxName) -> Result<(), MailError> {
+        let timeout = self.config.timeout;
+        let encoded = utf7::encode(mailbox.as_str());
+        let connected = self.require_session()?;
+        // SELECT first so the subsequent EXPUNGE is confined to this mailbox
+        // (see `message_ops::empty_selected`).
+        let uid_validity = message_ops::select(connected, &encoded, timeout).await?;
+        self.selected = Some(SelectedMailbox { uid_validity });
+        let connected = self.require_session()?;
+        message_ops::empty_selected(connected, timeout).await
     }
 
     async fn append_message(

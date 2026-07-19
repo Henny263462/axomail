@@ -11,15 +11,18 @@
  * ids bubble up via `selectionChange` for bulk actions (track 3.2). New pages
  * load through `loadMore` when the window nears the end of the loaded rows.
  */
-import { computed, toRef, useId, watch } from "vue";
+import { computed, ref, toRef, useId, watch } from "vue";
 
 import type { AccountSummary, MessageListItem, TagChip } from "../../types/mail";
+import type { BulkAction } from "../../composables/useMailboxActions";
 import { useListNavigation } from "../../composables/useListNavigation";
 import { useMessageListView } from "../../composables/useMessageListView";
 import { useVirtualList } from "../../composables/useVirtualList";
+import BulkActionBar from "./BulkActionBar.vue";
 import EmptyState from "../common/EmptyState.vue";
 import MessageRow from "./MessageRow.vue";
 import QuickFilterBar from "./QuickFilterBar.vue";
+import RowContextMenu from "./RowContextMenu.vue";
 import ThreadRowItem from "./ThreadRow.vue";
 import type { VisibleRow } from "./rows";
 
@@ -63,6 +66,7 @@ const emit = defineEmits<{
   markAllRead: [];
   loadMore: [];
   selectionChange: [messageIds: number[]];
+  bulkAction: [action: BulkAction, ids: number[]];
   "update:threaded": [value: boolean];
 }>();
 
@@ -112,15 +116,56 @@ function domId(rowId: string): string {
   return `${uid}-${rowId.replace(":", "-")}`;
 }
 
+/** The message ids a row covers (a thread expands to all its messages). */
+function rowMessageIds(row: VisibleRow): number[] {
+  return row.kind === "thread" ? [...row.messageIds] : [row.message.id];
+}
+
+/**
+ * Targets for an action: the multi-selection when non-empty, else the ids of
+ * `fallback` (the active or right-clicked row). This lets Delete/Archive and
+ * the context menu act on a single row without an explicit selection.
+ */
+function actionTargets(fallback: VisibleRow | null): number[] {
+  const selected = view.selectedMessageIds.value;
+  if (selected.length > 0) return [...selected];
+  return fallback ? rowMessageIds(fallback) : [];
+}
+
+/** Emits a bulk action over the resolved targets, if any. */
+function runAction(action: BulkAction, fallback: VisibleRow | null): void {
+  const ids = actionTargets(fallback);
+  if (ids.length > 0) emit("bulkAction", action, ids);
+}
+
 // Keyboard + pointer navigation: roving active descendant + click gestures.
+// Delete → delete-to-Trash, `a` → archive, acting on the selection or the
+// active row (Thunderbird-style; neither key is otherwise bound).
 const nav = useListNavigation({
   visibleRows: view.visibleRows,
   selection: view.selection,
   toggleThread: view.toggleThread,
   scrollToIndex: virtual.scrollToIndex,
   onOpen: (messageId) => emit("select", messageId),
+  onDelete: (row) => runAction("delete", row),
+  onArchive: (row) => runAction("archive", row),
 });
 const { activeIndex, activeRow, activate, toggle, range, onKeydown } = nav;
+
+// Context menu: opened at the cursor on a row right-click; its actions act on
+// the selection-or-row targets resolved when it opened.
+const contextMenu = ref<{ x: number; y: number; ids: number[] } | null>(null);
+
+function openContext(event: MouseEvent, row: VisibleRow, index: number): void {
+  const ids = actionTargets(row);
+  if (ids.length === 0) return;
+  activate(row, index);
+  contextMenu.value = { x: event.clientX, y: event.clientY, ids };
+}
+
+function onContextAction(action: BulkAction): void {
+  if (contextMenu.value !== null) emit("bulkAction", action, contextMenu.value.ids);
+}
 
 const activeDomId = computed(() =>
   activeRow.value ? domId(activeRow.value.rowId) : undefined,
@@ -170,14 +215,11 @@ watch(
         class="selection-count"
         role="status"
       >{{ selectionCount }} selected</span>
-      <button
+      <BulkActionBar
         v-if="selectionCount > 0"
-        type="button"
-        class="clear-selection"
-        @click="view.selection.clear()"
-      >
-        Clear
-      </button>
+        @action="runAction($event, null)"
+        @clear="view.selection.clear()"
+      />
       <span class="spacer" />
       <button
         v-if="showMarkAllRead"
@@ -249,6 +291,7 @@ watch(
               @range="range(entry.row, entry.index)"
               @expand="view.toggleThread(entry.row.threadId)"
               @toggle-flag="emit('toggleFlag', $event)"
+              @context="openContext($event, entry.row, entry.index)"
             />
             <MessageRow
               v-else
@@ -263,6 +306,7 @@ watch(
               @toggle="toggle(entry.row, entry.index)"
               @range="range(entry.row, entry.index)"
               @toggle-flag="emit('toggleFlag', $event)"
+              @context="openContext($event, entry.row, entry.index)"
             />
           </template>
         </div>
@@ -275,6 +319,14 @@ watch(
         Loading more…
       </p>
     </div>
+
+    <RowContextMenu
+      v-if="contextMenu !== null"
+      :x="contextMenu.x"
+      :y="contextMenu.y"
+      @action="onContextAction"
+      @close="contextMenu = null"
+    />
   </section>
 </template>
 
@@ -305,18 +357,6 @@ watch(
   font-size: var(--text-xs);
   font-weight: var(--weight-medium);
   color: var(--color-text-secondary);
-}
-
-.clear-selection {
-  font-size: var(--text-xs);
-  color: var(--color-accent);
-  padding: var(--space-1) var(--space-2);
-  border-radius: var(--radius-sm);
-  transition: background var(--transition-fast);
-}
-
-.clear-selection:hover {
-  background: var(--color-bg-hover);
 }
 
 .mark-read {

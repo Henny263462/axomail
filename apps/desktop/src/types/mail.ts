@@ -54,6 +54,23 @@ export interface AccountSummary {
   mailboxes: MailboxSummary[];
 }
 
+/** One message relocation the backend performed, undoable by moving back. */
+export interface MessageMove {
+  messageId: number;
+  /** The mailbox the message was in before the move (the undo target). */
+  fromMailboxId: number;
+}
+
+/** Result of a move/archive/delete: the relocations performed, in order. */
+export interface MoveOutcome {
+  moves: MessageMove[];
+}
+
+/** Result of a Compact: how many orphaned raw bodies were reclaimed. */
+export interface CompactOutcome {
+  reclaimed: number;
+}
+
 /** A compact tag chip (colored dot + label) shown on rows and the detail. */
 export interface TagChip {
   id: number;

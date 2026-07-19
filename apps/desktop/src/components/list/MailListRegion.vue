@@ -10,6 +10,7 @@
  */
 import { computed, ref, watch } from "vue";
 
+import type { BulkAction } from "../../composables/useMailboxActions";
 import { useSearch } from "../../composables/useSearch";
 import type {
   AccountSummary,
@@ -47,6 +48,7 @@ const emit = defineEmits<{
   markAllRead: [];
   loadMore: [];
   selectionChange: [messageIds: number[]];
+  bulkAction: [action: BulkAction, ids: number[]];
   "update:threaded": [value: boolean];
 }>();
 
@@ -122,6 +124,7 @@ const selectedMailboxName = computed(() => {
       @toggle-flag="emit('toggleFlag', $event)"
       @load-more="emit('loadMore')"
       @selection-change="emit('selectionChange', $event)"
+      @bulk-action="(action, ids) => emit('bulkAction', action, ids)"
       @update:threaded="emit('update:threaded', $event)"
     />
     <MessageListPane
@@ -136,6 +139,7 @@ const selectedMailboxName = computed(() => {
       @mark-all-read="emit('markAllRead')"
       @load-more="emit('loadMore')"
       @selection-change="emit('selectionChange', $event)"
+      @bulk-action="(action, ids) => emit('bulkAction', action, ids)"
       @update:threaded="emit('update:threaded', $event)"
     />
     <Teleport to="body">

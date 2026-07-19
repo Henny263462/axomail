@@ -2,9 +2,11 @@
 import { computed } from "vue";
 
 import type { DialogController } from "../../composables/useDialogs";
+import type { FolderPicked } from "../../composables/useMailboxActions";
 import type { AccountSummary } from "../../types/mail";
 import ActivityDialog from "../activity/ActivityDialog.vue";
 import ComposerDialog from "../compose/ComposerDialog.vue";
+import MoveToFolderDialog from "../message/MoveToFolderDialog.vue";
 import SettingsDialog from "../settings/SettingsDialog.vue";
 import AccountSetupDialog from "../setup/AccountSetupDialog.vue";
 import type { AppDialogMap } from "./dialogs";
@@ -23,6 +25,7 @@ const emit = defineEmits<{
   accountsChanged: [];
   tagsChanged: [];
   settingsSaved: [];
+  folderPicked: [payload: FolderPicked];
 }>();
 
 // The composer is only mounted while open; the fallback keeps the prop types
@@ -35,6 +38,17 @@ const composer = computed(
       prefill: null,
     },
 );
+
+// Same total-typing fallback for the move/copy picker payload.
+const moveTarget = computed(
+  () => props.dialogs.payload("moveToFolder") ?? { ids: [], mode: "move" as const },
+);
+
+/** Forwards a picked folder to the host and closes the picker. */
+function onPicked(payload: FolderPicked): void {
+  emit("folderPicked", payload);
+  props.dialogs.close("moveToFolder");
+}
 </script>
 
 <template>
@@ -64,5 +78,13 @@ const composer = computed(
   <ActivityDialog
     v-if="dialogs.isOpen('activity')"
     @close="dialogs.close('activity')"
+  />
+  <MoveToFolderDialog
+    v-if="dialogs.isOpen('moveToFolder')"
+    :accounts="accounts"
+    :ids="moveTarget.ids"
+    :mode="moveTarget.mode"
+    @close="dialogs.close('moveToFolder')"
+    @picked="onPicked"
   />
 </template>

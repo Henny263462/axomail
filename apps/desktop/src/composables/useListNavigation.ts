@@ -23,6 +23,10 @@ interface Deps {
   scrollToIndex: (index: number) => void;
   /** Opens a message in the reading pane. */
   onOpen: (messageId: number) => void;
+  /** Delete key: delete-to-Trash the selection or the active row. */
+  onDelete?: (row: VisibleRow | null) => void;
+  /** `a` key: archive the selection or the active row. */
+  onArchive?: (row: VisibleRow | null) => void;
 }
 
 export function useListNavigation(deps: Deps) {
@@ -122,6 +126,21 @@ export function useListNavigation(deps: Deps) {
         if (row?.kind === "thread" && row.expanded) {
           event.preventDefault();
           deps.toggleThread(row.threadId);
+        }
+        break;
+      case "Delete":
+      case "Backspace":
+        if (deps.onDelete) {
+          event.preventDefault();
+          deps.onDelete(row);
+        }
+        break;
+      case "a":
+      case "A":
+        // Plain `a` archives; leave modified combos (Ctrl/Cmd+A) for the browser.
+        if (deps.onArchive && !event.ctrlKey && !event.metaKey && !event.altKey) {
+          event.preventDefault();
+          deps.onArchive(row);
         }
         break;
       default:

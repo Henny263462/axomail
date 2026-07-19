@@ -8,17 +8,20 @@
  * the IPC boundary) and, on success, emit `changed` so the parent reloads
  * account summaries. Selection bubbles up as `selectMailbox`.
  */
-import { computed, nextTick, reactive, ref } from "vue";
+import { computed, reactive, ref } from "vue";
 
 import {
+  compactStorage,
   createFolder,
   deleteFolder,
+  emptyTrash,
   refreshFolders,
   renameFolder,
   setFolderSubscribed,
 } from "../../api/folders";
 import type { AccountSummary, MailboxSummary } from "../../types/mail";
 import FolderPropertiesDialog from "../offline/FolderPropertiesDialog.vue";
+import FolderContextMenu from "./FolderContextMenu.vue";
 import FolderDialog from "./FolderDialog.vue";
 import FolderNode from "./FolderNode.vue";
 import { buildFolderTree, leafName } from "./folderTree";
@@ -40,7 +43,6 @@ const collapsedIds = reactive(new Set<number>());
 const tree = computed(() => buildFolderTree(props.account.mailboxes));
 
 const menu = ref<{ folderId: number; x: number; y: number } | null>(null);
-const menuEl = ref<HTMLElement | null>(null);
 // The control that opened the menu; focus returns to it on close (role=menu).
 let menuTrigger: HTMLElement | null = null;
 const menuFolder = computed<MailboxSummary | null>(() => {
@@ -53,7 +55,8 @@ const menuFolder = computed<MailboxSummary | null>(() => {
 type DialogState =
   | { kind: "create"; parentId: number | null; parentLeaf: string | null }
   | { kind: "rename"; folder: MailboxSummary }
-  | { kind: "delete"; folder: MailboxSummary };
+  | { kind: "delete"; folder: MailboxSummary }
+  | { kind: "emptyTrash"; folder: MailboxSummary };
 const dialog = ref<DialogState | null>(null);
 const busy = ref(false);
 const errorMessage = ref("");
@@ -71,34 +74,12 @@ function openMenu(payload: { folderId: number; x: number; y: number }): void {
   // focus can return to it when the menu closes.
   menuTrigger = (document.activeElement as HTMLElement | null) ?? null;
   menu.value = payload;
-  void nextTick(() => {
-    menuEl.value?.querySelector<HTMLElement>('[role="menuitem"]')?.focus();
-  });
 }
 function closeMenu(): void {
   menu.value = null;
   const trigger = menuTrigger;
   menuTrigger = null;
   trigger?.focus();
-}
-
-/** role=menu keyboard handling: Escape closes; Up/Down cycle the items. */
-function onMenuKeydown(event: KeyboardEvent): void {
-  if (event.key === "Escape") {
-    event.preventDefault();
-    closeMenu();
-    return;
-  }
-  if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
-  event.preventDefault();
-  const items = Array.from(
-    menuEl.value?.querySelectorAll<HTMLElement>('[role="menuitem"]') ?? [],
-  );
-  if (items.length === 0) return;
-  const current = items.indexOf(document.activeElement as HTMLElement);
-  const delta = event.key === "ArrowDown" ? 1 : -1;
-  const next = (current + delta + items.length) % items.length;
-  items[next]?.focus();
 }
 
 function openDialog(state: DialogState): void {
@@ -139,6 +120,15 @@ function menuProperties(): void {
   closeMenu();
   if (folder !== null) propertiesFolder.value = folder;
 }
+function menuEmptyTrash(): void {
+  const folder = menuFolder.value;
+  closeMenu();
+  if (folder !== null) openDialog({ kind: "emptyTrash", folder });
+}
+async function menuCompact(): Promise<void> {
+  closeMenu();
+  await run(() => compactStorage());
+}
 
 const dialogTitle = computed(() => {
   const state = dialog.value;
@@ -148,24 +138,41 @@ const dialogTitle = computed(() => {
       ? "New folder"
       : `New subfolder in ${state.parentLeaf}`;
   }
-  return state.kind === "rename" ? "Rename folder" : "Delete folder";
+  if (state.kind === "rename") return "Rename folder";
+  return state.kind === "emptyTrash" ? "Empty Trash" : "Delete folder";
 });
 const dialogInitial = computed(() =>
   dialog.value?.kind === "rename" ? leafName(dialog.value.folder) : "",
 );
-const deleteFolderState = computed(() =>
-  dialog.value?.kind === "delete" ? dialog.value.folder : null,
+/** The folder behind a destructive confirm (delete or empty-Trash). */
+const confirmFolder = computed(() =>
+  dialog.value?.kind === "delete" || dialog.value?.kind === "emptyTrash"
+    ? dialog.value.folder
+    : null,
 );
-/** Require typed confirmation only when the folder still holds messages. */
-const deleteConfirmWord = computed(() => {
-  const folder = deleteFolderState.value;
+/** Confirm button label for the destructive dialog. */
+const confirmText = computed(() =>
+  dialog.value?.kind === "emptyTrash" ? "Empty Trash" : "Delete",
+);
+/**
+ * The word to retype. Empty Trash is irreversible, so it always demands one
+ * ("empty"); a folder delete demands the folder name only when it holds mail.
+ */
+const confirmWord = computed(() => {
+  if (dialog.value?.kind === "emptyTrash") return "empty";
+  const folder = confirmFolder.value;
   if (folder === null || (folder.totalCount ?? 0) === 0) return undefined;
   return leafName(folder);
 });
-const deleteBody = computed(() => {
-  const folder = deleteFolderState.value;
+const confirmBody = computed(() => {
+  const folder = confirmFolder.value;
   if (folder === null) return undefined;
   const count = folder.totalCount ?? 0;
+  if (dialog.value?.kind === "emptyTrash") {
+    return count > 0
+      ? `This permanently deletes all ${count} message(s) in Trash from the server and this computer. This cannot be undone.`
+      : "Trash is already empty.";
+  }
   return count > 0
     ? `This folder holds ${count} message(s). Deleting it on the server also removes them. This cannot be undone.`
     : "This deletes the empty folder on the server.";
@@ -183,6 +190,7 @@ async function onDialogSubmit(value: string): Promise<void> {
       });
     }
     if (state.kind === "rename") return renameFolder(state.folder.id, value);
+    if (state.kind === "emptyTrash") return emptyTrash(state.folder.id);
     return deleteFolder(state.folder.id);
   }, true);
 }
@@ -241,58 +249,20 @@ async function run(op: () => Promise<unknown>, fromDialog = false): Promise<void
       />
     </ul>
 
-    <template v-if="menu !== null && menuFolder !== null">
-      <div
-        class="menu-backdrop"
-        @click="closeMenu"
-        @contextmenu.prevent="closeMenu"
-      />
-      <div
-        ref="menuEl"
-        class="menu"
-        role="menu"
-        :aria-label="`Actions for ${leafName(menuFolder)}`"
-        :style="{ left: `${menu.x}px`, top: `${menu.y}px` }"
-        @keydown="onMenuKeydown"
-      >
-        <button
-          type="button"
-          role="menuitem"
-          @click="menuCreate"
-        >
-          New subfolder
-        </button>
-        <button
-          type="button"
-          role="menuitem"
-          @click="menuRename"
-        >
-          Rename…
-        </button>
-        <button
-          type="button"
-          role="menuitem"
-          @click="menuToggleSubscribe"
-        >
-          {{ menuFolder.subscribed === false ? "Subscribe" : "Unsubscribe" }}
-        </button>
-        <button
-          type="button"
-          role="menuitem"
-          @click="menuProperties"
-        >
-          Folder properties…
-        </button>
-        <button
-          type="button"
-          role="menuitem"
-          class="danger"
-          @click="menuDelete"
-        >
-          Delete…
-        </button>
-      </div>
-    </template>
+    <FolderContextMenu
+      v-if="menu !== null && menuFolder !== null"
+      :folder="menuFolder"
+      :x="menu.x"
+      :y="menu.y"
+      @create="menuCreate"
+      @rename="menuRename"
+      @toggle-subscribe="menuToggleSubscribe"
+      @properties="menuProperties"
+      @compact="menuCompact"
+      @empty-trash="menuEmptyTrash"
+      @delete="menuDelete"
+      @close="closeMenu"
+    />
 
     <Teleport to="body">
       <FolderPropertiesDialog
@@ -304,7 +274,7 @@ async function run(op: () => Promise<unknown>, fromDialog = false): Promise<void
     </Teleport>
 
     <FolderDialog
-      v-if="dialog !== null && dialog.kind !== 'delete'"
+      v-if="dialog !== null && (dialog.kind === 'create' || dialog.kind === 'rename')"
       :mode="'input'"
       :title="dialogTitle"
       label="Folder name"
@@ -319,9 +289,9 @@ async function run(op: () => Promise<unknown>, fromDialog = false): Promise<void
       v-else-if="dialog !== null"
       :mode="'delete'"
       :title="dialogTitle"
-      :body="deleteBody"
-      confirm-text="Delete"
-      :confirm-word="deleteConfirmWord"
+      :body="confirmBody"
+      :confirm-text="confirmText"
+      :confirm-word="confirmWord"
       :busy="busy"
       :error-message="errorMessage"
       @submit="onDialogSubmit"
@@ -359,40 +329,5 @@ async function run(op: () => Promise<unknown>, fromDialog = false): Promise<void
   margin: 0;
   padding: 0;
   list-style: none;
-}
-
-.menu-backdrop {
-  position: fixed;
-  inset: 0;
-  z-index: 100;
-}
-
-.menu {
-  position: fixed;
-  z-index: 101;
-  min-width: 160px;
-  display: flex;
-  flex-direction: column;
-  padding: var(--space-1);
-  background: var(--color-bg);
-  border: 1px solid var(--color-border-strong);
-  border-radius: var(--radius-md);
-  box-shadow: 0 4px 16px rgb(0 0 0 / 18%);
-}
-
-.menu button {
-  text-align: left;
-  font-size: var(--text-sm);
-  color: var(--color-text);
-  padding: var(--space-1) var(--space-2);
-  border-radius: var(--radius-sm);
-}
-
-.menu button:hover {
-  background: var(--color-bg-hover);
-}
-
-.menu button.danger {
-  color: var(--color-danger);
 }
 </style>

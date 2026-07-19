@@ -46,7 +46,7 @@ pub use event::{SyncErrorClass, SyncEvent, SyncJobSummary};
 pub use factory::ProviderFactory;
 pub use job::{SyncMailbox, WorkRequest};
 // Write-back op-payload builders, used by the command layer to enqueue ops.
-pub use op_payload::{answered_op, delete_op, flagged_op, keyword_op, move_op, seen_op};
+pub use op_payload::{answered_op, copy_op, delete_op, flagged_op, keyword_op, move_op, seen_op};
 pub use scheduler::{BackgroundScheduler, SchedulerConfig, SchedulerStatus};
 
 // Re-exported so callers can name job identifiers and states without a

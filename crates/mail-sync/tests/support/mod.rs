@@ -83,6 +83,7 @@ pub struct FakeWorld {
     select_calls: Mutex<Vec<MailboxName>>,
     flag_calls: Mutex<Vec<(RemoteMessageId, FlagDelta)>>,
     move_calls: Mutex<Vec<(RemoteMessageId, MailboxName)>>,
+    copy_calls: Mutex<Vec<(RemoteMessageId, MailboxName)>>,
     poison: Mutex<HashMap<u32, FailKind>>,
     // A one-shot op enqueued when the next `disconnect` runs. Models an op that
     // arrives in the drain-completion window: after the replay's final empty
@@ -200,6 +201,12 @@ impl FakeWorld {
     #[must_use]
     pub fn move_calls(&self) -> Vec<(RemoteMessageId, MailboxName)> {
         lock(&self.move_calls).clone()
+    }
+
+    /// The `(id, target)` of every `copy_message` call, in order.
+    #[must_use]
+    pub fn copy_calls(&self) -> Vec<(RemoteMessageId, MailboxName)> {
+        lock(&self.copy_calls).clone()
     }
 
     /// The scripted failure for `id`'s UID, if it was poisoned.
@@ -361,8 +368,24 @@ impl IncomingMailProvider for FakeProvider {
         Ok(())
     }
 
+    async fn copy_message(
+        &mut self,
+        id: &RemoteMessageId,
+        target: &MailboxName,
+    ) -> Result<(), MailError> {
+        if let Some(kind) = self.world.poison_for(id) {
+            return Err(kind.build());
+        }
+        lock(&self.world.copy_calls).push((id.clone(), target.clone()));
+        Ok(())
+    }
+
     async fn delete_message(&mut self, _id: &RemoteMessageId) -> Result<(), MailError> {
         Err(unsupported("EXPUNGE"))
+    }
+
+    async fn expunge_mailbox(&mut self, _mailbox: &MailboxName) -> Result<(), MailError> {
+        Ok(())
     }
 
     async fn append_message(

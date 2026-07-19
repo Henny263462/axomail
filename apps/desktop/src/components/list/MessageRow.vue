@@ -37,6 +37,7 @@ const emit = defineEmits<{
   toggle: [];
   range: [];
   toggleFlag: [messageId: number];
+  context: [event: MouseEvent];
 }>();
 
 function onItemClick(event: MouseEvent): void {
@@ -64,6 +65,7 @@ const date = computed(() => formatDate(props.message.dateUnix));
     :class="{ checked, active, child: depth > 0 }"
     :aria-selected="checked"
     :aria-current="current ? 'true' : undefined"
+    @contextmenu.prevent="emit('context', $event)"
   >
     <input
       type="checkbox"

@@ -94,6 +94,7 @@ describe("settings section registry", () => {
       "auto-read",
       "appearance",
       "pop3-delete",
+      "empty-trash-on-exit",
       "identities",
       "tags",
       "accounts",

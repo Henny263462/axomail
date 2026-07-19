@@ -140,6 +140,30 @@ pub(crate) async fn move_to(
     expunge_scoped(connected, uid, timeout).await
 }
 
+/// Copies a message to `encoded_target` (already modified UTF-7 encoded),
+/// leaving the source in place (`UID COPY`, base RFC 3501).
+///
+/// Unlike [`move_to`] there is no idempotency guard: `COPY` is not idempotent,
+/// so a replay after a copy that already landed duplicates the message in the
+/// target. The write-back queue only retries on *transient* errors (where the
+/// outcome is genuinely unknown), bounding the duplication window to a rare
+/// crash-mid-copy, matching the `move_to` COPY-fallback caveat.
+pub(crate) async fn copy_to(
+    connected: &mut Connected,
+    uid: u32,
+    encoded_target: &str,
+    timeout: Duration,
+) -> Result<(), MailError> {
+    with_deadline(timeout, async {
+        connected
+            .session
+            .uid_copy(uid.to_string(), encoded_target)
+            .await
+            .map_err(|err| map_imap_error(&err))
+    })
+    .await
+}
+
 /// Marks a message `\Deleted` and expunges it, scoped so a server without
 /// UIDPLUS never triggers a mailbox-wide purge (see [`expunge_scoped`]).
 pub(crate) async fn delete(
@@ -149,6 +173,113 @@ pub(crate) async fn delete(
 ) -> Result<(), MailError> {
     run_store(connected, uid, "+FLAGS (\\Deleted)", timeout).await?;
     expunge_scoped(connected, uid, timeout).await
+}
+
+/// Permanently removes every message in the **currently selected** mailbox:
+/// finds all UIDs, marks them `\Deleted`, and expunges them.
+///
+/// # Safety (why a plain `EXPUNGE` is sound here)
+///
+/// `EXPUNGE` only ever removes `\Deleted` messages from the *selected* mailbox,
+/// so the caller selecting the target mailbox first confines the purge to it.
+/// Under UIDPLUS the expunge is further scoped to the exact UID set that was
+/// just flagged (`UID EXPUNGE <set>`); without UIDPLUS a plain `EXPUNGE` is
+/// issued, which is still mailbox-local and therefore cannot touch messages any
+/// *other* mailbox left `\Deleted`. An empty mailbox performs no `STORE` or
+/// `EXPUNGE`.
+pub(crate) async fn empty_selected(
+    connected: &mut Connected,
+    timeout: Duration,
+) -> Result<(), MailError> {
+    let uids = with_deadline(timeout, async {
+        connected
+            .session
+            .uid_search("ALL")
+            .await
+            .map_err(|err| map_imap_error(&err))
+    })
+    .await?;
+    if uids.is_empty() {
+        return Ok(());
+    }
+    let mut sorted: Vec<u32> = uids.into_iter().collect();
+    sorted.sort_unstable();
+    let set = uid_set(&sorted);
+
+    with_deadline(timeout, async {
+        let stream = connected
+            .session
+            .uid_store(&set, "+FLAGS (\\Deleted)")
+            .await
+            .map_err(|err| map_imap_error(&err))?;
+        stream
+            .try_collect::<Vec<_>>()
+            .await
+            .map_err(|err| map_imap_error(&err))?;
+        Ok::<(), MailError>(())
+    })
+    .await?;
+
+    if connected.has_capability("UIDPLUS") {
+        with_deadline(timeout, async {
+            let stream = connected
+                .session
+                .uid_expunge(&set)
+                .await
+                .map_err(|err| map_imap_error(&err))?;
+            stream
+                .try_collect::<Vec<_>>()
+                .await
+                .map_err(|err| map_imap_error(&err))?;
+            Ok::<(), MailError>(())
+        })
+        .await
+    } else {
+        // Mailbox-scoped by definition: only the selected mailbox's `\Deleted`
+        // messages are removed, never another mailbox's.
+        with_deadline(timeout, async {
+            let stream = connected
+                .session
+                .expunge()
+                .await
+                .map_err(|err| map_imap_error(&err))?;
+            stream
+                .try_collect::<Vec<_>>()
+                .await
+                .map_err(|err| map_imap_error(&err))?;
+            Ok::<(), MailError>(())
+        })
+        .await
+    }
+}
+
+/// Renders a sorted, non-empty UID slice as an IMAP sequence set, collapsing
+/// consecutive runs into `lo:hi` ranges (so a full mailbox is a few bytes, not
+/// thousands of comma-separated ids).
+fn uid_set(sorted: &[u32]) -> String {
+    let mut parts = Vec::new();
+    let mut start = sorted[0];
+    let mut prev = sorted[0];
+    for &uid in &sorted[1..] {
+        if uid == prev + 1 {
+            prev = uid;
+            continue;
+        }
+        parts.push(run(start, prev));
+        start = uid;
+        prev = uid;
+    }
+    parts.push(run(start, prev));
+    parts.join(",")
+}
+
+/// One sequence-set element: a single id or an inclusive `lo:hi` range.
+fn run(start: u32, end: u32) -> String {
+    if start == end {
+        start.to_string()
+    } else {
+        format!("{start}:{end}")
+    }
 }
 
 /// Whether the currently selected mailbox still holds `uid`

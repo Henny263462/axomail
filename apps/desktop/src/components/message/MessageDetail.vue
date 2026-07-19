@@ -19,6 +19,10 @@ const emit = defineEmits<{
   (event: "reply"): void;
   (event: "reply-all"): void;
   (event: "forward"): void;
+  (event: "move"): void;
+  (event: "copy"): void;
+  (event: "archive"): void;
+  (event: "delete"): void;
 }>();
 
 const toLine = computed(() => formatRecipients(props.detail.to));
@@ -65,6 +69,38 @@ function alwaysAllow(): void {
         @click="emit('forward')"
       >
         Forward
+      </button>
+      <span
+        class="action-sep"
+        aria-hidden="true"
+      />
+      <button
+        type="button"
+        class="action"
+        @click="emit('archive')"
+      >
+        Archive
+      </button>
+      <button
+        type="button"
+        class="action"
+        @click="emit('move')"
+      >
+        Move to…
+      </button>
+      <button
+        type="button"
+        class="action"
+        @click="emit('copy')"
+      >
+        Copy to…
+      </button>
+      <button
+        type="button"
+        class="action danger"
+        @click="emit('delete')"
+      >
+        Delete
       </button>
     </div>
 
@@ -203,6 +239,23 @@ function alwaysAllow(): void {
 .action:focus-visible {
   outline: 2px solid var(--color-accent);
   outline-offset: 2px;
+}
+
+.action.danger {
+  color: var(--color-danger);
+  border-color: var(--color-danger);
+}
+
+.action.danger:hover {
+  background: var(--color-danger);
+  color: var(--color-text-inverse);
+}
+
+.action-sep {
+  width: 1px;
+  align-self: stretch;
+  margin: 0 var(--space-1);
+  background: var(--color-border);
 }
 
 .header {

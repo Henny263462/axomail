@@ -9,6 +9,7 @@ import { syncAccount } from "./api/sync";
 import { listMessagesForTag } from "./api/tags";
 import { listUnifiedInbox } from "./api/unified";
 import EmptyState from "./components/common/EmptyState.vue";
+import UndoToast from "./components/common/UndoToast.vue";
 import AppShell from "./components/layout/AppShell.vue";
 import DialogHost from "./components/layout/DialogHost.vue";
 import type { AppDialogMap } from "./components/layout/dialogs";
@@ -21,6 +22,7 @@ import SidebarPane from "./components/sidebar/SidebarPane.vue";
 import type { SidebarView } from "./components/sidebar/view";
 import { useComposeWorkflow } from "./composables/useComposeWorkflow";
 import { useDialogs } from "./composables/useDialogs";
+import { useMailboxActions } from "./composables/useMailboxActions";
 import { useMessageActions } from "./composables/useMessageActions";
 import { useMessageListLoading } from "./composables/useMessageListLoading";
 import { useSyncStatus } from "./composables/useSyncStatus";
@@ -77,6 +79,24 @@ const messageActions = useMessageActions({
   accounts,
   selectedMessageId,
 });
+
+// Move / copy / archive / delete-to-Trash with optimistic list splicing + undo.
+const mailboxActions = useMailboxActions({
+  messages,
+  unifiedItems,
+  accounts,
+  selectedMessageId,
+  dialogs,
+  reload: reloadCurrentList,
+});
+
+/** Reloads the currently shown list (after an undo or a failed relocation). */
+function reloadCurrentList(): void {
+  if (activeView.value === "unified") void loadUnified();
+  else if (activeView.value === "tag" && selectedTagId.value !== null)
+    void selectTag(selectedTagId.value);
+  else if (selectedMailboxId.value !== null) void loadMessages(selectedMailboxId.value);
+}
 
 // dev-fixtures: sample envelopes are held here so mailbox selection can
 // render them without a backend. Empty (and unused) in every other mode.
@@ -339,6 +359,7 @@ function onSyncEvent(event: SyncEventDto): void {
         @toggle-flag="messageActions.toggleStar"
         @mark-all-read="messageActions.markListRead"
         @selection-change="listLoading.onSelectionChange"
+        @bulk-action="mailboxActions.dispatch"
         @update:threaded="listLoading.onToggleThreaded"
       />
       <MailListRegion
@@ -357,6 +378,7 @@ function onSyncEvent(event: SyncEventDto): void {
         @mark-all-read="onMarkAllRead"
         @load-more="listLoading.onLoadMore"
         @selection-change="listLoading.onSelectionChange"
+        @bulk-action="mailboxActions.dispatch"
         @update:threaded="listLoading.onToggleThreaded"
       />
     </template>
@@ -368,6 +390,10 @@ function onSyncEvent(event: SyncEventDto): void {
         @reply="compose.openReply"
         @reply-all="compose.openReplyAll"
         @forward="compose.openForward"
+        @move="mailboxActions.requestMove([$event])"
+        @copy="mailboxActions.requestCopy([$event])"
+        @archive="mailboxActions.archive([$event])"
+        @delete-message="mailboxActions.remove([$event])"
       />
       <EmptyState
         v-else-if="activeView === 'drafts'"
@@ -390,5 +416,12 @@ function onSyncEvent(event: SyncEventDto): void {
     @accounts-changed="onAccountsChanged"
     @tags-changed="tagsRefreshKey += 1"
     @settings-saved="syncTheme"
+    @folder-picked="mailboxActions.onFolderPicked"
+  />
+  <UndoToast
+    :undo-message="mailboxActions.undoState.value?.message ?? null"
+    :notice="mailboxActions.notice.value"
+    @undo="mailboxActions.undo"
+    @dismiss="mailboxActions.dismissUndo"
   />
 </template>

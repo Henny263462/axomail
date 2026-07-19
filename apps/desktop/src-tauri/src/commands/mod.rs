@@ -7,6 +7,7 @@
 
 pub mod account_secrets;
 pub mod accounts;
+pub mod actions;
 pub mod attachments;
 pub mod compose;
 pub mod connection;
@@ -27,6 +28,7 @@ pub mod settings;
 pub mod sync;
 pub mod tag_seed;
 pub mod tags;
+pub mod trash;
 pub mod unified;
 pub mod writeback;
 

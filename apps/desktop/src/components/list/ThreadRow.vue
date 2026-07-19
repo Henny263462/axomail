@@ -32,6 +32,7 @@ const emit = defineEmits<{
   range: [];
   expand: [];
   toggleFlag: [messageId: number];
+  context: [event: MouseEvent];
 }>();
 
 function onBodyClick(event: MouseEvent): void {
@@ -67,6 +68,7 @@ const countLabel = computed(() =>
     :aria-selected="checked"
     :aria-current="current ? 'true' : undefined"
     :aria-expanded="row.expanded"
+    @contextmenu.prevent="emit('context', $event)"
   >
     <input
       type="checkbox"

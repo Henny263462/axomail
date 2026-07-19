@@ -78,10 +78,42 @@ pub trait IncomingMailProvider: Send {
         target: &MailboxName,
     ) -> impl Future<Output = Result<(), MailError>> + Send;
 
+    /// Copies a message to another mailbox on the server, leaving the source
+    /// copy in place (IMAP `UID COPY`).
+    ///
+    /// Like the per-message ops above, this acts on the currently selected
+    /// mailbox: the caller selects the source before calling. Copy is not
+    /// idempotent — a retry after a successful copy duplicates the message in
+    /// the target — so callers that require exactly-once must tolerate the
+    /// same at-least-once window the `move_message` COPY fallback documents.
+    /// Protocols without server-side folders (POP3) return
+    /// [`MailError::UnsupportedCapability`].
+    fn copy_message(
+        &mut self,
+        id: &RemoteMessageId,
+        target: &MailboxName,
+    ) -> impl Future<Output = Result<(), MailError>> + Send;
+
     /// Deletes a message on the server.
     fn delete_message(
         &mut self,
         id: &RemoteMessageId,
+    ) -> impl Future<Output = Result<(), MailError>> + Send;
+
+    /// Permanently removes **every** message in `mailbox` from the server: it
+    /// selects `mailbox`, marks its messages `\Deleted`, and expunges them.
+    ///
+    /// This is the one place server-side removal happens (the "Empty Trash"
+    /// disposal path). Because `EXPUNGE` only ever affects the *selected*
+    /// mailbox, selecting `mailbox` first confines the purge to it — a plain
+    /// `EXPUNGE` on a server without UIDPLUS can never remove `\Deleted`
+    /// messages in any *other* mailbox. Under UIDPLUS the adapter scopes the
+    /// expunge to the flagged UID set. An empty mailbox is a no-op. Protocols
+    /// without server-side folders (POP3) return
+    /// [`MailError::UnsupportedCapability`].
+    fn expunge_mailbox(
+        &mut self,
+        mailbox: &MailboxName,
     ) -> impl Future<Output = Result<(), MailError>> + Send;
 
     /// Appends `raw` (a complete RFC 5322 message) to `mailbox` on the server,
@@ -195,7 +227,19 @@ mod tests {
             Err(MailError::Cancelled)
         }
 
+        async fn copy_message(
+            &mut self,
+            _id: &RemoteMessageId,
+            _target: &MailboxName,
+        ) -> Result<(), MailError> {
+            Err(MailError::Cancelled)
+        }
+
         async fn delete_message(&mut self, _id: &RemoteMessageId) -> Result<(), MailError> {
+            Err(MailError::Cancelled)
+        }
+
+        async fn expunge_mailbox(&mut self, _mailbox: &MailboxName) -> Result<(), MailError> {
             Err(MailError::Cancelled)
         }
 
@@ -270,6 +314,14 @@ mod tests {
         ));
         let flags = FlagSet::default();
         assert_send_future(provider.append_message(&MailboxName::new("Sent"), &flags, b"raw"));
+        assert_send_future(provider.copy_message(
+            &RemoteMessageId::Imap {
+                uid: 1,
+                uid_validity: 1,
+            },
+            &MailboxName::new("Archive"),
+        ));
+        assert_send_future(provider.expunge_mailbox(&MailboxName::new("Trash")));
         assert_send_future(provider.disconnect());
     }
 

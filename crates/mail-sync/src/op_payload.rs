@@ -14,8 +14,29 @@
 //! |------|---------|---------|
 //! | `add_flags` / `remove_flags` | `{"system": {..}}` | system flags to `+FLAGS` / `-FLAGS` |
 //! | `add_keyword` / `remove_keyword` | `{"keyword": "$Junk"}` | one IMAP keyword to add / remove |
-//! | `move` | `{"targetMailboxId": 7}` | local id of the destination mailbox |
-//! | `delete` | `{}` | move to the account's Trash (no extra data) |
+//! | `move` | `{"sourceMailboxId": 1, "targetMailboxId": 7, "copy": false}` | relocate (or, with `copy`, duplicate) from source to target |
+//! | `delete` | `{"sourceMailboxId": 1}` | move to the account's Trash from source |
+//!
+//! # Why move/copy/delete record their *source* mailbox
+//!
+//! Flag/keyword ops replay against the message's *live* mailbox (the executor
+//! selects `envelope.mailbox`). Move, copy, and delete cannot: the command
+//! layer applies the move to local storage **optimistically** (so the UI
+//! updates at once), which changes `envelope.mailbox` to the *destination*
+//! before the op replays. The server op must still select the **source**
+//! mailbox the message physically sits in on the server, so the source id is
+//! captured in the payload at enqueue time and the executor selects it, never
+//! the (now moved) live mailbox. This is the contract the write-back executor's
+//! `apply_one` anticipated for Wave 3 M2.
+//!
+//! # Why copy reuses the `move` kind
+//!
+//! Copy is a relocate-to-target op that keeps the source, so it shares the
+//! move executor path (select source, then `copy_message` vs `move_message`)
+//! and rides the existing `move` [`PendingOpKind`] with a `copy: true`
+//! discriminator in the payload. This keeps the change inside the shipped
+//! `pending_ops.kind` CHECK domain (`…, 'move', 'delete'`) — no migration, per
+//! the Wave 3 ledger (0014 stays unused).
 
 use axomail_core::{FlagDelta, FlagSet, Keyword, MailError, MailboxId, SystemFlags};
 use axomail_storage::{PendingOp, PendingOpKind};
@@ -35,12 +56,40 @@ struct KeywordPayload {
     keyword: Keyword,
 }
 
-/// Payload for [`PendingOpKind::Move`]: the local id of the target mailbox,
-/// resolved to a server name at replay time so a folder rename is tolerated.
+/// Payload for [`PendingOpKind::Move`] (a move *or*, with `copy`, a copy): the
+/// local ids of the source and target mailboxes, resolved to server names at
+/// replay time so a folder rename is tolerated. `source_mailbox_id` is the
+/// mailbox the message sits in **on the server**, captured before the
+/// optimistic local move changed its live mailbox (see the module docs).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct MovePayload {
+    source_mailbox_id: MailboxId,
     target_mailbox_id: MailboxId,
+    /// `true` → copy (keep the source); `false` → move. Defaults to a move so
+    /// any historical `{source,target}` payload still deserializes.
+    #[serde(default)]
+    copy: bool,
+}
+
+/// Payload for [`PendingOpKind::Delete`] (move-to-Trash): the source mailbox to
+/// select on the server (the Trash target is resolved once per drain).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct DeletePayload {
+    source_mailbox_id: MailboxId,
+}
+
+/// A resolved relocate op: where the message is, where it goes, and whether the
+/// source is kept (copy) or removed (move).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct Relocation {
+    /// Mailbox to select on the server (the current server location).
+    pub source: MailboxId,
+    /// Destination mailbox.
+    pub target: MailboxId,
+    /// `true` for a copy (keep source), `false` for a move.
+    pub copy: bool,
 }
 
 /// Builds the `(kind, payload)` for setting or clearing `\Seen` on a message.
@@ -98,21 +147,42 @@ pub fn keyword_op(keyword: Keyword, add: bool) -> (PendingOpKind, String) {
     (kind, encode(&KeywordPayload { keyword }))
 }
 
-/// Builds the `(kind, payload)` for moving a message to `target`.
+/// Builds the `(kind, payload)` for moving a message from `source` to `target`.
 #[must_use]
-pub fn move_op(target: MailboxId) -> (PendingOpKind, String) {
+pub fn move_op(source: MailboxId, target: MailboxId) -> (PendingOpKind, String) {
     (
         PendingOpKind::Move,
         encode(&MovePayload {
+            source_mailbox_id: source,
             target_mailbox_id: target,
+            copy: false,
         }),
     )
 }
 
-/// Builds the `(kind, payload)` for a delete (move-to-Trash) op.
+/// Builds the `(kind, payload)` for copying a message from `source` to
+/// `target` (keeping the source). Rides the `move` kind with `copy: true`.
 #[must_use]
-pub fn delete_op() -> (PendingOpKind, String) {
-    (PendingOpKind::Delete, "{}".to_owned())
+pub fn copy_op(source: MailboxId, target: MailboxId) -> (PendingOpKind, String) {
+    (
+        PendingOpKind::Move,
+        encode(&MovePayload {
+            source_mailbox_id: source,
+            target_mailbox_id: target,
+            copy: true,
+        }),
+    )
+}
+
+/// Builds the `(kind, payload)` for a delete (move-to-Trash) op from `source`.
+#[must_use]
+pub fn delete_op(source: MailboxId) -> (PendingOpKind, String) {
+    (
+        PendingOpKind::Delete,
+        encode(&DeletePayload {
+            source_mailbox_id: source,
+        }),
+    )
 }
 
 /// Common builder for a system-flag op: `add` chooses `+FLAGS` vs `-FLAGS`.
@@ -158,9 +228,20 @@ pub(crate) fn flag_delta(op: &PendingOp) -> Result<FlagDelta, MailError> {
     }
 }
 
-/// Resolves the destination mailbox id of a [`PendingOpKind::Move`] op.
-pub(crate) fn move_target(op: &PendingOp) -> Result<MailboxId, MailError> {
-    Ok(decode::<MovePayload>(op)?.target_mailbox_id)
+/// Resolves a [`PendingOpKind::Move`] op into its [`Relocation`] (source,
+/// target, and whether it is a copy).
+pub(crate) fn relocation(op: &PendingOp) -> Result<Relocation, MailError> {
+    let payload = decode::<MovePayload>(op)?;
+    Ok(Relocation {
+        source: payload.source_mailbox_id,
+        target: payload.target_mailbox_id,
+        copy: payload.copy,
+    })
+}
+
+/// Resolves the source mailbox to select for a [`PendingOpKind::Delete`] op.
+pub(crate) fn delete_source(op: &PendingOp) -> Result<MailboxId, MailError> {
+    Ok(decode::<DeletePayload>(op)?.source_mailbox_id)
 }
 
 /// Deserializes an op's payload, mapping a decode failure to a user-safe
@@ -247,13 +328,44 @@ mod tests {
     }
 
     #[test]
-    fn move_op_round_trips_the_target_mailbox() {
-        let (kind, payload) = move_op(MailboxId::new(42));
+    fn move_op_round_trips_source_and_target_as_a_move() {
+        let (kind, payload) = move_op(MailboxId::new(3), MailboxId::new(42));
         assert_eq!(kind, PendingOpKind::Move);
+        let relocation = relocation(&op(kind, &payload)).unwrap();
+        assert_eq!(relocation.source, MailboxId::new(3));
+        assert_eq!(relocation.target, MailboxId::new(42));
+        assert!(!relocation.copy);
+    }
+
+    #[test]
+    fn copy_op_rides_the_move_kind_with_the_copy_flag_set() {
+        let (kind, payload) = copy_op(MailboxId::new(3), MailboxId::new(42));
+        assert_eq!(kind, PendingOpKind::Move);
+        let relocation = relocation(&op(kind, &payload)).unwrap();
+        assert_eq!(relocation.source, MailboxId::new(3));
+        assert_eq!(relocation.target, MailboxId::new(42));
+        assert!(relocation.copy);
+    }
+
+    #[test]
+    fn delete_op_round_trips_the_source_mailbox() {
+        let (kind, payload) = delete_op(MailboxId::new(9));
+        assert_eq!(kind, PendingOpKind::Delete);
         assert_eq!(
-            move_target(&op(kind, &payload)).unwrap(),
-            MailboxId::new(42)
+            delete_source(&op(kind, &payload)).unwrap(),
+            MailboxId::new(9)
         );
+    }
+
+    #[test]
+    fn legacy_move_payload_without_copy_flag_defaults_to_a_move() {
+        // A payload predating the `copy` field must still deserialize as a move.
+        let relocation = relocation(&op(
+            PendingOpKind::Move,
+            r#"{"sourceMailboxId":1,"targetMailboxId":2}"#,
+        ))
+        .unwrap();
+        assert!(!relocation.copy);
     }
 
     #[test]

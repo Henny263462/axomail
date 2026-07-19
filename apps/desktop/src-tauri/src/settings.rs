@@ -13,6 +13,7 @@
 //! | `work_offline` | `"true"`/`"false"` | `false` |
 //! | `list_threaded` | `"true"`/`"false"` | `false` |
 //! | `pop3_delete_policy.<accountId>` | `"true"`/`"false"` | `false` |
+//! | `empty_trash_on_exit.<accountId>` | `"true"`/`"false"` | `false` |
 //!
 //! The POP3 delete policy is the second of the two guards against POP3's
 //! destructive `DELE`: it is written **only** by the explicit
@@ -41,6 +42,8 @@ const KEY_WORK_OFFLINE: &str = "work_offline";
 const KEY_LIST_THREADED: &str = "list_threaded";
 /// Prefix of the per-account POP3 server-deletion policy key.
 const KEY_POP3_DELETE_PREFIX: &str = "pop3_delete_policy.";
+/// Prefix of the per-account "empty Trash on exit" policy key.
+const KEY_EMPTY_TRASH_ON_EXIT_PREFIX: &str = "empty_trash_on_exit.";
 
 /// Notifications are on by default; they only ever carry an aggregate count.
 const DEFAULT_NOTIFICATIONS: bool = true;
@@ -73,6 +76,11 @@ pub fn clamp_interval(minutes: u32) -> u32 {
 /// Builds the per-account POP3 delete-policy key.
 fn pop3_delete_key(account_id: i64) -> String {
     format!("{KEY_POP3_DELETE_PREFIX}{account_id}")
+}
+
+/// Builds the per-account "empty Trash on exit" key.
+fn empty_trash_on_exit_key(account_id: i64) -> String {
+    format!("{KEY_EMPTY_TRASH_ON_EXIT_PREFIX}{account_id}")
 }
 
 /// Reads whether new-mail notifications are enabled (default `true`).
@@ -283,6 +291,38 @@ pub async fn set_pop3_delete_enabled(
     store
         .settings()
         .set(&pop3_delete_key(account_id), bool_str(enabled))
+        .await
+}
+
+/// Reads a single account's "empty Trash on exit" policy (default `false`).
+///
+/// # Errors
+///
+/// Returns [`MailError::Database`] on any query failure.
+pub async fn empty_trash_on_exit_enabled(
+    store: &Store,
+    account_id: i64,
+) -> Result<bool, MailError> {
+    Ok(store
+        .settings()
+        .get(&empty_trash_on_exit_key(account_id))
+        .await?
+        .is_some_and(|value| value == "true"))
+}
+
+/// Persists a single account's "empty Trash on exit" policy.
+///
+/// # Errors
+///
+/// Returns [`MailError::Database`] on any query failure.
+pub async fn set_empty_trash_on_exit_enabled(
+    store: &Store,
+    account_id: i64,
+    enabled: bool,
+) -> Result<(), MailError> {
+    store
+        .settings()
+        .set(&empty_trash_on_exit_key(account_id), bool_str(enabled))
         .await
 }
 

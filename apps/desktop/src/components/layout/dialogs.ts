@@ -11,6 +11,12 @@ export interface ComposerPayload {
   prefill?: ComposerPrefillDto | null;
 }
 
+/** Payload for the move/copy folder picker: which messages, and which action. */
+export interface MoveToFolderPayload {
+  ids: number[];
+  mode: "move" | "copy";
+}
+
 /**
  * The application's app-level dialogs and their open payloads (`undefined`
  * for dialogs that need none). Adding a dialog is: a new SFC, one branch in
@@ -22,4 +28,5 @@ export type AppDialogMap = {
   settings: undefined;
   activity: undefined;
   composer: ComposerPayload;
+  moveToFolder: MoveToFolderPayload;
 };

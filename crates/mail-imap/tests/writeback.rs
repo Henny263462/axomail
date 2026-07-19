@@ -212,3 +212,125 @@ async fn fallback_does_not_recopy_a_message_already_moved() {
         "an already-moved message is not re-copied: {commands:?}"
     );
 }
+
+#[tokio::test]
+async fn copy_issues_uid_copy_and_leaves_the_source() {
+    let mut spec = Spec::base(TlsMode::Implicit);
+    spec.messages = vec![Message::new(1)];
+    let server = common::start(spec).await;
+    let mut provider = ImapProvider::new(config_for(&server, ConnectionSecurity::Tls));
+
+    provider.connect().await.expect("connect");
+    provider
+        .select_mailbox(&MailboxName::new("INBOX"))
+        .await
+        .expect("select");
+    provider
+        .copy_message(&imap_id(1), &MailboxName::new("Archive"))
+        .await
+        .expect("copy");
+
+    let commands = server.commands();
+    assert!(server.saw_command("UID COPY 1"), "commands: {commands:?}");
+    // A copy never marks the source \Deleted and never expunges it.
+    assert!(
+        !server.saw_command("+FLAGS (\\Deleted)"),
+        "copy must not delete the source: {commands:?}"
+    );
+    assert!(
+        !server.saw_command("EXPUNGE"),
+        "copy must not expunge: {commands:?}"
+    );
+}
+
+#[tokio::test]
+async fn empty_trash_stores_deleted_then_uid_expunges_under_uidplus() {
+    let mut spec = Spec::base(TlsMode::Implicit);
+    spec.capabilities = "IMAP4rev1 UIDPLUS SPECIAL-USE".to_owned();
+    spec.messages = vec![Message::new(1), Message::new(2)];
+    let server = common::start(spec).await;
+    let mut provider = ImapProvider::new(config_for(&server, ConnectionSecurity::Tls));
+
+    provider.connect().await.expect("connect");
+    provider
+        .expunge_mailbox(&MailboxName::new("Trash"))
+        .await
+        .expect("empty trash");
+
+    let commands = server.commands();
+    // Selects Trash first (confining the expunge), flags all its UIDs, then
+    // UID-expunges exactly that set.
+    assert!(
+        commands
+            .iter()
+            .any(|c| c.contains("SELECT") && c.contains("Trash")),
+        "must select Trash before expunging: {commands:?}"
+    );
+    assert!(
+        server.saw_command("UID STORE 1:2 +FLAGS (\\Deleted)"),
+        "commands: {commands:?}"
+    );
+    assert!(
+        server.saw_command("UID EXPUNGE 1:2"),
+        "commands: {commands:?}"
+    );
+}
+
+#[tokio::test]
+async fn empty_trash_uses_a_plain_scoped_expunge_without_uidplus() {
+    // No UIDPLUS: a plain EXPUNGE is issued, but only *after* SELECT Trash, so
+    // it is confined to the Trash mailbox and cannot touch \Deleted messages in
+    // any other folder — the safety property Empty Trash relies on.
+    let mut spec = Spec::base(TlsMode::Implicit);
+    spec.capabilities = "IMAP4rev1 SPECIAL-USE".to_owned();
+    spec.messages = vec![Message::new(1), Message::new(2)];
+    let server = common::start(spec).await;
+    let mut provider = ImapProvider::new(config_for(&server, ConnectionSecurity::Tls));
+
+    provider.connect().await.expect("connect");
+    provider
+        .expunge_mailbox(&MailboxName::new("Trash"))
+        .await
+        .expect("empty trash");
+
+    let commands = server.commands();
+    assert!(
+        commands
+            .iter()
+            .any(|c| c.contains("SELECT") && c.contains("Trash")),
+        "must select Trash before expunging: {commands:?}"
+    );
+    assert!(
+        server.saw_command("UID STORE 1:2 +FLAGS (\\Deleted)"),
+        "commands: {commands:?}"
+    );
+    assert!(server.saw_command("EXPUNGE"), "commands: {commands:?}");
+    assert!(
+        !server.saw_command("UID EXPUNGE"),
+        "without UIDPLUS the expunge is the plain form: {commands:?}"
+    );
+}
+
+#[tokio::test]
+async fn empty_trash_on_an_empty_mailbox_stores_and_expunges_nothing() {
+    let mut spec = Spec::base(TlsMode::Implicit);
+    spec.messages = vec![];
+    let server = common::start(spec).await;
+    let mut provider = ImapProvider::new(config_for(&server, ConnectionSecurity::Tls));
+
+    provider.connect().await.expect("connect");
+    provider
+        .expunge_mailbox(&MailboxName::new("Trash"))
+        .await
+        .expect("empty an empty trash");
+
+    let commands = server.commands();
+    assert!(
+        !server.saw_command("+FLAGS (\\Deleted)"),
+        "nothing to flag: {commands:?}"
+    );
+    assert!(
+        !server.saw_command("EXPUNGE"),
+        "nothing to expunge: {commands:?}"
+    );
+}

@@ -227,6 +227,14 @@ where
 /// Applies one claimed op to the server. A message that is gone locally or has
 /// no remote identity (a local-only draft) is a silent success (nothing to
 /// replay). Every network round-trip is bounded by [`guarded`].
+///
+/// The mailbox selected before each op differs by kind: flag/keyword ops act on
+/// the message's *live* mailbox (`envelope.mailbox`), while move/copy/delete act
+/// on the **source** mailbox recorded in the payload at enqueue time. The
+/// command layer applies a move optimistically to local storage, so by replay
+/// `envelope.mailbox` is already the destination; selecting the recorded source
+/// keeps the server op pointed at where the message physically still sits (see
+/// `op_payload`).
 async fn apply_one<P, F>(
     shared: &Shared<P, F>,
     provider: &mut P,
@@ -247,14 +255,6 @@ where
         return Ok(());
     };
 
-    // Select the message's current mailbox if it is not already selected.
-    //
-    // For flag/keyword ops this is the message's live mailbox. For move/delete
-    // ops it is the *source*: the enqueuing track (Wave 3 M2) must not change
-    // the local mailbox before the move op has replayed, or record the source
-    // in the payload — this track enqueues only flag ops, where it is stable.
-    ensure_selected(shared, provider, selected, envelope.mailbox, token).await?;
-
     match op.kind {
         PendingOpKind::AddFlags
         | PendingOpKind::RemoveFlags
@@ -264,17 +264,25 @@ where
             if delta.is_empty() {
                 return Ok(());
             }
+            ensure_selected(shared, provider, selected, envelope.mailbox, token).await?;
             guarded(token, net, provider.store_flags(&remote_id, &delta)).await
         }
         PendingOpKind::Move => {
-            let target_id = op_payload::move_target(op)?;
-            let target = mailbox_name(shared, target_id).await?;
-            guarded(token, net, provider.move_message(&remote_id, &target)).await
+            let relocation = op_payload::relocation(op)?;
+            let target = mailbox_name(shared, relocation.target).await?;
+            ensure_selected(shared, provider, selected, relocation.source, token).await?;
+            if relocation.copy {
+                guarded(token, net, provider.copy_message(&remote_id, &target)).await
+            } else {
+                guarded(token, net, provider.move_message(&remote_id, &target)).await
+            }
         }
         PendingOpKind::Delete => {
+            let source = op_payload::delete_source(op)?;
             let target = trash.clone().ok_or_else(|| MailError::Configuration {
                 message: "account has no Trash mailbox for a delete op".to_owned(),
             })?;
+            ensure_selected(shared, provider, selected, source, token).await?;
             guarded(token, net, provider.move_message(&remote_id, &target)).await
         }
     }

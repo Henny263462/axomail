@@ -52,7 +52,9 @@ pub struct NewMessage {
 /// Repository over the `messages` and `message_recipients` tables.
 #[derive(Debug)]
 pub struct MessageRepo<'a> {
-    pool: &'a SqlitePool,
+    // Crate-visible so the sibling `message_disposal` module can add relocation
+    // and bulk-deletion methods without growing this file past the size gate.
+    pub(crate) pool: &'a SqlitePool,
 }
 
 impl<'a> MessageRepo<'a> {

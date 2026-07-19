@@ -10,7 +10,7 @@
  * (ADR-0005).
  */
 import { invokeOrThrow, safeInvoke } from "../lib/tauri";
-import type { MailboxSummary } from "../types/mail";
+import type { CompactOutcome, MailboxSummary } from "../types/mail";
 
 /** Creates a folder under `parentId` (or at the root when null). */
 export function createFolder(input: {
@@ -47,4 +47,31 @@ export function setFolderSubscribed(
 /** Enqueues a folder-discovery refresh for an account. */
 export function refreshFolders(accountId: number): Promise<null> {
   return safeInvoke<null>("refresh_folders", { accountId });
+}
+
+/**
+ * Permanently empties a Trash folder (server expunge + local purge). Rejects on
+ * a real backend failure so the folder menu can report it. Resolves the number
+ * of local messages removed.
+ */
+export function emptyTrash(folderId: number): Promise<number | null> {
+  return invokeOrThrow<number>("empty_trash", { folderId });
+}
+
+/** Reclaims orphaned raw `.eml` blobs. Resolves how many were removed. */
+export function compactStorage(): Promise<CompactOutcome | null> {
+  return invokeOrThrow<CompactOutcome>("compact_storage", {});
+}
+
+/** Reads an account's "empty Trash on exit" setting. */
+export function getEmptyTrashOnExit(accountId: number): Promise<boolean | null> {
+  return safeInvoke<boolean>("get_empty_trash_on_exit", { accountId });
+}
+
+/** Sets an account's "empty Trash on exit" setting. */
+export function setEmptyTrashOnExit(
+  accountId: number,
+  enabled: boolean,
+): Promise<null> {
+  return invokeOrThrow<null>("set_empty_trash_on_exit", { accountId, enabled });
 }

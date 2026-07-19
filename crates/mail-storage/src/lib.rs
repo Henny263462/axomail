@@ -27,6 +27,7 @@ mod identities;
 mod identity_prefs;
 mod ingest;
 mod mailboxes;
+mod message_disposal;
 mod message_rows;
 mod messages;
 mod offline;

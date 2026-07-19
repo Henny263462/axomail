@@ -3,6 +3,7 @@
  * The unified-inbox list pane: the shared {@link ThreadedMessageList}
  * configured to tag every row with its account's display name.
  */
+import type { BulkAction } from "../../composables/useMailboxActions";
 import type { AccountSummary, UnifiedItemDto } from "../../types/mail";
 import ThreadedMessageList from "./ThreadedMessageList.vue";
 
@@ -27,6 +28,7 @@ const emit = defineEmits<{
   toggleFlag: [messageId: number];
   loadMore: [];
   selectionChange: [messageIds: number[]];
+  bulkAction: [action: BulkAction, ids: number[]];
   "update:threaded": [value: boolean];
 }>();
 </script>
@@ -46,6 +48,7 @@ const emit = defineEmits<{
     @toggle-flag="emit('toggleFlag', $event)"
     @load-more="emit('loadMore')"
     @selection-change="emit('selectionChange', $event)"
+    @bulk-action="(action, ids) => emit('bulkAction', action, ids)"
     @update:threaded="emit('update:threaded', $event)"
   />
 </template>

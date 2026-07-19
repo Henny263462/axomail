@@ -99,10 +99,28 @@ impl IncomingMailProvider for AnyIncomingProvider {
         }
     }
 
+    async fn copy_message(
+        &mut self,
+        id: &RemoteMessageId,
+        target: &MailboxName,
+    ) -> Result<(), MailError> {
+        match self {
+            Self::Imap(provider) => provider.copy_message(id, target).await,
+            Self::Pop3(provider) => provider.copy_message(id, target).await,
+        }
+    }
+
     async fn delete_message(&mut self, id: &RemoteMessageId) -> Result<(), MailError> {
         match self {
             Self::Imap(provider) => provider.delete_message(id).await,
             Self::Pop3(provider) => provider.delete_message(id).await,
+        }
+    }
+
+    async fn expunge_mailbox(&mut self, mailbox: &MailboxName) -> Result<(), MailError> {
+        match self {
+            Self::Imap(provider) => provider.expunge_mailbox(mailbox).await,
+            Self::Pop3(provider) => provider.expunge_mailbox(mailbox).await,
         }
     }
 

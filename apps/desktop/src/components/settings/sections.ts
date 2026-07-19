@@ -3,6 +3,7 @@ import type { Component } from "vue";
 import AccountsSection from "./AccountsSection.vue";
 import AppearanceSection from "./AppearanceSection.vue";
 import AutoReadSection from "./AutoReadSection.vue";
+import EmptyTrashSection from "./EmptyTrashSection.vue";
 import IdentitiesSection from "./IdentitiesSection.vue";
 import NotificationsSection from "./NotificationsSection.vue";
 import Pop3DeleteSection from "./Pop3DeleteSection.vue";
@@ -41,6 +42,11 @@ export const settingsSections: SettingsSection[] = [
     id: "pop3-delete",
     title: "POP3 server deletion",
     component: Pop3DeleteSection,
+  },
+  {
+    id: "empty-trash-on-exit",
+    title: "Empty Trash on exit",
+    component: EmptyTrashSection,
   },
   { id: "identities", title: "Identities", component: IdentitiesSection },
   { id: "tags", title: "Tags", component: TagsSection },

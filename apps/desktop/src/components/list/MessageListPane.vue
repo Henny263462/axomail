@@ -4,6 +4,7 @@
  * shared {@link ThreadedMessageList} (mailbox labelling, a "Mark all read"
  * header, no per-row account tag).
  */
+import type { BulkAction } from "../../composables/useMailboxActions";
 import type { MessageListItem as MessageListItemModel } from "../../types/mail";
 import ThreadedMessageList from "./ThreadedMessageList.vue";
 
@@ -27,6 +28,7 @@ const emit = defineEmits<{
   markAllRead: [];
   loadMore: [];
   selectionChange: [messageIds: number[]];
+  bulkAction: [action: BulkAction, ids: number[]];
   "update:threaded": [value: boolean];
 }>();
 </script>
@@ -46,6 +48,7 @@ const emit = defineEmits<{
     @mark-all-read="emit('markAllRead')"
     @load-more="emit('loadMore')"
     @selection-change="emit('selectionChange', $event)"
+    @bulk-action="(action, ids) => emit('bulkAction', action, ids)"
     @update:threaded="emit('update:threaded', $event)"
   />
 </template>

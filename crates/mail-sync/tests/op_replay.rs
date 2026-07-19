@@ -7,14 +7,17 @@ mod support;
 use std::time::Duration;
 
 use axomail_core::{
-    AccountId, Address, EmailAddress, Keyword, MailboxId, MailboxName, MessageFlags, MessageId,
-    RemoteMessageId,
+    AccountId, Address, EmailAddress, Keyword, MailboxId, MailboxName, MailboxRole, MessageFlags,
+    MessageId, RemoteMessageId,
 };
-use axomail_storage::{NewMessage, NewPendingOp, PendingOpKind, Store};
-use axomail_sync::{SyncEngine, SyncEvent, WorkRequest, flagged_op, keyword_op, seen_op};
+use axomail_storage::{NewMailbox, NewMessage, NewPendingOp, PendingOpKind, Store};
+use axomail_sync::{
+    SyncEngine, SyncEvent, WorkRequest, copy_op, delete_op, flagged_op, keyword_op, move_op,
+    seen_op,
+};
 use support::{
     FailKind, FakeFactory, FakeProvider, FakeWorld, drain_until_terminal, store_with_mailbox,
-    test_config,
+    store_with_two_mailboxes, test_config,
 };
 
 /// Polls until `account`'s queue has no `pending`/`inflight` ops, or panics
@@ -75,6 +78,23 @@ async fn enqueue(
         })
         .await
         .unwrap();
+}
+
+/// Adds a mailbox to `account` and returns its id (role guessed from `name`).
+async fn add_mailbox(store: &Store, account: AccountId, name: &str) -> MailboxId {
+    store
+        .mailboxes()
+        .upsert(&NewMailbox {
+            account,
+            name: MailboxName::new(name),
+            remote_name: MailboxName::new(name),
+            role: MailboxRole::guess_from_name(name),
+            uid_validity: None,
+            uid_next: None,
+        })
+        .await
+        .unwrap()
+        .id
 }
 
 /// Runs one `OpReplay` job for `account` to a terminal state.
@@ -360,4 +380,108 @@ async fn a_local_only_message_op_is_a_silent_success() {
     assert!(world.flag_calls().is_empty());
     let counts = store.pending_ops().counts(account).await.unwrap();
     assert_eq!(counts.pending + counts.inflight + counts.failed, 0);
+}
+
+#[tokio::test]
+async fn move_op_selects_the_recorded_source_not_the_optimistically_moved_mailbox() {
+    let world = FakeWorld::new();
+    let (store, account, inbox, archive) = store_with_two_mailboxes().await;
+    let message = insert_remote(&store, inbox, 1).await;
+    // The command applies the move optimistically before replay: the message's
+    // live mailbox is already Archive, but the op still targets the INBOX source.
+    store
+        .messages()
+        .set_mailbox(message, archive)
+        .await
+        .unwrap();
+    enqueue(&store, account, message, move_op(inbox, archive)).await;
+
+    let engine = SyncEngine::start(
+        store.clone(),
+        FakeFactory::new(world.clone()),
+        test_config(),
+    );
+    run_replay(&engine, account).await;
+
+    // Selected the source (INBOX), where the message still sits on the server —
+    // never the optimistically-updated Archive.
+    assert_eq!(world.select_calls(), vec![MailboxName::new("INBOX")]);
+    assert_eq!(
+        world.move_calls(),
+        vec![(
+            RemoteMessageId::Imap {
+                uid: 1,
+                uid_validity: UV,
+            },
+            MailboxName::new("Archive"),
+        )]
+    );
+    assert!(world.copy_calls().is_empty());
+    let counts = store.pending_ops().counts(account).await.unwrap();
+    assert_eq!((counts.pending, counts.inflight, counts.failed), (0, 0, 0));
+}
+
+#[tokio::test]
+async fn copy_op_replays_as_a_copy_from_the_source_keeping_the_original() {
+    let world = FakeWorld::new();
+    let (store, account, inbox, archive) = store_with_two_mailboxes().await;
+    let message = insert_remote(&store, inbox, 1).await;
+    // Copy does not move locally: the message stays in INBOX.
+    enqueue(&store, account, message, copy_op(inbox, archive)).await;
+
+    let engine = SyncEngine::start(
+        store.clone(),
+        FakeFactory::new(world.clone()),
+        test_config(),
+    );
+    run_replay(&engine, account).await;
+
+    assert_eq!(world.select_calls(), vec![MailboxName::new("INBOX")]);
+    assert_eq!(
+        world.copy_calls(),
+        vec![(
+            RemoteMessageId::Imap {
+                uid: 1,
+                uid_validity: UV,
+            },
+            MailboxName::new("Archive"),
+        )]
+    );
+    // A copy never issues a move (which would remove the source).
+    assert!(world.move_calls().is_empty());
+    let counts = store.pending_ops().counts(account).await.unwrap();
+    assert_eq!((counts.pending, counts.inflight, counts.failed), (0, 0, 0));
+}
+
+#[tokio::test]
+async fn delete_op_replays_as_a_move_to_trash_from_the_recorded_source() {
+    let world = FakeWorld::new();
+    let (store, account, inbox) = store_with_mailbox().await;
+    let trash = add_mailbox(&store, account, "Trash").await;
+    let message = insert_remote(&store, inbox, 1).await;
+    // Delete = move-to-Trash, applied optimistically to local storage first.
+    store.messages().set_mailbox(message, trash).await.unwrap();
+    enqueue(&store, account, message, delete_op(inbox)).await;
+
+    let engine = SyncEngine::start(
+        store.clone(),
+        FakeFactory::new(world.clone()),
+        test_config(),
+    );
+    run_replay(&engine, account).await;
+
+    // Selects the INBOX source and moves the message to the account's Trash.
+    assert_eq!(world.select_calls(), vec![MailboxName::new("INBOX")]);
+    assert_eq!(
+        world.move_calls(),
+        vec![(
+            RemoteMessageId::Imap {
+                uid: 1,
+                uid_validity: UV,
+            },
+            MailboxName::new("Trash"),
+        )]
+    );
+    let counts = store.pending_ops().counts(account).await.unwrap();
+    assert_eq!((counts.pending, counts.inflight, counts.failed), (0, 0, 0));
 }

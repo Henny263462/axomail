@@ -152,6 +152,17 @@ impl IncomingMailProvider for Pop3Provider {
         })
     }
 
+    async fn copy_message(
+        &mut self,
+        _id: &RemoteMessageId,
+        _target: &MailboxName,
+    ) -> Result<(), MailError> {
+        // POP3 has no server-side folders to copy between.
+        Err(MailError::UnsupportedCapability {
+            capability: "server-side copy (POP3 is download-only)".to_owned(),
+        })
+    }
+
     async fn delete_message(&mut self, id: &RemoteMessageId) -> Result<(), MailError> {
         // First guard: without the account policy the adapter never deletes.
         // The command layer is the second guard and must have confirmed the
@@ -180,6 +191,12 @@ impl IncomingMailProvider for Pop3Provider {
         Err(MailError::UnsupportedCapability {
             capability: "server-side append (POP3 is download-only)".to_owned(),
         })
+    }
+
+    async fn expunge_mailbox(&mut self, _mailbox: &MailboxName) -> Result<(), MailError> {
+        // POP3 removal is DELE-per-message under the delete-after-download
+        // policy, not a mailbox expunge; there are no server folders to empty.
+        Err(unsupported_folders())
     }
 
     async fn create_mailbox(&mut self, _path: &MailboxName) -> Result<(), MailError> {

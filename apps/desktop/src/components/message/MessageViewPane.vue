@@ -21,6 +21,11 @@ const emit = defineEmits<{
   reply: [messageId: number];
   replyAll: [messageId: number];
   forward: [messageId: number];
+  /** Move / copy / archive / delete-to-Trash requested for the given message. */
+  move: [messageId: number];
+  copy: [messageId: number];
+  archive: [messageId: number];
+  deleteMessage: [messageId: number];
 }>();
 
 type LoadState = "idle" | "loading" | "loaded" | "error";
@@ -132,6 +137,10 @@ watch(
       @reply="emit('reply', detail.id)"
       @reply-all="emit('replyAll', detail.id)"
       @forward="emit('forward', detail.id)"
+      @move="emit('move', detail.id)"
+      @copy="emit('copy', detail.id)"
+      @archive="emit('archive', detail.id)"
+      @delete="emit('deleteMessage', detail.id)"
     />
   </section>
 </template>

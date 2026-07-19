@@ -97,8 +97,20 @@ impl IncomingMailProvider for Pop3Sync {
         self.provider.move_message(id, target).await
     }
 
+    async fn copy_message(
+        &mut self,
+        id: &RemoteMessageId,
+        target: &MailboxName,
+    ) -> Result<(), MailError> {
+        self.provider.copy_message(id, target).await
+    }
+
     async fn delete_message(&mut self, id: &RemoteMessageId) -> Result<(), MailError> {
         self.provider.delete_message(id).await
+    }
+
+    async fn expunge_mailbox(&mut self, mailbox: &MailboxName) -> Result<(), MailError> {
+        self.provider.expunge_mailbox(mailbox).await
     }
 
     async fn append_message(

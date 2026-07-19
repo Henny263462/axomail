@@ -109,6 +109,15 @@ pub fn run() {
             commands::writeback::set_message_flagged,
             commands::writeback::mark_mailbox_read,
             commands::writeback::mark_messages_read,
+            commands::actions::move_messages,
+            commands::actions::copy_messages,
+            commands::actions::archive_messages,
+            commands::actions::delete_to_trash,
+            commands::actions::undo_move,
+            commands::trash::empty_trash,
+            commands::trash::compact_storage,
+            commands::trash::get_empty_trash_on_exit,
+            commands::trash::set_empty_trash_on_exit,
             commands::detail::get_message_detail,
             commands::attachments::save_attachment,
             commands::attachments::save_all_attachments,
@@ -163,12 +172,44 @@ pub fn run() {
             commands::offline::download_mailbox_now,
             commands::offline::cleanup_offline_cache,
         ])
-        .run(tauri::generate_context!());
+        .build(tauri::generate_context!());
 
-    if let Err(error) = outcome {
-        eprintln!("fatal: failed to start axomail: {error}");
-        std::process::exit(1);
+    match outcome {
+        Ok(app) => app.run(handle_run_event),
+        Err(error) => {
+            eprintln!("fatal: failed to start axomail: {error}");
+            std::process::exit(1);
+        }
     }
+}
+
+/// Upper bound on the app-close "empty Trash on exit" cleanup, so a slow or
+/// dead server connection can never wedge shutdown.
+const EXIT_CLEANUP_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
+
+/// Runs the per-account "empty Trash on exit" cleanup when the app is closing.
+/// Best-effort and time-bounded; a failure or timeout is logged, never fatal.
+fn handle_run_event(app: &tauri::AppHandle, event: tauri::RunEvent) {
+    if !matches!(event, tauri::RunEvent::ExitRequested { .. }) {
+        return;
+    }
+    let Some(state) = app.try_state::<AppState>() else {
+        return;
+    };
+    let state = state.inner().clone();
+    tauri::async_runtime::block_on(async move {
+        let cleanup = commands::trash::empty_trash_on_exit_all(
+            state.store(),
+            state.factory(),
+            state.raw_root(),
+        );
+        if tokio::time::timeout(EXIT_CLEANUP_TIMEOUT, cleanup)
+            .await
+            .is_err()
+        {
+            tracing::warn!("empty-trash-on-exit cleanup timed out");
+        }
+    });
 }
 
 /// Spawns a task that mirrors the sync engine's broadcast events onto the
