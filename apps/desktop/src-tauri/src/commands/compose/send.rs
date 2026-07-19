@@ -1,13 +1,18 @@
 //! The `send_message` command: queue a composed message and (unless it is
 //! scheduled or the app is offline) submit it immediately.
 
-use axomail_core::{Account, MailError};
+use axomail_core::{Account, MailError, OutgoingAttachment};
+use axomail_security::sanitize_attachment_filename;
 use axomail_storage::{Identity, IdentityId, NewOutbox, Store};
+use base64::Engine;
+use base64::engine::general_purpose::STANDARD;
 
 use super::append::spawn_sent_copy_append;
-use super::shared::{Submission, load_account, now_unix, parse_addresses, submit_record};
+use super::shared::{
+    SendExtras, Submission, load_account, now_unix, parse_addresses, submit_record,
+};
 use crate::commands::map_command_error;
-use crate::dto::{ComposeInput, SendOutcomeDto};
+use crate::dto::{ComposeAttachmentDto, ComposeInput, SendOutcomeDto};
 use crate::state::{AppState, SharedSecretStore};
 
 /// Sends a composed message through the outbox.
@@ -41,16 +46,25 @@ pub async fn send_message_impl(
             message: "a message needs at least one primary (To) recipient".to_owned(),
         });
     }
-    // Validate every address before writing anything.
+    // Validate every address and decode every attachment before writing
+    // anything, so malformed input fails the command before any row is created.
     parse_addresses(&input.to)?;
     parse_addresses(&input.cc)?;
     parse_addresses(&input.bcc)?;
+    let attachments = decode_attachments(&input.attachments)?;
 
     let account = load_account(store, input.account_id).await?;
     let identity = resolve_identity(store, &account, input.identity_id).await?;
     // A schedule strictly in the future defers the send; a past/now instant is
     // treated as "send now".
     let scheduled = input.scheduled_at_unix.filter(|&at| at > now_unix());
+
+    // Move the reply/forward threading headers out of the input before the row
+    // is built (partial move; the outbox row consumes the remaining fields).
+    // The extras are applied only on the immediate-send path below — a scheduled
+    // or offline send drains later from the row, which carries none of them.
+    let in_reply_to = input.in_reply_to;
+    let references = input.references;
 
     let record = store
         .outbox()
@@ -87,7 +101,39 @@ pub async fn send_message_impl(
             Some("the message could not be queued for sending".to_owned()),
         )?));
     }
-    submit_record(store, secrets, extra_roots, &account, &record).await
+    let extras = SendExtras {
+        in_reply_to,
+        references,
+        attachments,
+    };
+    submit_record(store, secrets, extra_roots, &account, &record, &extras).await
+}
+
+/// Decodes the composer's base64 attachments into outgoing MIME parts,
+/// sanitizing each filename.
+///
+/// # Errors
+///
+/// Returns [`MailError::Configuration`] if any attachment's content is not
+/// valid base64.
+fn decode_attachments(
+    attachments: &[ComposeAttachmentDto],
+) -> Result<Vec<OutgoingAttachment>, MailError> {
+    attachments
+        .iter()
+        .map(|attachment| {
+            let bytes = STANDARD.decode(&attachment.content_base64).map_err(|_| {
+                MailError::Configuration {
+                    message: "an attachment could not be decoded".to_owned(),
+                }
+            })?;
+            Ok(OutgoingAttachment {
+                filename: sanitize_attachment_filename(&attachment.filename),
+                mime_type: attachment.mime_type.clone(),
+                bytes,
+            })
+        })
+        .collect()
 }
 
 /// Wraps an outcome that has no Sent copy to upload (scheduled, offline, or a

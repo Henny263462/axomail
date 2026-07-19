@@ -158,7 +158,11 @@ async fn resolve_remote_policy(
 
 /// Fetches the raw body for a message that is not cached yet, caches it, and
 /// returns the bytes. A message with no remote identity has no source.
-async fn fetch_and_cache<P, F>(
+///
+/// Shared with the reply/forward prefill (`commands::reply`), which needs the
+/// same on-demand fetch-and-cache to parse a source message that has not been
+/// opened yet.
+pub(crate) async fn fetch_and_cache<P, F>(
     store: &Store,
     factory: &F,
     remote_id: &Option<RemoteMessageId>,

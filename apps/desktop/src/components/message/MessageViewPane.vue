@@ -17,6 +17,10 @@ const props = defineProps<{
 const emit = defineEmits<{
   /** The starred state changed here; the host syncs the list row. */
   flagChanged: [payload: { messageId: number; flagged: boolean }];
+  /** Reply / reply-all / forward requested for the given message. */
+  reply: [messageId: number];
+  replyAll: [messageId: number];
+  forward: [messageId: number];
 }>();
 
 type LoadState = "idle" | "loading" | "loaded" | "error";
@@ -125,6 +129,9 @@ watch(
       @show-remote-once="showRemoteOnce"
       @always-allow-remote="alwaysAllowRemote"
       @toggle-star="toggleStar"
+      @reply="emit('reply', detail.id)"
+      @reply-all="emit('replyAll', detail.id)"
+      @forward="emit('forward', detail.id)"
     />
   </section>
 </template>

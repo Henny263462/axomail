@@ -5,7 +5,7 @@ use axomail_core::MailError;
 use axomail_storage::{OutboxId, OutboxState, Store};
 
 use super::append::spawn_sent_copy_append;
-use super::shared::{Submission, load_account, submit_record};
+use super::shared::{SendExtras, Submission, load_account, submit_record};
 use crate::commands::map_command_error;
 use crate::dto::{OutboxItemDto, SendOutcomeDto};
 use crate::state::{AppState, SharedSecretStore};
@@ -51,7 +51,17 @@ pub async fn retry_outbox_impl(
     }
 
     let account = load_account(store, record.account.value()).await?;
-    submit_record(store, secrets, extra_roots, &account, &record).await
+    // A retry/drain re-sends what the outbox row holds; reply threading headers
+    // and forwarded attachments are not persisted there, so none are re-applied.
+    submit_record(
+        store,
+        secrets,
+        extra_roots,
+        &account,
+        &record,
+        &SendExtras::default(),
+    )
+    .await
 }
 
 /// Lists every outbox row, most recently updated first.

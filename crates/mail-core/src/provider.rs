@@ -290,6 +290,8 @@ mod tests {
             text_body: String::new(),
             html_body: None,
             attachments: vec![],
+            in_reply_to: None,
+            references: vec![],
         };
         assert_send_future(provider.send(&message));
     }

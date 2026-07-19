@@ -26,6 +26,7 @@ mod jobs;
 mod message;
 mod oauth;
 mod offline;
+mod reply;
 mod search;
 mod settings;
 mod sync_event;
@@ -37,7 +38,7 @@ pub use account::{
     IncomingServerDetailDto, MailboxSummaryDto, OAuthInput, OutgoingServerDetailDto,
     ServerEndpointInput, ServerInput, UpdateAccountInput,
 };
-pub use compose::{ComposeInput, DraftDto, OutboxItemDto, SendOutcomeDto};
+pub use compose::{ComposeAttachmentDto, ComposeInput, DraftDto, OutboxItemDto, SendOutcomeDto};
 pub use connection::ConnectionTestResult;
 pub use detail::{AttachmentMetaDto, MessageDetailDto, RecipientDto, ScamFlagDto};
 pub use folder::{CreateFolderInput, RenameFolderInput, SetFolderSubscribedInput};
@@ -46,6 +47,7 @@ pub use jobs::SyncJobDto;
 pub use message::{MessageListItemDto, MessageListPageDto};
 pub use oauth::{OAuthAuthorizeResult, OAuthAuthorizeStatus};
 pub use offline::OfflinePolicyDto;
+pub use reply::{ComposerPrefillDto, PrefillSourceDto, ReplyMode, SourceMark};
 pub use search::SearchResultDto;
 pub use settings::{Pop3DeletePolicyDto, SettingsDto, ThemePreference};
 pub use sync_event::SyncEventDto;

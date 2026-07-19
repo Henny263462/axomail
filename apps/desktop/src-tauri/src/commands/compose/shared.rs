@@ -11,7 +11,8 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use axomail_core::{
     Account, AccountId, Address, EmailAddress, FlagSet, IncomingProtocol, MailError, Mailbox,
-    MailboxRole, MessageFlags, OutgoingMessage, SystemFlags, ThreadingHeaders, UtcTimestamp,
+    MailboxRole, MessageFlags, OutgoingAttachment, OutgoingMessage, SystemFlags, ThreadingHeaders,
+    UtcTimestamp,
 };
 use axomail_smtp::{RenderedMessage, SmtpConfig, SmtpProvider, render_message};
 use axomail_storage::{Identity, NewMessage, OutboxId, OutboxRecord, Store};
@@ -36,6 +37,23 @@ pub struct Submission {
 /// Length at which the stored Sent-copy preview is truncated.
 const PREVIEW_LEN: usize = 200;
 
+/// Per-send data that is not persisted on the outbox row.
+///
+/// Threading headers (reply) and a forwarded `message/rfc822` part live here
+/// because the outbox schema carries no columns for them (no migration this
+/// wave). They are supplied on the immediate-send path from the compose input;
+/// the retry/drain path submits with [`SendExtras::default`], so a scheduled or
+/// offline reply/forward sends without these extras — a documented limitation.
+#[derive(Debug, Default, Clone)]
+pub(super) struct SendExtras {
+    /// `In-Reply-To` (source Message-ID, no angle brackets).
+    pub in_reply_to: Option<String>,
+    /// `References` chain (oldest first).
+    pub references: Vec<String>,
+    /// Attachments to include on this message.
+    pub attachments: Vec<OutgoingAttachment>,
+}
+
 /// Submits one outbox row (already transitioned to `sending`) over SMTP and
 /// records the terminal state. Never propagates a send failure as an error:
 /// it is captured on the row and in the returned outcome.
@@ -50,6 +68,7 @@ pub(super) async fn submit_record(
     extra_roots: &[Vec<u8>],
     account: &Account,
     record: &OutboxRecord,
+    extras: &SendExtras,
 ) -> Result<Submission, MailError> {
     // Resolve the identity the row was queued under; a deleted identity nulls
     // the reference (ON DELETE SET NULL), so this falls back to the account.
@@ -57,7 +76,7 @@ pub(super) async fn submit_record(
         Some(id) => store.identities().get(id).await?,
         None => None,
     };
-    let message = match build_message(account, record, identity.as_ref()) {
+    let message = match build_message(account, record, identity.as_ref(), extras) {
         Ok(message) => message,
         Err(error) => return fail(store, record.id, error).await,
     };
@@ -121,14 +140,16 @@ async fn build_provider(
     SmtpProvider::new(config)
 }
 
-/// Assembles the outgoing message from the account, stored row, and chosen
-/// identity (text only per the composer contract; attachments and HTML come
-/// later). The identity, when present, supplies the From and Reply-To;
-/// otherwise the account's own address is used.
+/// Assembles the outgoing message from the account, stored row, chosen
+/// identity, and per-send extras. The identity, when present, supplies the From
+/// and Reply-To; otherwise the account's own address is used. `extras` carries
+/// the threading headers and any attachments (e.g. a forwarded message), which
+/// are not persisted on the outbox row (see [`SendExtras`]).
 fn build_message(
     account: &Account,
     record: &OutboxRecord,
     identity: Option<&Identity>,
+    extras: &SendExtras,
 ) -> Result<OutgoingMessage, MailError> {
     let (from, reply_to) = sender_headers(account, identity)?;
     Ok(OutgoingMessage {
@@ -140,7 +161,9 @@ fn build_message(
         subject: record.subject.clone(),
         text_body: record.body_text.clone(),
         html_body: None,
-        attachments: Vec::new(),
+        attachments: extras.attachments.clone(),
+        in_reply_to: extras.in_reply_to.clone(),
+        references: extras.references.clone(),
     })
 }
 
