@@ -334,6 +334,114 @@ list) both build on this one selection model.
 | 4.6 | U4b Print & import/export | Print message (print-friendly doc), export folder as mbox, import mbox/EML. | — |
 | 4.7 | E2 IMAP IDLE | Persistent IDLE connection job per account (reconnect + backoff, immediate sync trigger), settings toggle, poll fallback. | — |
 
+**Stage 0 (sequential, before fan-out):** `App.vue` headroom pre-split (the
+shell sat exactly at the 400-line ceiling) + the shared command-registry
+foundation the palette (4.5) and the action tracks (4.1–4.3, plus reply/move/
+etc.) register against. No migration; no new deps. Full verification; committed
+by the integrator before fan-out.
+
+### Wave 4 Stage 0 delivered
+
+Delivered (main). The Wave-4 tracks code against exactly this.
+
+**`App.vue` headroom** — the shell was exactly at the 400-line hard gate. Its
+account-loading and message-backed view routing moved to a new composable so
+Wave-4 tracks have room to add wiring; `App.vue` is now **273** non-blank lines
+(was 400), the extracted composable **223**. Behaviour is byte-for-byte
+unchanged (all specs green).
+
+- `composables/useMailboxView.ts` now owns: `loadAccounts` (+ dev-fixtures
+  fallback + its own `onMounted`), `refreshAccounts`, `onAccountsChanged`,
+  `onAccountCreated`, `loadMessages`, `loadUnified`, `selectMailbox`,
+  `selectUnified`, `selectTag`, `reloadCurrentList`, `onSelectMessage`, and the
+  `messageView` / `viewedMessageId` computeds. It follows the established
+  props-down deps pattern: `App.vue` still owns the reactive refs (`accounts`,
+  `messages`, `unifiedItems`, `selectedMailboxId`, `selectedMessageId`,
+  `selectedTagId`, `activeView`) and passes them in, alongside the list-loading
+  cursor setters, the `dialogs` controller, a `showPane` callback, and
+  `scheduleAutoRead`. `App.vue` wires it as `const view = useMailboxView({ … })`
+  and calls `view.selectMailbox` / `view.onSelectMessage` / etc.
+- **Unchanged contracts:** `DialogHost` + `components/layout/dialogs.ts`, the
+  settings-section registry (`components/settings/sections.ts`), and
+  `useMessageSelection` are untouched — only App orchestration was relocated.
+  Compose-entry wiring still lands in `useComposeWorkflow`; move/copy/archive/
+  delete in `useMailboxActions` (both as Wave 3 left them).
+
+**Command registry** (`composables/useCommandRegistry.ts` + `types/command.ts`)
+— a dependency-free registry + one global keyboard dispatcher. Track 4.5 builds
+the palette / help overlay on it; tracks 4.1–4.3 (and the action surfaces)
+register their user actions as commands. **No palette UI and no feature commands
+are wired yet** — this is the primitive only.
+
+*A command* (`types/command.ts`):
+
+```ts
+interface Command {
+  id: string;                       // namespaced, e.g. "message.reply"
+  title: string;                    // palette label
+  keywords: readonly string[];      // extra palette search terms ([] if none)
+  shortcut?: Shortcut;              // e.g. "Mod+K", "n", "Delete"
+  run: () => void | Promise<void>;  // dispatcher does not await
+  isEnabled?: () => boolean;        // false ⇒ shortcut falls through, palette dims
+}
+type Shortcut = string; // "Mod+K" | "Ctrl+Shift+A" | "n" | "Delete" | …
+```
+
+*Shortcut spec* — modifier tokens + a final key joined by `+`. Modifiers
+(case-insensitive): `Ctrl`/`Control`, `Alt`/`Option`, `Shift`,
+`Meta`/`Cmd`/`Command`/`Super`/`Win`, and **`Mod`** (the platform accelerator:
+`Meta` on macOS, `Ctrl` elsewhere — prefer it). The key matches
+`KeyboardEvent.key` case-insensitively (`"k"`, `"Delete"`, `"ArrowDown"`,
+`"Space"`).
+
+*App root* — `App.vue` calls `provideCommandRegistry()` once. It creates the
+registry, installs the single `window` keydown dispatcher (bubble phase), and
+provides it to descendants; disposed on unmount. Returns the `CommandRegistry`.
+
+*Register a command (feature tracks)* — from any descendant:
+
+```ts
+const registry = useCommandRegistry();
+registry.register({
+  id: "contacts.new", title: "New contact", keywords: ["address"],
+  shortcut: "Mod+Shift+C", run: openNewContact,
+});
+// or registry.registerAll([...]) for a batch
+```
+
+Every registration auto-unregisters when the calling component unmounts;
+re-registering an `id` replaces it.
+
+*Consume the list (palette, 4.5)* — `useCommandRegistry().commands` is a
+`ComputedRef<Command[]>` in registration order; `formatShortcut(spec)` renders a
+chord for display (`"Ctrl+K"`, or `⌘K`-style glyphs on macOS).
+
+*Dispatcher rules* —
+
+- Bubble phase + a `defaultPrevented` short-circuit, so a focused widget's own
+  key map wins: the message listbox keeps its arrows / Enter / Delete / `a`
+  (component-scoped `useListNavigation`, unchanged), and only unclaimed keys
+  reach a global command.
+- **Never hijacks typing:** while focus is in an `input` / `textarea` / `select`
+  / contenteditable, only a Ctrl/Alt/Meta chord dispatches (e.g. `Mod+K` still
+  opens the palette); a bare or Shift-only key falls through to the field.
+- A matched command whose `isEnabled()` returns `false` does not fire (the
+  keystroke falls through). On a match: `preventDefault()` then `run()` (not
+  awaited). First enabled match in registration order wins — namespace shortcuts
+  to avoid collisions.
+
+*Testing seam* — `createCommandRegistry()` is the lifecycle-free core (used by
+both composables and directly by unit tests); `registry.handleKeydown(event)`
+returns whether it dispatched.
+
+*Hardcoded shortcuts (proof-of-use note)* — Wave 3's Delete / `a` / arrow keys
+are **not** global: they are ARIA-listbox navigation bound to the focused list
+via `useListNavigation` + `@keydown`, keyed off the roving active row. Routing
+them through the global registry would change behaviour (fire when the list is
+unfocused, lose active-row context), so they are deliberately left
+component-scoped. The registry's own tests are its proof-of-use; track 4.5 wires
+the first global commands.
+
 ## Wave 5 — Heavy tail
 
 | Track | Cluster | Scope | Migration |
