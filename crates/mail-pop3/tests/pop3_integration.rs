@@ -425,3 +425,37 @@ async fn connection_closed_mid_command_is_network_or_protocol() {
         "got {error:?}"
     );
 }
+
+#[tokio::test]
+async fn folder_management_is_unsupported() {
+    // POP3 has a single implicit mailbox and no folder hierarchy, so every
+    // server-side folder operation is rejected as an unsupported capability —
+    // without ever touching the connection.
+    let server = common::start(Spec::base(TlsMode::Implicit)).await;
+    let mut provider = Pop3Provider::new(server.config(ConnectionSecurity::Tls, "pass"));
+
+    let create = provider.create_mailbox(&MailboxName::new("Work")).await;
+    assert!(
+        matches!(create, Err(MailError::UnsupportedCapability { .. })),
+        "got {create:?}"
+    );
+    let rename = provider
+        .rename_mailbox(&MailboxName::new("Work"), &MailboxName::new("Projects"))
+        .await;
+    assert!(matches!(
+        rename,
+        Err(MailError::UnsupportedCapability { .. })
+    ));
+    let delete = provider.delete_mailbox(&MailboxName::new("Work")).await;
+    assert!(matches!(
+        delete,
+        Err(MailError::UnsupportedCapability { .. })
+    ));
+    let subscribe = provider
+        .set_mailbox_subscribed(&MailboxName::new("Work"), true)
+        .await;
+    assert!(matches!(
+        subscribe,
+        Err(MailError::UnsupportedCapability { .. })
+    ));
+}

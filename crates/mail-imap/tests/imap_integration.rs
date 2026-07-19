@@ -447,6 +447,69 @@ async fn store_flags_sends_additive_store() {
 }
 
 #[tokio::test]
+async fn folder_crud_sends_the_expected_commands() {
+    let server = common::start(Spec::base(TlsMode::Implicit)).await;
+    let mut provider = ImapProvider::new(config_for(&server, ConnectionSecurity::Tls, "pass"));
+    provider.connect().await.expect("connect");
+
+    provider
+        .create_mailbox(&MailboxName::new("Work"))
+        .await
+        .expect("create");
+    provider
+        .rename_mailbox(&MailboxName::new("Work"), &MailboxName::new("Projects"))
+        .await
+        .expect("rename");
+    provider
+        .set_mailbox_subscribed(&MailboxName::new("Projects"), true)
+        .await
+        .expect("subscribe");
+    provider
+        .set_mailbox_subscribed(&MailboxName::new("Projects"), false)
+        .await
+        .expect("unsubscribe");
+    provider
+        .delete_mailbox(&MailboxName::new("Projects"))
+        .await
+        .expect("delete");
+    provider.disconnect().await.expect("disconnect");
+
+    let commands = server.commands();
+    assert!(server.saw_command("CREATE"), "commands: {commands:?}");
+    assert!(server.saw_command("RENAME"), "commands: {commands:?}");
+    assert!(server.saw_command("DELETE"), "commands: {commands:?}");
+    // "UNSUBSCRIBE" contains "SUBSCRIBE", so match a line that subscribes but
+    // does not unsubscribe to prove the subscribe was actually sent.
+    assert!(
+        commands
+            .iter()
+            .any(|line| line.contains("SUBSCRIBE") && !line.contains("UNSUBSCRIBE")),
+        "commands: {commands:?}"
+    );
+    assert!(
+        commands.iter().any(|line| line.contains("UNSUBSCRIBE")),
+        "commands: {commands:?}"
+    );
+}
+
+#[tokio::test]
+async fn folder_create_rejection_maps_to_protocol_error() {
+    let mut spec = Spec::base(TlsMode::Implicit);
+    spec.fail_command = Some("CREATE".to_owned());
+    let server = common::start(spec).await;
+    let mut provider = ImapProvider::new(config_for(&server, ConnectionSecurity::Tls, "pass"));
+    provider.connect().await.expect("connect");
+
+    let error = provider
+        .create_mailbox(&MailboxName::new("Work"))
+        .await
+        .expect_err("the server rejects CREATE");
+    // A tagged NO must surface as an error — never a silent success that would
+    // let the command layer record a phantom local folder.
+    assert!(matches!(error, MailError::Protocol { .. }), "got {error:?}");
+}
+
+#[tokio::test]
 async fn stalled_server_times_out() {
     let mut spec = Spec::base(TlsMode::Implicit);
     spec.disruption = Disruption::StallAfterLogin;

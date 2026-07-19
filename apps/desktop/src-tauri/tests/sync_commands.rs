@@ -15,7 +15,7 @@ use axomail_desktop_lib::commands::accounts::create_account_impl;
 use axomail_desktop_lib::commands::sync::sync_account_impl;
 use axomail_storage::Store;
 use axomail_sync::{ProviderFactory, SyncConfig, SyncEngine, SyncJobId};
-use common::{secret_stores, valid_input};
+use common::{secret_stores, seed_standard_folders, valid_input};
 
 /// A provider that never connects; the sync worker fails fast, but the
 /// `JobQueued` events (emitted before any worker runs) are what the command
@@ -55,6 +55,26 @@ impl IncomingMailProvider for StubProvider {
     async fn delete_message(&mut self, _id: &RemoteMessageId) -> Result<(), MailError> {
         Err(MailError::Cancelled)
     }
+    async fn create_mailbox(&mut self, _path: &MailboxName) -> Result<(), MailError> {
+        Err(MailError::Cancelled)
+    }
+    async fn rename_mailbox(
+        &mut self,
+        _from: &MailboxName,
+        _to: &MailboxName,
+    ) -> Result<(), MailError> {
+        Err(MailError::Cancelled)
+    }
+    async fn delete_mailbox(&mut self, _path: &MailboxName) -> Result<(), MailError> {
+        Err(MailError::Cancelled)
+    }
+    async fn set_mailbox_subscribed(
+        &mut self,
+        _path: &MailboxName,
+        _subscribed: bool,
+    ) -> Result<(), MailError> {
+        Err(MailError::Cancelled)
+    }
     async fn disconnect(&mut self) -> Result<(), MailError> {
         Ok(())
     }
@@ -72,11 +92,20 @@ impl ProviderFactory<StubProvider> for StubFactory {
 async fn sync_account_enqueues_only_syncable_mailboxes() {
     let store = Store::open_in_memory().await.unwrap();
     let (_concrete, secrets) = secret_stores();
-    let summary = create_account_impl(&store, &secrets, valid_input())
+    let created = create_account_impl(&store, &secrets, valid_input())
         .await
         .unwrap();
+    // IMAP seeds only the inbox; add the standard folders so the tree spans
+    // both syncable (inbox/archive) and skipped (drafts/sent/trash) roles.
+    seed_standard_folders(&store, axomail_core::AccountId::new(created.id)).await;
+    let summary = axomail_desktop_lib::commands::accounts::list_accounts_impl(&store)
+        .await
+        .unwrap()
+        .into_iter()
+        .next()
+        .unwrap();
 
-    // The default tree is Inbox, Drafts, Sent, Archive, Trash — so only two
+    // The tree is Inbox, Drafts, Sent, Archive, Trash — so only two
     // mailboxes (Inbox, Archive) are syncable.
     let syncable: HashSet<i64> = summary
         .mailboxes

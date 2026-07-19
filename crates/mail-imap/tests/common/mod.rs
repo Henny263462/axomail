@@ -89,6 +89,9 @@ pub struct Spec {
     pub messages: Vec<Message>,
     pub list_lines: Vec<String>,
     pub disruption: Disruption,
+    /// When set, any acknowledged command whose upper-cased form starts with
+    /// this token is answered `NO` instead of `OK` (drives failure-path tests).
+    pub fail_command: Option<String>,
 }
 
 impl Spec {
@@ -105,6 +108,7 @@ impl Spec {
             messages: Vec::new(),
             list_lines: Vec::new(),
             disruption: Disruption::None,
+            fail_command: None,
         }
     }
 }
@@ -299,24 +303,40 @@ where
             send(stream, &format!("{tag} OK LOGOUT completed\r\n")).await?;
             return Ok(());
         } else if is_ack_command(&upper) {
-            send(stream, &format!("{tag} OK completed\r\n")).await?;
+            if fails(spec, &upper) {
+                send(stream, &format!("{tag} NO operation rejected\r\n")).await?;
+            } else {
+                send(stream, &format!("{tag} OK completed\r\n")).await?;
+            }
         } else {
             send(stream, &format!("{tag} BAD unknown command\r\n")).await?;
         }
     }
 }
 
-/// Commands the server merely acknowledges with a tagged OK.
+/// Commands the server merely acknowledges with a tagged OK (or a scripted NO).
 fn is_ack_command(upper: &str) -> bool {
-    const ACKED: [&str; 6] = [
+    const ACKED: [&str; 11] = [
         "UID STORE",
         "UID MOVE",
         "UID COPY",
         "UID EXPUNGE",
         "EXPUNGE",
         "NOOP",
+        "CREATE",
+        "DELETE",
+        "RENAME",
+        "SUBSCRIBE",
+        "UNSUBSCRIBE",
     ];
     ACKED.iter().any(|prefix| upper.starts_with(prefix))
+}
+
+/// Whether the server should reject this command per `spec.fail_command`.
+fn fails(spec: &Spec, upper: &str) -> bool {
+    spec.fail_command
+        .as_ref()
+        .is_some_and(|token| upper.starts_with(&token.to_ascii_uppercase()))
 }
 
 /// Verifies credentials and answers LOGIN, returning whether it succeeded.

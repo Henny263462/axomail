@@ -344,6 +344,7 @@ function onSyncEvent(event: SyncEventDto): void {
         @sync-account="syncAccount"
         @select-drafts="selectDrafts"
         @select-outbox="selectOutbox"
+        @folders-changed="onAccountsChanged"
       />
     </template>
     <template #list>

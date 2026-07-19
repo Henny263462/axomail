@@ -98,6 +98,7 @@ impl IncomingMailProvider for Pop3Provider {
             mailboxes: vec![RemoteMailbox {
                 name: MailboxName::new("INBOX"),
                 role: Some(MailboxRole::Inbox),
+                delimiter: None,
             }],
         })
     }
@@ -162,6 +163,30 @@ impl IncomingMailProvider for Pop3Provider {
         command::dele(connected.wire(), number, timeout).await
     }
 
+    async fn create_mailbox(&mut self, _path: &MailboxName) -> Result<(), MailError> {
+        Err(unsupported_folders())
+    }
+
+    async fn rename_mailbox(
+        &mut self,
+        _from: &MailboxName,
+        _to: &MailboxName,
+    ) -> Result<(), MailError> {
+        Err(unsupported_folders())
+    }
+
+    async fn delete_mailbox(&mut self, _path: &MailboxName) -> Result<(), MailError> {
+        Err(unsupported_folders())
+    }
+
+    async fn set_mailbox_subscribed(
+        &mut self,
+        _path: &MailboxName,
+        _subscribed: bool,
+    ) -> Result<(), MailError> {
+        Err(unsupported_folders())
+    }
+
     async fn disconnect(&mut self) -> Result<(), MailError> {
         self.session = None;
         if let Some(connected) = self.connected.take() {
@@ -172,6 +197,14 @@ impl IncomingMailProvider for Pop3Provider {
             let _ = command::quit(&mut wire, timeout).await;
         }
         Ok(())
+    }
+}
+
+/// The error POP3 returns for any server-side folder operation: POP3 has a
+/// single implicit mailbox and no folder hierarchy to manage.
+fn unsupported_folders() -> MailError {
+    MailError::UnsupportedCapability {
+        capability: "server-side folders (POP3 has a single mailbox)".to_owned(),
     }
 }
 

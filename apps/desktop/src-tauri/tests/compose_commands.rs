@@ -5,13 +5,32 @@
 mod common;
 
 use axomail_core::{AccountId, MailboxId, MailboxRole};
-use axomail_desktop_lib::commands::accounts::create_account_impl;
+use axomail_desktop_lib::commands::accounts::{create_account_impl, list_accounts_impl};
 use axomail_desktop_lib::commands::compose::{
     list_outbox_impl, retry_outbox_impl, send_message_impl,
 };
+use axomail_desktop_lib::dto::{AccountSummaryDto, CreateAccountInput};
+use axomail_desktop_lib::state::SharedSecretStore;
 use axomail_storage::{NewOutbox, OutboxId, OutboxState, Store};
 use axomail_test_support::{ScriptedServer, Step, TestTlsIdentity};
-use common::{compose_input, outgoing_account_input, secret_stores};
+use common::{compose_input, outgoing_account_input, secret_stores, seed_standard_folders};
+
+/// Creates an account and adds the standard folders (IMAP seeds only the
+/// inbox), returning the re-listed summary so it carries a Sent mailbox.
+async fn account_with_folders(
+    store: &Store,
+    secrets: &SharedSecretStore,
+    input: CreateAccountInput,
+) -> AccountSummaryDto {
+    let created = create_account_impl(store, secrets, input).await.unwrap();
+    seed_standard_folders(store, AccountId::new(created.id)).await;
+    list_accounts_impl(store)
+        .await
+        .unwrap()
+        .into_iter()
+        .next()
+        .unwrap()
+}
 
 /// Builds a scripted SMTP submission dialog. Advertising only `AUTH PLAIN`
 /// forces mail-send to authenticate in a single inline command.
@@ -65,9 +84,8 @@ async fn send_message_happy_path_files_sent_copy_and_captures_data() {
         .unwrap();
     let roots = vec![identity.root_der().to_vec()];
 
-    let summary = create_account_impl(&store, &secrets, outgoing_account_input(server.port()))
-        .await
-        .unwrap();
+    let summary =
+        account_with_folders(&store, &secrets, outgoing_account_input(server.port())).await;
 
     let input = compose_input(summary.id, &["bob@example.org"], "Meeting notes");
     let outcome = send_message_impl(&store, &secrets, &roots, input)
@@ -108,9 +126,8 @@ async fn send_message_permanent_failure_marks_failed_without_duplicate() {
     .unwrap();
     let roots = vec![identity.root_der().to_vec()];
 
-    let summary = create_account_impl(&store, &secrets, outgoing_account_input(server.port()))
-        .await
-        .unwrap();
+    let summary =
+        account_with_folders(&store, &secrets, outgoing_account_input(server.port())).await;
 
     let input = compose_input(summary.id, &["bob@example.org"], "Undeliverable");
     let outcome = send_message_impl(&store, &secrets, &roots, input)

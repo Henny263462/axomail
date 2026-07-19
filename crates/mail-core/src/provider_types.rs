@@ -14,12 +14,15 @@ use crate::message::{MessageFlags, ThreadingHeaders, UtcTimestamp};
 /// A mailbox as reported by the remote server during discovery.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RemoteMailbox {
-    /// Decoded mailbox name.
+    /// Decoded, full mailbox path (e.g. `INBOX/Work`).
     pub name: MailboxName,
     /// Role derived from server attributes (SPECIAL-USE) when
     /// available; `None` means the server gave no hint and the caller
     /// may fall back to name-based guessing.
     pub role: Option<MailboxRole>,
+    /// Server hierarchy delimiter reported by `LIST` for this folder, or
+    /// `None` when the protocol is flat (POP3) or the server omitted it.
+    pub delimiter: Option<String>,
 }
 
 /// Snapshot of the remote folder structure.

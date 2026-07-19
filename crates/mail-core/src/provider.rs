@@ -69,6 +69,38 @@ pub trait IncomingMailProvider: Send {
         id: &RemoteMessageId,
     ) -> impl Future<Output = Result<(), MailError>> + Send;
 
+    /// Creates a mailbox (folder) on the server at the given full path.
+    ///
+    /// `path` is the decoded full server path; the adapter re-encodes it for
+    /// the wire (e.g. IMAP modified UTF-7). Protocols without server-side
+    /// folders (POP3) return [`MailError::UnsupportedCapability`].
+    fn create_mailbox(
+        &mut self,
+        path: &MailboxName,
+    ) -> impl Future<Output = Result<(), MailError>> + Send;
+
+    /// Renames (and/or moves) a mailbox from one full path to another.
+    fn rename_mailbox(
+        &mut self,
+        from: &MailboxName,
+        to: &MailboxName,
+    ) -> impl Future<Output = Result<(), MailError>> + Send;
+
+    /// Deletes a mailbox on the server.
+    fn delete_mailbox(
+        &mut self,
+        path: &MailboxName,
+    ) -> impl Future<Output = Result<(), MailError>> + Send;
+
+    /// Subscribes to (`subscribed = true`) or unsubscribes from
+    /// (`subscribed = false`) a mailbox on the server, issuing `SUBSCRIBE` or
+    /// `UNSUBSCRIBE` respectively.
+    fn set_mailbox_subscribed(
+        &mut self,
+        path: &MailboxName,
+        subscribed: bool,
+    ) -> impl Future<Output = Result<(), MailError>> + Send;
+
     /// Closes the connection gracefully.
     fn disconnect(&mut self) -> impl Future<Output = Result<(), MailError>> + Send;
 }
@@ -127,6 +159,30 @@ mod tests {
         }
 
         async fn delete_message(&mut self, _id: &RemoteMessageId) -> Result<(), MailError> {
+            Err(MailError::Cancelled)
+        }
+
+        async fn create_mailbox(&mut self, _path: &MailboxName) -> Result<(), MailError> {
+            Err(MailError::Cancelled)
+        }
+
+        async fn rename_mailbox(
+            &mut self,
+            _from: &MailboxName,
+            _to: &MailboxName,
+        ) -> Result<(), MailError> {
+            Err(MailError::Cancelled)
+        }
+
+        async fn delete_mailbox(&mut self, _path: &MailboxName) -> Result<(), MailError> {
+            Err(MailError::Cancelled)
+        }
+
+        async fn set_mailbox_subscribed(
+            &mut self,
+            _path: &MailboxName,
+            _subscribed: bool,
+        ) -> Result<(), MailError> {
             Err(MailError::Cancelled)
         }
 

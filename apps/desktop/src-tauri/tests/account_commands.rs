@@ -27,22 +27,13 @@ async fn create_account_stores_secret_reference_and_seeds_mailboxes() {
         .await
         .unwrap();
 
-    // Five default mailboxes in the documented order, all with zero unread.
+    // IMAP accounts seed only the inbox; folder discovery fills the real tree.
     let roles: Vec<MailboxRole> = summary
         .mailboxes
         .iter()
         .map(|mailbox| mailbox.role)
         .collect();
-    assert_eq!(
-        roles,
-        vec![
-            MailboxRole::Inbox,
-            MailboxRole::Drafts,
-            MailboxRole::Sent,
-            MailboxRole::Archive,
-            MailboxRole::Trash,
-        ]
-    );
+    assert_eq!(roles, vec![MailboxRole::Inbox]);
     assert!(
         summary
             .mailboxes
@@ -81,8 +72,8 @@ async fn create_account_stores_secret_reference_and_seeds_mailboxes() {
     assert_eq!(account.outgoing.credential, outgoing_ref);
     assert_ne!(account.incoming.credential.as_str(), "incoming-secret");
 
-    // The mailboxes are real rows, not fixtures.
-    assert_eq!(store.mailboxes().list(account_id).await.unwrap().len(), 5);
+    // The mailbox is a real row, not a fixture.
+    assert_eq!(store.mailboxes().list(account_id).await.unwrap().len(), 1);
 }
 
 #[tokio::test]
@@ -437,7 +428,8 @@ async fn list_accounts_reports_mailboxes() {
     let accounts = list_accounts_impl(&store).await.unwrap();
     assert_eq!(accounts.len(), 1);
     assert_eq!(accounts[0].email, "klaus@theferbers.eu");
-    assert_eq!(accounts[0].mailboxes.len(), 5);
+    // IMAP seeds only the inbox up front.
+    assert_eq!(accounts[0].mailboxes.len(), 1);
     assert!(
         accounts[0]
             .mailboxes

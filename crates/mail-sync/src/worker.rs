@@ -6,9 +6,11 @@
 //! pending row, announce `JobStarted`, run the kind's executor, then record a
 //! terminal state and emit the closing event. [`dispatch`] routes the claimed
 //! job to its executor: `MailboxSync` keeps its full incremental pipeline (in
-//! [`mailbox_sync`]); `Discover` and `OpReplay` are honest not-yet-implemented
-//! seams the Wave 2 tracks drop their real executors into.
+//! [`mailbox_sync`]); `Discover` reconciles the remote folder tree (in
+//! [`discover`]); `OpReplay` is an honest not-yet-implemented seam track 2.1
+//! drops its executor into.
 
+mod discover;
 mod mailbox_sync;
 
 use std::sync::Arc;
@@ -103,35 +105,12 @@ where
 {
     match job.kind {
         JobKind::MailboxSync => mailbox_sync::execute(shared, job, account_id, token).await,
-        JobKind::Discover => execute_discover(shared, account_id, token).await,
+        JobKind::Discover => discover::execute(shared, account_id, token).await,
         JobKind::OpReplay => execute_op_replay(shared, account_id, token).await,
         JobKind::Fetch | JobKind::Send => Err(MailError::NotImplemented {
             feature: format!("job kind {} is not engine-driven", job.kind.as_str()),
         }),
     }
-}
-
-/// Executor seam for [`JobKind::Discover`] — **Wave 2 track 2.2 (Folders)**.
-///
-/// Placeholder: returns a typed [`MailError::NotImplemented`]. Track 2.2
-/// replaces this body with the real LIST + SPECIAL-USE reconcile into the
-/// mailbox repo, reusing [`guarded`] for every network round-trip. The
-/// account lock, permit, and claim are already applied by [`run_job`].
-async fn execute_discover<P, F>(
-    shared: &Arc<Shared<P, F>>,
-    account_id: AccountId,
-    token: &CancellationToken,
-) -> Result<SyncJobSummary, MailError>
-where
-    P: IncomingMailProvider + 'static,
-    F: ProviderFactory<P>,
-{
-    let _ = (shared, token);
-    Err(MailError::NotImplemented {
-        feature: format!(
-            "folder discovery (JobKind::Discover) for account {account_id}; Wave 2 track 2.2"
-        ),
-    })
 }
 
 /// Executor seam for [`JobKind::OpReplay`] — **Wave 2 track 2.1 (Write-back)**.

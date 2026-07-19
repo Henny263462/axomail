@@ -3,6 +3,7 @@ import { computed } from "vue";
 
 import type { AccountSummary } from "../../types/mail";
 import EmptyState from "../common/EmptyState.vue";
+import FolderTree from "./FolderTree.vue";
 import type { SidebarView } from "./view";
 
 const props = withDefaults(
@@ -25,6 +26,7 @@ const emit = defineEmits<{
   syncAccount: [accountId: number];
   selectDrafts: [];
   selectOutbox: [];
+  foldersChanged: [];
 }>();
 
 const hasAccounts = computed(() => props.accounts.length > 0);
@@ -100,36 +102,13 @@ function isSyncing(accountId: number): boolean {
             ↻
           </button>
         </div>
-        <ul>
-          <li
-            v-for="mailbox in account.mailboxes"
-            :key="mailbox.id"
-          >
-            <button
-              type="button"
-              class="mailbox"
-              :class="{
-                selected:
-                  activeView === 'mailbox' && mailbox.id === selectedMailboxId,
-              }"
-              :aria-current="
-                activeView === 'mailbox' && mailbox.id === selectedMailboxId
-                  ? 'true'
-                  : undefined
-              "
-              @click="emit('selectMailbox', mailbox.id)"
-            >
-              <span class="mailbox-name">{{ mailbox.name }}</span>
-              <span
-                v-if="mailbox.unreadCount > 0"
-                class="unread"
-                :aria-label="`${mailbox.unreadCount} unread`"
-              >
-                {{ mailbox.unreadCount }}
-              </span>
-            </button>
-          </li>
-        </ul>
+        <FolderTree
+          :account="account"
+          :selected-mailbox-id="selectedMailboxId"
+          :active-view="activeView"
+          @select-mailbox="emit('selectMailbox', $event)"
+          @changed="emit('foldersChanged')"
+        />
       </section>
     </template>
 

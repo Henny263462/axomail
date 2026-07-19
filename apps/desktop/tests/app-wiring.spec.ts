@@ -69,7 +69,7 @@ describe("App account wiring", () => {
     const wrapper = mount(App);
     await flushPromises();
 
-    await wrapper.get("button.mailbox").trigger("click");
+    await wrapper.get("button.folder-button").trigger("click");
     await flushPromises();
 
     expect(listMessagesMock).toHaveBeenCalledWith(10, null, 50);
