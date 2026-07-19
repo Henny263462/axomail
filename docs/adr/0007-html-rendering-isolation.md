@@ -52,3 +52,46 @@ without an HTML part.
   multi-window IPC complexity.
 - Threat model documented in SECURITY.md; sanitizer gets adversarial
   unit tests (script/style/URL smuggling corpora).
+
+## Amendment — inline `cid:` image resolution (2026-07-19, Wave 3 / Track 3.6)
+
+Layer 1 of the decision above always envisaged inline `cid:` images being
+"resolved locally". Wave 3 implements that resolution, and this amendment
+records the exact mechanism because it is security-sensitive.
+
+**Mechanism.** A `multipart/related` message references inline images from the
+HTML body by `cid:` URL, carrying the bytes in sibling MIME parts. The message
+detail builder collects those parts into an `InlineImages` map (content-id →
+pre-encoded `data:` URI) and passes it to
+`sanitize_message_html_with_inline`. The sanitizer's ammonia `attribute_filter`,
+**scoped to `img@src` only**, rewrites a surviving `cid:` reference into that
+part's `data:` URI. ammonia does not re-scheme-check the value a filter returns,
+so the `data:` URI is emitted for the image without `data:` being an allowed
+scheme anywhere.
+
+**`data:` stays out of the scheme allowlist.** `data:` is deliberately **not**
+in `Builder::url_schemes`. ammonia's scheme gate runs *before* the attribute
+filter, so every attacker-supplied `data:` URL — on `<a href>`, on a hostile
+`<img src="data:…">`, or on any other attribute — is stripped before the filter
+ever runs. The only `data:` in the output is the one the filter substitutes for
+a resolved `cid:` on `img@src`. This is stronger than filtering `data:` after
+the fact and keeps the sink to a single, audited code path.
+
+**Bounds and allowlist.** Inline embedding is limited to a raster-image MIME
+allowlist (PNG/JPEG/GIF/WebP/BMP/AVIF/ICO; **SVG excluded** as foreign markup)
+and a per-image size cap; the emitted MIME type is always one of those literals,
+never an attacker-controlled string. A `cid:` that points at no part in the
+message (or an oversize/disallowed part) resolves to nothing and renders as a
+broken image — it can neither fetch nor exfiltrate.
+
+**Counting semantics.** Because `data:` is now rejected at the scheme gate
+rather than tallied by the filter, `SanitizedHtml::remote_blocked` counts the
+resources that would trigger a network fetch (remote `http(s)` images and
+`srcset`); inline `data:` images (attacker-supplied ones dropped, message-local
+ones embedded) are not counted.
+
+CSP and the sandboxed iframe are unchanged: `data:` images render inside the
+same null-origin, script-less `srcdoc` document. Adversarial tests
+(`crates/mail-security/tests/inline_cid.rs`) prove `data:` is rejected on
+`<a href>` and non-`img` contexts, that a `cid:` outside the message is dropped,
+and that oversize/non-image parts are not embedded.

@@ -124,6 +124,18 @@ export interface AttachmentMetaDto {
 }
 
 /**
+ * Result of saving an attachment to disk (Track 3.6). No bytes cross the IPC
+ * boundary — this only reports the on-disk name and the number of bytes
+ * written so the reading pane can confirm the save.
+ */
+export interface SavedAttachmentDto {
+  /** Final on-disk file name (sanitized and de-duplicated for save-all). */
+  filename: string;
+  /** Number of bytes written to disk. */
+  bytes: number;
+}
+
+/**
  * One deceptive-link ("scam") warning for the reading pane. Warning only:
  * the sanitized body is never altered.
  */
@@ -155,8 +167,9 @@ export interface MessageDetailDto {
   /** Sanitized HTML for the sandboxed iframe, or null when absent. */
   sanitizedHtml: string | null;
   /**
-   * Count of remote resources blocked during sanitization. When remote
-   * images are allowed this counts only the still-blocked data:/srcset.
+   * Count of remote fetches suppressed during sanitization — blocked remote
+   * http(s) images and srcset (only srcset when remote images are allowed).
+   * data: URLs are rejected at the scheme gate and are not counted.
    */
   remoteBlockedCount: number;
   /** Whether remote http(s) images were kept for this render. */

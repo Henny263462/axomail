@@ -156,6 +156,69 @@ async fn resolve_remote_policy(
     })
 }
 
+/// Loads the raw RFC 5322 bytes of a message for an export or source
+/// operation — saving an attachment, save-as-`.eml`, view source, or reading
+/// the full header block.
+///
+/// Sourcing mirrors the reading pane ([`get_message_detail_impl`]): the cached
+/// body is used when present; otherwise it is fetched and cached when online,
+/// or reported as not-downloaded when offline. On a fresh fetch the message is
+/// marked downloaded (best-effort) so the offline-cache accounting stays in
+/// step. Unlike the reading pane this returns the raw bytes without parsing or
+/// sanitizing — the caller decides what to do with them.
+///
+/// # Errors
+///
+/// Returns [`MailError::Configuration`] when the message is unknown, is not
+/// cached while offline, or is a local-only message with no source, and
+/// propagates parse/network/filesystem/database errors otherwise.
+pub(crate) async fn load_raw_for_export<P, F>(
+    store: &Store,
+    factory: &F,
+    raw_root: &Path,
+    message_id: i64,
+    offline: bool,
+) -> Result<Vec<u8>, MailError>
+where
+    P: IncomingMailProvider + 'static,
+    F: ProviderFactory<P>,
+{
+    let id = MessageId::new(message_id);
+    let envelope = store
+        .messages()
+        .get(id)
+        .await?
+        .ok_or_else(|| MailError::Configuration {
+            message: "the requested message does not exist".to_owned(),
+        })?;
+    let path = raw_message_path(raw_root, message_id);
+    match read_raw(&path).await? {
+        Some(bytes) => Ok(bytes),
+        None => {
+            if offline && envelope.remote_id.is_some() {
+                return Err(MailError::Configuration {
+                    message: "this message has not been downloaded for offline use".to_owned(),
+                });
+            }
+            let bytes =
+                fetch_and_cache(store, factory, &envelope.remote_id, envelope.mailbox, &path)
+                    .await?;
+            // Keep the offline-cache accounting consistent with the reading
+            // pane: flip `has_raw` and index the body. A failure here must not
+            // break the export.
+            if let Ok(parsed) = parse_message(&bytes)
+                && let Err(error) = store
+                    .offline()
+                    .mark_downloaded(id, parsed.text_body.as_deref().unwrap_or_default())
+                    .await
+            {
+                tracing::warn!(%message_id, %error, "failed to mark exported message downloaded");
+            }
+            Ok(bytes)
+        }
+    }
+}
+
 /// Fetches the raw body for a message that is not cached yet, caches it, and
 /// returns the bytes. A message with no remote identity has no source.
 async fn fetch_and_cache<P, F>(

@@ -17,6 +17,7 @@
 use axomail_core::MailError;
 
 mod account;
+mod attachments;
 mod compose;
 mod connection;
 mod detail;
@@ -37,6 +38,7 @@ pub use account::{
     IncomingServerDetailDto, MailboxSummaryDto, OAuthInput, OutgoingServerDetailDto,
     ServerEndpointInput, ServerInput, UpdateAccountInput,
 };
+pub use attachments::SavedAttachmentDto;
 pub use compose::{ComposeInput, DraftDto, OutboxItemDto, SendOutcomeDto};
 pub use connection::ConnectionTestResult;
 pub use detail::{AttachmentMetaDto, MessageDetailDto, RecipientDto, ScamFlagDto};

@@ -2,7 +2,9 @@
 import { computed } from "vue";
 
 import type { MessageDetailDto } from "../../types/mail";
-import { formatBytes, formatDateTime, formatRecipients } from "./format";
+import { formatDateTime, formatRecipients } from "./format";
+import MessageActions from "./MessageActions.vue";
+import MessageAttachments from "./MessageAttachments.vue";
 import MessageBody from "./MessageBody.vue";
 import MessageTagArea from "./MessageTagArea.vue";
 
@@ -72,21 +74,16 @@ function alwaysAllow(): void {
       <MessageTagArea :message-id="detail.id" />
     </header>
 
-    <ul
+    <MessageActions
+      :message-id="detail.id"
+      :subject="detail.subject"
+    />
+
+    <MessageAttachments
       v-if="detail.attachments.length > 0"
-      class="attachments"
-      aria-label="Attachments"
-    >
-      <li
-        v-for="(attachment, index) in detail.attachments"
-        :key="index"
-        class="chip"
-        title="Saving attachments arrives later"
-      >
-        <span class="chip-name">{{ attachment.filename }}</span>
-        <span class="chip-size">{{ formatBytes(attachment.size) }}</span>
-      </li>
-    </ul>
+      :message-id="detail.id"
+      :attachments="detail.attachments"
+    />
 
     <div
       v-if="detail.scamFlags.length > 0"
@@ -219,29 +216,6 @@ function alwaysAllow(): void {
   color: var(--color-text-secondary);
   margin: 0;
   overflow-wrap: anywhere;
-}
-
-.attachments {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-2);
-  margin-top: var(--space-3);
-}
-
-.chip {
-  display: inline-flex;
-  align-items: baseline;
-  gap: var(--space-2);
-  padding: var(--space-1) var(--space-2);
-  border: 1px solid var(--color-border-strong);
-  border-radius: var(--radius-md);
-  font-size: var(--text-xs);
-  color: var(--color-text-secondary);
-  cursor: default;
-}
-
-.chip-size {
-  color: var(--color-text-tertiary);
 }
 
 .notice {

@@ -7,6 +7,7 @@
 
 pub mod account_secrets;
 pub mod accounts;
+pub mod attachments;
 pub mod compose;
 pub mod connection;
 pub mod detail;

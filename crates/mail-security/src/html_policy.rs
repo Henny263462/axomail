@@ -25,16 +25,21 @@ pub(crate) const LINK_REL: &str = "noopener noreferrer";
 ///
 /// This set is deliberately wider than what ultimately survives. The
 /// attribute filter in [`crate::html`] tightens it per attribute: only
-/// `cid:` images and only `http`/`https`/`mailto` links are retained.
-/// `data` is admitted here *solely* so the filter can observe and count
-/// blocked `data:` images; ammonia would otherwise strip them before the
-/// filter ever runs (it scheme-checks URL attributes against this set
-/// first). `javascript:`, `vbscript:`, and every other scheme are absent
-/// and therefore removed by ammonia outright.
+/// `cid:` images (which it resolves to inline `data:` URIs or drops) and only
+/// `http`/`https`/`mailto` links are retained.
+///
+/// `data` is intentionally **absent** (ADR-0007). Admitting it here would let
+/// `data:` reach the attribute filter on *every* URL attribute; instead ammonia
+/// strips every `data:` URL at this scheme gate — which runs *before* the
+/// filter — so no attacker-supplied `data:` on `href`, `src`, or any other
+/// attribute survives. Inline images are embedded a different way: the filter
+/// rewrites a surviving `cid:` `img@src` into a `data:` URI, and ammonia does
+/// not re-scheme-check the filter's output. That keeps `data:` out of the
+/// allowlist while still letting message-local `cid:` parts render inline.
+/// `javascript:`, `vbscript:`, and every other scheme are likewise absent and
+/// removed by ammonia outright.
 fn url_schemes() -> HashSet<&'static str> {
-    ["http", "https", "mailto", "cid", "data"]
-        .into_iter()
-        .collect()
+    ["http", "https", "mailto", "cid"].into_iter().collect()
 }
 
 /// Tags allowed to appear in sanitized output.

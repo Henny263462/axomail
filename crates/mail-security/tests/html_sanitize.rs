@@ -162,11 +162,11 @@ fn adversarial_corpus_table() {
             had_active_content: false,
         },
         Case {
-            name: "data image blocked and counted",
+            name: "data image rejected at the scheme gate (not counted)",
             input: "<img src=\"data:image/png;base64,AAAABBBB\">",
             must_contain: &["<img"],
             must_not_contain: &["data:image", "base64"],
-            remote_blocked: 1,
+            remote_blocked: 0,
             had_active_content: false,
         },
         Case {
@@ -252,7 +252,7 @@ fn adversarial_corpus_table() {
 }
 
 #[test]
-fn multiple_remote_images_are_all_counted() {
+fn remote_fetches_are_counted_and_data_is_dropped_at_the_gate() {
     let input = concat!(
         "<img src=\"https://a/1.png\">",
         "<img src=\"cid:keep\">",
@@ -260,8 +260,12 @@ fn multiple_remote_images_are_all_counted() {
         "<img src=\"data:image/gif;base64,QQ\">",
     );
     let result = sanitize_message_html(input);
-    assert_eq!(result.remote_blocked, 3);
+    // Two remote http(s) fetches suppressed; the `data:` image is rejected by
+    // the scheme allowlist (not a fetch, not tallied); the `cid:` is preserved
+    // for a later resolver.
+    assert_eq!(result.remote_blocked, 2);
     assert!(result.html.contains("cid:keep"));
+    assert!(!result.html.contains("data:image"));
     assert_invariants(input, &result.html);
 }
 

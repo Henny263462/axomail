@@ -83,7 +83,7 @@ describe("MessageViewPane detail", () => {
 
     const textTab = wrapper
       .findAll("button.tab")
-      .find((tab) => tab.text() === "Text");
+      .find((tab) => tab.text() === "Plain Text");
     if (textTab === undefined) throw new Error("text tab missing");
     await textTab.trigger("click");
 
@@ -104,8 +104,8 @@ describe("MessageViewPane detail", () => {
     await flushPromises();
 
     const tabLabels = wrapper.findAll("button.tab").map((tab) => tab.text());
-    expect(tabLabels).toContain("Text");
-    expect(tabLabels).not.toContain("HTML");
+    expect(tabLabels).toContain("Plain Text");
+    expect(tabLabels).not.toContain("Sanitized HTML");
     expect(wrapper.get("pre.text").text()).toContain("Plain text version");
   });
 
