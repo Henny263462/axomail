@@ -1,5 +1,6 @@
 import type { Component } from "vue";
 
+import AppearanceSection from "./AppearanceSection.vue";
 import NotificationsSection from "./NotificationsSection.vue";
 import Pop3DeleteSection from "./Pop3DeleteSection.vue";
 import SyncIntervalSection from "./SyncIntervalSection.vue";
@@ -30,6 +31,7 @@ export const settingsSections: SettingsSection[] = [
     component: NotificationsSection,
   },
   { id: "sync-interval", title: "Sync", component: SyncIntervalSection },
+  { id: "appearance", title: "Appearance", component: AppearanceSection },
   {
     id: "pop3-delete",
     title: "POP3 server deletion",

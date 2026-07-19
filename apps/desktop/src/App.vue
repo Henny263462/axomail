@@ -10,6 +10,7 @@ import {
 } from "./api/compose";
 import { cancelAllSyncJobs } from "./api/jobs";
 import { listMessages, markMessageSeen } from "./api/messages";
+import { getSettings } from "./api/settings";
 import { syncAccount } from "./api/sync";
 import { listUnifiedInbox } from "./api/unified";
 import EmptyState from "./components/common/EmptyState.vue";
@@ -24,6 +25,7 @@ import SidebarPane from "./components/sidebar/SidebarPane.vue";
 import type { SidebarView } from "./components/sidebar/view";
 import { useDialogs } from "./composables/useDialogs";
 import { useSyncStatus } from "./composables/useSyncStatus";
+import { setTheme } from "./composables/useTheme";
 import type {
   AccountSummary,
   DraftDto,
@@ -114,6 +116,18 @@ async function loadAccounts(): Promise<void> {
 }
 
 onMounted(loadAccounts);
+
+/**
+ * Reconciles the theme applied from the local cache (in main.ts) with the
+ * authoritative backend setting. A no-op in the browser preview, where
+ * getSettings resolves to null and the cached preference stands.
+ */
+async function syncTheme(): Promise<void> {
+  const settings = await getSettings();
+  if (settings !== null) setTheme(settings.theme);
+}
+
+onMounted(syncTheme);
 
 /** Refreshes account summaries (e.g. unread counts) without changing focus. */
 async function refreshAccounts(): Promise<void> {

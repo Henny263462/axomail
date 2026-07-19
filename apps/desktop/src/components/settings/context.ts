@@ -1,4 +1,8 @@
-import type { AccountSummary, Pop3DeletePolicyDto } from "../../types/mail";
+import type {
+  AccountSummary,
+  Pop3DeletePolicyDto,
+  ThemePreference,
+} from "../../types/mail";
 
 /**
  * Shared, read-through context handed to every settings section by
@@ -23,10 +27,17 @@ export interface SettingsSectionContext {
   readonly notificationsEnabled: boolean;
   /** Current sync interval in minutes (batch-saved; floor of 1). */
   readonly syncIntervalMinutes: number;
+  /** Current color-theme preference (batch-saved; previewed live on change). */
+  readonly theme: ThemePreference;
   /** Stages a new notifications value for the shared Save. */
   setNotificationsEnabled(value: boolean): void;
   /** Stages a new sync-interval value for the shared Save. */
   setSyncIntervalMinutes(value: number): void;
+  /**
+   * Stages a new theme for the shared Save and applies it immediately as a
+   * live preview; the dialog reverts the preview if the user cancels.
+   */
+  setTheme(value: ThemePreference): void;
   /** Shows a message in the dialog's shared assertive alert region. */
   reportError(message: string): void;
   /** Shows a message in the dialog's shared polite status region. */

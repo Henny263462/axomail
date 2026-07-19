@@ -2,11 +2,13 @@
 import { onMounted, reactive, ref } from "vue";
 
 import { getSettings, updateSettings } from "../../api/settings";
+import { useTheme } from "../../composables/useTheme";
 import { isTauri } from "../../lib/tauri";
 import type {
   AccountSummary,
   Pop3DeletePolicyDto,
   SettingsDto,
+  ThemePreference,
 } from "../../types/mail";
 import { messageFrom, type SettingsSectionContext } from "./context";
 import { settingsSections } from "./sections";
@@ -27,11 +29,26 @@ const errorMessage = ref("");
 const statusMessage = ref("");
 const root = ref<HTMLElement | null>(null);
 
-// The two batch-saved general fields plus the loaded POP3 snapshot. The
+// Live theme control: `applyTheme` previews a selection immediately; the
+// preference is still batch-saved with the rest of the settings, and an
+// unsaved preview is reverted to `savedTheme` when the dialog closes.
+const { theme: activeTheme, setTheme: applyTheme } = useTheme();
+
+// The three batch-saved general fields plus the loaded POP3 snapshot. The
 // backend ignores the echoed policies (see update_settings), so keeping the
 // loaded copy here is enough to satisfy the DTO shape on save.
-const form = reactive({ notificationsEnabled: false, syncIntervalMinutes: 5 });
+const form = reactive<{
+  notificationsEnabled: boolean;
+  syncIntervalMinutes: number;
+  theme: ThemePreference;
+}>({
+  notificationsEnabled: false,
+  syncIntervalMinutes: 5,
+  theme: activeTheme.value,
+});
 const loadedPolicies = ref<Pop3DeletePolicyDto[]>([]);
+// The last persisted theme; the revert baseline for an unsaved live preview.
+const savedTheme = ref<ThemePreference>(activeTheme.value);
 
 // A stable, read-through context (getters keep reactivity without exposing a
 // mutable prop). Sections read the fields and push edits via the callbacks.
@@ -48,11 +65,18 @@ const context: SettingsSectionContext = {
   get syncIntervalMinutes() {
     return form.syncIntervalMinutes;
   },
+  get theme() {
+    return form.theme;
+  },
   setNotificationsEnabled(value) {
     form.notificationsEnabled = value;
   },
   setSyncIntervalMinutes(value) {
     form.syncIntervalMinutes = value;
+  },
+  setTheme(value) {
+    form.theme = value;
+    applyTheme(value);
   },
   reportError(message) {
     errorMessage.value = message;
@@ -70,6 +94,8 @@ onMounted(async () => {
   }
   form.notificationsEnabled = settings.notificationsEnabled;
   form.syncIntervalMinutes = Math.max(1, settings.syncIntervalMinutes);
+  form.theme = settings.theme;
+  savedTheme.value = settings.theme;
   loadedPolicies.value = settings.pop3DeletePolicies.map((policy) => ({
     ...policy,
   }));
@@ -77,6 +103,10 @@ onMounted(async () => {
 });
 
 function close(): void {
+  // Undo an unsaved live theme preview so cancelling leaves the theme as it
+  // was persisted. After a successful save the baseline already matches, so
+  // this is a no-op on that path.
+  if (form.theme !== savedTheme.value) applyTheme(savedTheme.value);
   emit("close");
 }
 
@@ -113,6 +143,7 @@ function currentSettings(): SettingsDto {
   return {
     notificationsEnabled: form.notificationsEnabled,
     syncIntervalMinutes: Math.max(1, Math.floor(form.syncIntervalMinutes || 1)),
+    theme: form.theme,
     pop3DeletePolicies: loadedPolicies.value.map((policy) => ({ ...policy })),
   };
 }
@@ -129,6 +160,9 @@ async function onSave(): Promise<void> {
   try {
     await updateSettings(currentSettings());
     errorMessage.value = "";
+    // The previewed theme is now persisted; make it the revert baseline so
+    // close() does not undo it.
+    savedTheme.value = form.theme;
     close();
   } catch (error) {
     errorMessage.value = messageFrom(error);

@@ -31,6 +31,7 @@ const accounts: AccountSummary[] = [
 const settings: SettingsDto = {
   notificationsEnabled: false,
   syncIntervalMinutes: 5,
+  theme: "system",
   pop3DeletePolicies: [{ accountId: 2, enabled: false }],
 };
 
@@ -48,6 +49,10 @@ beforeEach(() => {
 
 afterEach(() => {
   delete (globalThis as TauriGlobals).__TAURI_INTERNALS__;
+  // Keep the module-level theme cache and the document root from leaking
+  // between tests (the dialog applies the theme live).
+  localStorage.clear();
+  document.documentElement.removeAttribute("data-theme");
 });
 
 describe("SettingsDialog", () => {
@@ -80,6 +85,7 @@ describe("SettingsDialog", () => {
     expect(updateSettingsMock).toHaveBeenCalledWith({
       notificationsEnabled: true,
       syncIntervalMinutes: 15,
+      theme: "system",
       pop3DeletePolicies: [{ accountId: 2, enabled: false }],
     });
     expect(wrapper.emitted("close")).toHaveLength(1);
@@ -96,6 +102,67 @@ describe("SettingsDialog", () => {
     // updateSettings is NOT what enables deletion — the dedicated call is.
     expect(updateSettingsMock).not.toHaveBeenCalled();
     expect(wrapper.text()).toContain("This cannot be undone.");
+  });
+
+  it("shows the Appearance section with the stored theme selected", async () => {
+    const wrapper = mount(SettingsDialog, { props: { accounts } });
+    await flushPromises();
+
+    expect(wrapper.text()).toContain("Appearance");
+    const radios = wrapper.findAll<HTMLInputElement>(
+      'input[name="settings-theme"]',
+    );
+    expect(radios.map((radio) => radio.element.value)).toEqual([
+      "system",
+      "light",
+      "dark",
+    ]);
+    const checked = radios.find((radio) => radio.element.checked);
+    expect(checked?.element.value).toBe("system");
+  });
+
+  it("previews a theme selection live and saves it with the settings", async () => {
+    const wrapper = mount(SettingsDialog, { props: { accounts } });
+    await flushPromises();
+
+    const dark = wrapper
+      .findAll<HTMLInputElement>('input[name="settings-theme"]')
+      .find((radio) => radio.element.value === "dark");
+    await dark?.setValue();
+
+    // The selection reaches the document root immediately (live preview).
+    expect(document.documentElement.getAttribute("data-theme")).toBe("dark");
+
+    await wrapper.get("form").trigger("submit");
+    await flushPromises();
+
+    expect(updateSettingsMock).toHaveBeenCalledWith(
+      expect.objectContaining({ theme: "dark" }),
+    );
+    expect(wrapper.emitted("close")).toHaveLength(1);
+  });
+
+  it("reverts a previewed theme when cancelled without saving", async () => {
+    const wrapper = mount(SettingsDialog, { props: { accounts } });
+    await flushPromises();
+
+    const dark = wrapper
+      .findAll<HTMLInputElement>('input[name="settings-theme"]')
+      .find((radio) => radio.element.value === "dark");
+    await dark?.setValue();
+    expect(document.documentElement.getAttribute("data-theme")).toBe("dark");
+
+    const cancel = wrapper
+      .findAll("button")
+      .find((button) => button.text() === "Cancel");
+    await cancel?.trigger("click");
+    await flushPromises();
+
+    // The stored theme was "system", which resolves to light in this
+    // environment; the preview is undone and nothing is persisted.
+    expect(document.documentElement.getAttribute("data-theme")).toBe("light");
+    expect(updateSettingsMock).not.toHaveBeenCalled();
+    expect(wrapper.emitted("close")).toHaveLength(1);
   });
 
   it("surfaces a save failure via the alert region", async () => {

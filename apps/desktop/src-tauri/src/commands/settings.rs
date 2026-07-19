@@ -1,9 +1,9 @@
 //! The settings commands: `get_settings`, `update_settings`, and the guarded
 //! `set_pop3_delete_policy`.
 //!
-//! `update_settings` persists the notification flag and the sync interval and
-//! pushes the (clamped) interval and current targets into the background
-//! scheduler. It deliberately does **not** apply the DTO's
+//! `update_settings` persists the notification flag, the color theme, and the
+//! sync interval and pushes the (clamped) interval and current targets into
+//! the background scheduler. It deliberately does **not** apply the DTO's
 //! `pop3DeletePolicies`: enabling POP3 server deletion is possible only
 //! through [`set_pop3_delete_policy`], the second of the adapter's two delete
 //! guards.
@@ -26,6 +26,7 @@ use crate::state::AppState;
 pub async fn get_settings_impl(store: &Store) -> Result<SettingsDto, MailError> {
     let notifications_enabled = settings::notifications_enabled(store).await?;
     let sync_interval_minutes = settings::sync_interval_minutes(store).await?;
+    let theme = settings::theme(store).await?;
 
     let mut pop3_delete_policies = Vec::new();
     for account in store.accounts().list().await? {
@@ -38,6 +39,7 @@ pub async fn get_settings_impl(store: &Store) -> Result<SettingsDto, MailError> 
     Ok(SettingsDto {
         notifications_enabled,
         sync_interval_minutes,
+        theme,
         pop3_delete_policies,
     })
 }
@@ -57,6 +59,7 @@ pub async fn update_settings_impl(
     input: SettingsDto,
 ) -> Result<(), MailError> {
     settings::set_notifications_enabled(store, input.notifications_enabled).await?;
+    settings::set_theme(store, input.theme).await?;
     let interval = settings::set_sync_interval_minutes(store, input.sync_interval_minutes).await?;
     // Relaunch the scheduler so the new interval takes effect (its interval is
     // fixed at construction) and the target set is refreshed.

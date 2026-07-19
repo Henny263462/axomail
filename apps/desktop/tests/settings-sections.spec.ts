@@ -36,8 +36,10 @@ function stubContext(
     initialPolicies: [{ accountId: 2, enabled: false }],
     notificationsEnabled: false,
     syncIntervalMinutes: 5,
+    theme: "system",
     setNotificationsEnabled: vi.fn(),
     setSyncIntervalMinutes: vi.fn(),
+    setTheme: vi.fn(),
     reportError: vi.fn(),
     reportStatus: vi.fn(),
     ...overrides,
@@ -68,6 +70,7 @@ describe("settings section registry", () => {
     expect(settingsSections.map((section) => section.id)).toEqual([
       "notifications",
       "sync-interval",
+      "appearance",
       "pop3-delete",
     ]);
   });
@@ -157,6 +160,7 @@ describe("SettingsDialog registry integration", () => {
   const settings: SettingsDto = {
     notificationsEnabled: false,
     syncIntervalMinutes: 5,
+    theme: "system",
     pop3DeletePolicies: [{ accountId: 2, enabled: false }],
   };
 
@@ -171,7 +175,8 @@ describe("SettingsDialog registry integration", () => {
     // One marker per registered section proves the shell is registry-driven.
     expect(wrapper.find("#settings-notifications").exists()).toBe(true);
     expect(wrapper.find("#settings-interval").exists()).toBe(true);
-    expect(wrapper.get("legend").text()).toContain("POP3 server deletion");
+    expect(wrapper.find('input[name="settings-theme"]').exists()).toBe(true);
+    expect(wrapper.text()).toContain("POP3 server deletion");
 
     // The shell keeps the overlay/aria-modal plumbing around the sections.
     const dialog = wrapper.get('[role="dialog"]');

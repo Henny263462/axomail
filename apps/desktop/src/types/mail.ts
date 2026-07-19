@@ -253,12 +253,20 @@ export interface Pop3DeletePolicyDto {
 }
 
 /**
+ * Preferred application color theme. `system` follows the OS light/dark
+ * setting; `light` and `dark` pin one. Mirrors the Rust `ThemePreference`
+ * enum (serde `lowercase`), so the string values must stay identical.
+ */
+export type ThemePreference = "system" | "light" | "dark";
+
+/**
  * User-editable application settings. `syncIntervalMinutes` has a minimum of
  * 1; the backend clamps it, and the settings UI enforces the same floor.
  */
 export interface SettingsDto {
   notificationsEnabled: boolean;
   syncIntervalMinutes: number;
+  theme: ThemePreference;
   pop3DeletePolicies: Pop3DeletePolicyDto[];
 }
 
