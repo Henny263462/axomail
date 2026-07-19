@@ -87,6 +87,7 @@ fn sync_request(state: MailboxSyncState, batch_size: u32) -> SyncRequest {
         remote_name: MailboxName::new("INBOX"),
         state,
         batch_size,
+        full_reconcile: false,
     }
 }
 
@@ -236,6 +237,7 @@ async fn incremental_sync_fetches_new_uids() {
     let state = MailboxSyncState {
         uid_validity: Some(42),
         highest_uid: Some(2),
+        highest_modseq: None,
     };
     let outcome = provider.sync(sync_request(state, 100)).await.expect("sync");
 
@@ -275,6 +277,7 @@ async fn uidvalidity_change_returns_full_picture() {
     let state = MailboxSyncState {
         uid_validity: Some(999),
         highest_uid: Some(1),
+        highest_modseq: None,
     };
     let outcome = provider.sync(sync_request(state, 100)).await.expect("sync");
 
@@ -304,6 +307,7 @@ async fn incremental_sync_detects_removed_messages() {
     let state = MailboxSyncState {
         uid_validity: Some(42),
         highest_uid: Some(5),
+        highest_modseq: None,
     };
     let outcome = provider.sync(sync_request(state, 100)).await.expect("sync");
 
@@ -338,6 +342,7 @@ async fn incremental_sync_reports_flag_updates() {
     let state = MailboxSyncState {
         uid_validity: Some(42),
         highest_uid: Some(2),
+        highest_modseq: None,
     };
     let outcome = provider.sync(sync_request(state, 100)).await.expect("sync");
 
@@ -586,5 +591,310 @@ async fn connection_closed_mid_command_is_network_or_protocol() {
             MailError::Network { .. } | MailError::Protocol { .. }
         ),
         "got {error:?}"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// CONDSTORE / QRESYNC incremental sync (E1). The fallback matrix:
+//   * no CONDSTORE          → newest-window flag scan + present-set diff
+//   * CONDSTORE only        → CHANGEDSINCE flag delta + present-set diff
+//   * CONDSTORE + QRESYNC   → CHANGEDSINCE delta + VANISHED removals
+//   * NOMODSEQ / backwards  → treated as no CONDSTORE (legacy scan)
+//   * UIDVALIDITY change    → full picture (unchanged)
+// ---------------------------------------------------------------------------
+
+/// A spec advertising the given extra capabilities plus a mailbox
+/// `HIGHESTMODSEQ` (or `None` for a `NOMODSEQ` select).
+fn condstore_spec(extra_caps: &str, highest_modseq: Option<u64>) -> Spec {
+    let mut spec = Spec::base(TlsMode::Implicit);
+    spec.capabilities = format!("IMAP4rev1 UIDPLUS {extra_caps}");
+    spec.highest_modseq = highest_modseq;
+    spec
+}
+
+/// The prior state at UIDVALIDITY 42 with a stored mod-sequence cursor.
+fn condstore_state(highest_uid: u32, highest_modseq: u64) -> MailboxSyncState {
+    MailboxSyncState {
+        uid_validity: Some(42),
+        highest_uid: Some(highest_uid),
+        highest_modseq: Some(highest_modseq),
+    }
+}
+
+#[tokio::test]
+async fn condstore_first_sync_records_highest_modseq() {
+    let mut spec = condstore_spec("CONDSTORE", Some(20));
+    spec.messages = vec![Message::new(1), Message::new(2)];
+    let server = common::start(spec).await;
+    let mut provider = ImapProvider::new(config_for(&server, ConnectionSecurity::Tls, "pass"));
+
+    provider.connect().await.expect("connect");
+    let outcome = provider
+        .sync(sync_request(MailboxSyncState::default(), 100))
+        .await
+        .expect("sync");
+
+    assert_eq!(outcome.uid_validity, Some(42));
+    assert_eq!(
+        outcome.highest_modseq,
+        Some(20),
+        "the select's HIGHESTMODSEQ bootstraps the cursor"
+    );
+    assert!(
+        server.saw_command("(CONDSTORE)"),
+        "SELECT must add CONDSTORE"
+    );
+    assert!(
+        !server.saw_command("ENABLE QRESYNC"),
+        "a CONDSTORE-only server must not be sent ENABLE QRESYNC"
+    );
+}
+
+#[tokio::test]
+async fn condstore_changedsince_applies_only_changed_flags_and_keywords() {
+    let mut spec = condstore_spec("CONDSTORE", Some(20));
+    let mut m1 = Message::new(1);
+    m1.modseq = 5;
+    m1.flags = vec!["\\Seen".to_owned()];
+    let mut m2 = Message::new(2);
+    m2.modseq = 15;
+    m2.flags = vec!["\\Flagged".to_owned(), "$Junk".to_owned()];
+    let mut m3 = Message::new(3);
+    m3.modseq = 12;
+    m3.flags = vec!["\\Seen".to_owned()];
+    spec.messages = vec![m1, m2, m3];
+    let server = common::start(spec).await;
+    let mut provider = ImapProvider::new(config_for(&server, ConnectionSecurity::Tls, "pass"));
+
+    provider.connect().await.expect("connect");
+    let outcome = provider
+        .sync(sync_request(condstore_state(3, 10), 100))
+        .await
+        .expect("sync");
+
+    // Only messages whose mod-sequence exceeds the stored 10 (uid 2 and 3)
+    // are returned; the unchanged uid 1 never appears (no write amplification).
+    let mut changed: Vec<u32> = outcome.flag_updates.iter().map(|(id, _)| uid(id)).collect();
+    changed.sort_unstable();
+    assert_eq!(changed, vec![2, 3]);
+    let m2u = outcome
+        .flag_updates
+        .iter()
+        .find(|(id, _)| uid(id) == 2)
+        .unwrap();
+    assert!(m2u.1.flagged);
+    assert!(
+        m2u.1.keywords.iter().any(|k| k.as_str() == "$Junk"),
+        "keyword flows through the CHANGEDSINCE delta"
+    );
+
+    // CONDSTORE-only: removals still come from the present-set diff.
+    let present: Vec<u32> = outcome
+        .present_remote_ids
+        .as_deref()
+        .expect("CONDSTORE-only reports the present set")
+        .iter()
+        .map(uid)
+        .collect();
+    assert_eq!(present, vec![1, 2, 3]);
+    assert!(outcome.removed.is_empty());
+    assert_eq!(outcome.highest_modseq, Some(20));
+    assert!(server.saw_command("CHANGEDSINCE 10"));
+    assert!(
+        !server.saw_command("VANISHED"),
+        "CONDSTORE-only must not use the VANISHED modifier"
+    );
+}
+
+#[tokio::test]
+async fn qresync_vanished_earlier_reports_exact_removals() {
+    let mut spec = condstore_spec("CONDSTORE QRESYNC", Some(20));
+    let mut m2 = Message::new(2);
+    m2.modseq = 15;
+    m2.flags = vec!["\\Flagged".to_owned()];
+    // uid 3 is gone; the server reports it via VANISHED (EARLIER).
+    spec.messages = vec![Message::new(1), m2, Message::new(4), Message::new(5)];
+    spec.vanished = vec![3];
+    let server = common::start(spec).await;
+    let mut provider = ImapProvider::new(config_for(&server, ConnectionSecurity::Tls, "pass"));
+
+    provider.connect().await.expect("connect");
+    let outcome = provider
+        .sync(sync_request(condstore_state(5, 10), 100))
+        .await
+        .expect("sync");
+
+    let removed: Vec<u32> = outcome.removed.iter().map(uid).collect();
+    assert_eq!(removed, vec![3], "VANISHED (EARLIER) names exactly uid 3");
+    assert!(
+        outcome.present_remote_ids.is_none(),
+        "the QRESYNC fast path skips the present-set diff"
+    );
+    let changed: Vec<u32> = outcome.flag_updates.iter().map(|(id, _)| uid(id)).collect();
+    assert_eq!(changed, vec![2]);
+    assert!(server.saw_command("ENABLE QRESYNC"));
+    assert!(server.saw_command("CHANGEDSINCE 10 VANISHED"));
+}
+
+#[tokio::test]
+async fn qresync_ambiguous_vanished_falls_back_to_present_set() {
+    let mut spec = condstore_spec("CONDSTORE QRESYNC", Some(20));
+    spec.messages = vec![
+        Message::new(1),
+        Message::new(2),
+        Message::new(4),
+        Message::new(5),
+    ];
+    // A VANISHED without (EARLIER) is a real-time notification, not a resync
+    // delta: the adapter must not delete on it.
+    spec.vanished_override = Some("* VANISHED 3".to_owned());
+    let server = common::start(spec).await;
+    let mut provider = ImapProvider::new(config_for(&server, ConnectionSecurity::Tls, "pass"));
+
+    provider.connect().await.expect("connect");
+    let outcome = provider
+        .sync(sync_request(condstore_state(5, 10), 100))
+        .await
+        .expect("sync");
+
+    assert!(
+        outcome.removed.is_empty(),
+        "an ambiguous VANISHED invents no removals"
+    );
+    let present: Vec<u32> = outcome
+        .present_remote_ids
+        .as_deref()
+        .expect("fallback reports the authoritative present set")
+        .iter()
+        .map(uid)
+        .collect();
+    assert_eq!(present, vec![1, 2, 4, 5]);
+    assert!(
+        !present.contains(&3),
+        "uid 3 is still removed, but safely via the present-set diff"
+    );
+}
+
+#[tokio::test]
+async fn qresync_full_reconcile_uses_present_set_not_vanished() {
+    let mut spec = condstore_spec("CONDSTORE QRESYNC", Some(20));
+    spec.messages = vec![
+        Message::new(1),
+        Message::new(2),
+        Message::new(4),
+        Message::new(5),
+    ];
+    // Would be reported if VANISHED were requested — it must not be on a
+    // reconcile pass.
+    spec.vanished = vec![3];
+    let server = common::start(spec).await;
+    let mut provider = ImapProvider::new(config_for(&server, ConnectionSecurity::Tls, "pass"));
+
+    provider.connect().await.expect("connect");
+    let request = SyncRequest {
+        mailbox: MailboxId::new(1),
+        remote_name: MailboxName::new("INBOX"),
+        state: condstore_state(5, 10),
+        batch_size: 100,
+        full_reconcile: true,
+    };
+    let outcome = provider.sync(request).await.expect("sync");
+
+    assert!(outcome.removed.is_empty());
+    let present: Vec<u32> = outcome
+        .present_remote_ids
+        .as_deref()
+        .expect("the periodic reconcile pass runs the present-set diff")
+        .iter()
+        .map(uid)
+        .collect();
+    assert_eq!(present, vec![1, 2, 4, 5]);
+    assert!(server.saw_command("CHANGEDSINCE 10"));
+    assert!(
+        !server.saw_command("VANISHED"),
+        "a reconcile pass omits the VANISHED modifier"
+    );
+}
+
+#[tokio::test]
+async fn nomodseq_select_falls_back_to_legacy_scan() {
+    let mut spec = condstore_spec("CONDSTORE", None);
+    spec.messages = vec![Message::new(1), Message::new(2)];
+    let server = common::start(spec).await;
+    let mut provider = ImapProvider::new(config_for(&server, ConnectionSecurity::Tls, "pass"));
+
+    provider.connect().await.expect("connect");
+    let outcome = provider
+        .sync(sync_request(condstore_state(2, 10), 100))
+        .await
+        .expect("sync");
+
+    assert_eq!(
+        outcome.highest_modseq, None,
+        "a NOMODSEQ select clears the cursor"
+    );
+    assert!(
+        outcome.present_remote_ids.is_some(),
+        "the legacy path diffs the present set"
+    );
+    assert!(
+        !server.saw_command("CHANGEDSINCE"),
+        "without a mod-sequence there is no CHANGEDSINCE delta"
+    );
+}
+
+#[tokio::test]
+async fn modseq_backwards_falls_back_and_reheals() {
+    // Server's HIGHESTMODSEQ (5) is below the stored cursor (10): a reset.
+    let mut spec = condstore_spec("CONDSTORE", Some(5));
+    spec.messages = vec![Message::new(1), Message::new(2)];
+    let server = common::start(spec).await;
+    let mut provider = ImapProvider::new(config_for(&server, ConnectionSecurity::Tls, "pass"));
+
+    provider.connect().await.expect("connect");
+    let outcome = provider
+        .sync(sync_request(condstore_state(2, 10), 100))
+        .await
+        .expect("sync");
+
+    assert_eq!(
+        outcome.highest_modseq,
+        Some(5),
+        "the server's lower value is re-recorded so a later pass resumes"
+    );
+    assert!(outcome.present_remote_ids.is_some());
+    assert!(
+        !server.saw_command("CHANGEDSINCE"),
+        "a backwards mod-sequence is not trusted for CHANGEDSINCE"
+    );
+}
+
+#[tokio::test]
+async fn condstore_uidvalidity_change_returns_full_picture() {
+    let mut spec = condstore_spec("CONDSTORE", Some(30));
+    spec.messages = vec![Message::new(1), Message::new(2)];
+    let server = common::start(spec).await;
+    let mut provider = ImapProvider::new(config_for(&server, ConnectionSecurity::Tls, "pass"));
+
+    provider.connect().await.expect("connect");
+    // Client believed UIDVALIDITY was 999 and held a cursor; the server says 42.
+    let state = MailboxSyncState {
+        uid_validity: Some(999),
+        highest_uid: Some(1),
+        highest_modseq: Some(10),
+    };
+    let outcome = provider.sync(sync_request(state, 100)).await.expect("sync");
+
+    assert_eq!(outcome.uid_validity, Some(42));
+    assert_eq!(outcome.new_envelopes.len(), 2);
+    assert!(outcome.removed.is_empty());
+    assert!(
+        outcome.present_remote_ids.is_none(),
+        "the full-picture path wipes local state instead of diffing"
+    );
+    assert_eq!(outcome.highest_modseq, Some(30));
+    assert!(
+        !server.saw_command("CHANGEDSINCE"),
+        "a full picture is not a mod-sequence delta"
     );
 }

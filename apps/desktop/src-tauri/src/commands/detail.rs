@@ -186,6 +186,7 @@ where
         remote_name: mailbox.name.clone(),
         state,
         batch_size: FETCH_SELECT_BATCH,
+        full_reconcile: false,
     };
     let fetch = async {
         provider.sync(request).await?;

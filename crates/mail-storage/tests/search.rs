@@ -238,6 +238,7 @@ async fn ingested_envelopes_are_searchable_and_removals_disappear() {
     let outcome = SyncOutcome {
         uid_validity: Some(1),
         highest_uid: Some(10),
+        highest_modseq: None,
         has_more: false,
         new_envelopes: vec![remote_envelope(10, 1, "Ingested Zephyr project")],
         flag_updates: Vec::new(),
@@ -272,6 +273,7 @@ async fn ingested_envelopes_are_searchable_and_removals_disappear() {
     let removal = SyncOutcome {
         uid_validity: Some(1),
         highest_uid: Some(10),
+        highest_modseq: None,
         has_more: false,
         new_envelopes: Vec::new(),
         flag_updates: Vec::new(),

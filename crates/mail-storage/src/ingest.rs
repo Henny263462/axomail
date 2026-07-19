@@ -122,6 +122,7 @@ impl<'a> IngestRepo<'a> {
         let next_state = MailboxSyncState {
             uid_validity: outcome.uid_validity,
             highest_uid: outcome.highest_uid,
+            highest_modseq: outcome.highest_modseq,
         };
         write_state(&mut *tx, mailbox, &next_state).await?;
 

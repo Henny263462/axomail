@@ -22,6 +22,7 @@ fn sync_request(batch_size: u32) -> SyncRequest {
         remote_name: MailboxName::new("INBOX"),
         state: MailboxSyncState::default(),
         batch_size,
+        full_reconcile: false,
     }
 }
 

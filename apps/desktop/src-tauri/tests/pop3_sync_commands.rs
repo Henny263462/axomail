@@ -30,6 +30,7 @@ fn sync_request(mailbox: MailboxId) -> SyncRequest {
         remote_name: MailboxName::new("INBOX"),
         state: MailboxSyncState::default(),
         batch_size: 100,
+        full_reconcile: false,
     }
 }
 

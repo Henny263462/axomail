@@ -2,10 +2,10 @@
 //! `imap_sync_state` table.
 //!
 //! The table keeps one row per mailbox mapping directly to
-//! [`axomail_core::MailboxSyncState`]: `uid_validity` and `last_seen_uid`
-//! (the highest ingested UID). `highest_modseq` is reserved for a future
-//! CONDSTORE/QRESYNC pass and is left untouched here. Absence of a row is
-//! treated as the "never synced" default so a first sync starts cleanly.
+//! [`axomail_core::MailboxSyncState`]: `uid_validity`, `last_seen_uid`
+//! (the highest ingested UID), and `highest_modseq` (the CONDSTORE/QRESYNC
+//! mod-sequence cursor). Absence of a row is treated as the "never synced"
+//! default so a first sync starts cleanly.
 
 use axomail_core::{MailError, MailboxId, MailboxSyncState};
 use sqlx::{Executor, Sqlite, SqlitePool};
@@ -55,8 +55,9 @@ pub(crate) async fn read_state<'e, E>(
 where
     E: Executor<'e, Database = Sqlite>,
 {
-    let row: Option<(Option<i64>, Option<i64>)> = sqlx::query_as(
-        "SELECT uid_validity, last_seen_uid FROM imap_sync_state WHERE mailbox_id = ?",
+    let row: Option<(Option<i64>, Option<i64>, Option<i64>)> = sqlx::query_as(
+        "SELECT uid_validity, last_seen_uid, highest_modseq \
+         FROM imap_sync_state WHERE mailbox_id = ?",
     )
     .bind(mailbox.value())
     .fetch_optional(executor)
@@ -65,9 +66,10 @@ where
 
     match row {
         None => Ok(MailboxSyncState::default()),
-        Some((uid_validity, last_seen_uid)) => Ok(MailboxSyncState {
+        Some((uid_validity, last_seen_uid, highest_modseq)) => Ok(MailboxSyncState {
             uid_validity: to_u32(uid_validity)?,
             highest_uid: to_u32(last_seen_uid)?,
+            highest_modseq: to_u64(highest_modseq)?,
         }),
     }
 }
@@ -82,17 +84,27 @@ pub(crate) async fn write_state<'e, E>(
 where
     E: Executor<'e, Database = Sqlite>,
 {
+    // A mod-sequence is a 63-bit value (RFC 7162), so it fits in the signed
+    // INTEGER column; an out-of-range value is stored as NULL rather than
+    // corrupting the cursor, which safely degrades to a full flag/present-set
+    // resync on the next pass.
+    let modseq = state
+        .highest_modseq
+        .and_then(|value| i64::try_from(value).ok());
     sqlx::query(
-        "INSERT INTO imap_sync_state (mailbox_id, uid_validity, last_seen_uid, last_sync_unix)
-         VALUES (?, ?, ?, unixepoch())
+        "INSERT INTO imap_sync_state \
+             (mailbox_id, uid_validity, last_seen_uid, highest_modseq, last_sync_unix)
+         VALUES (?, ?, ?, ?, unixepoch())
          ON CONFLICT (mailbox_id) DO UPDATE SET
              uid_validity = excluded.uid_validity,
              last_seen_uid = excluded.last_seen_uid,
+             highest_modseq = excluded.highest_modseq,
              last_sync_unix = excluded.last_sync_unix",
     )
     .bind(mailbox.value())
     .bind(state.uid_validity.map(i64::from))
     .bind(state.highest_uid.map(i64::from))
+    .bind(modseq)
     .execute(executor)
     .await
     .map_err(|error| map_sqlx("write_sync_state", error))?;
@@ -106,5 +118,15 @@ fn to_u32(value: Option<i64>) -> Result<Option<u32>, MailError> {
         .transpose()
         .map_err(|_| MailError::Database {
             message: "read_sync_state: stored UID out of range".to_owned(),
+        })
+}
+
+/// Converts a stored, nullable mod-sequence column into an optional `u64`.
+fn to_u64(value: Option<i64>) -> Result<Option<u64>, MailError> {
+    value
+        .map(u64::try_from)
+        .transpose()
+        .map_err(|_| MailError::Database {
+            message: "read_sync_state: stored HIGHESTMODSEQ out of range".to_owned(),
         })
 }

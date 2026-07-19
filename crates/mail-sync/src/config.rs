@@ -26,6 +26,14 @@ pub struct SyncConfig {
     /// Maximum transient failures tolerated within a single job before it
     /// is failed.
     pub max_attempts: u32,
+    /// Cadence of the QRESYNC present-set safety net: every Nth mailbox-sync
+    /// job (per mailbox, counted in-process) recomputes removals from the full
+    /// authoritative present set instead of trusting the VANISHED delta alone,
+    /// backstopping any silently missed expunge. The first job after start is
+    /// always a reconcile (an empty counter reconciles), so a restart also
+    /// re-verifies. `1` reconciles every pass; only the CONDSTORE+QRESYNC fast
+    /// path consults it.
+    pub full_reconcile_every: u32,
     /// Base delay for the first backoff step.
     pub backoff_base: Duration,
     /// Upper bound on any single backoff delay.
@@ -44,6 +52,7 @@ impl Default for SyncConfig {
             batch_size: 200,
             offline_download_batch: 25,
             max_attempts: 4,
+            full_reconcile_every: 10,
             backoff_base: Duration::from_secs(2),
             backoff_cap: Duration::from_secs(300),
             command_buffer: 256,

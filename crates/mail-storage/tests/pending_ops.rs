@@ -253,6 +253,7 @@ async fn deleting_a_message_cascades_its_pending_ops() {
     let inserted = SyncOutcome {
         uid_validity: Some(100),
         highest_uid: Some(1),
+        highest_modseq: None,
         has_more: false,
         new_envelopes: vec![remote_envelope(1, 100, "keep")],
         flag_updates: Vec::new(),
@@ -276,6 +277,7 @@ async fn deleting_a_message_cascades_its_pending_ops() {
     let removed = SyncOutcome {
         uid_validity: Some(100),
         highest_uid: Some(1),
+        highest_modseq: None,
         has_more: false,
         new_envelopes: Vec::new(),
         flag_updates: Vec::new(),

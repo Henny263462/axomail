@@ -49,6 +49,9 @@ pub enum Disruption {
 pub struct Message {
     pub uid: u32,
     pub flags: Vec<String>,
+    /// Per-message mod-sequence (CONDSTORE). A `CHANGEDSINCE n` fetch only
+    /// returns messages whose `modseq > n`.
+    pub modseq: u64,
     pub subject: String,
     pub from_name: String,
     pub from_mailbox: String,
@@ -65,6 +68,7 @@ impl Message {
         Self {
             uid,
             flags: vec!["\\Seen".to_owned()],
+            modseq: 1,
             subject: "Test subject".to_owned(),
             from_name: String::new(),
             from_mailbox: "alice".to_owned(),
@@ -92,6 +96,16 @@ pub struct Spec {
     /// When set, any acknowledged command whose upper-cased form starts with
     /// this token is answered `NO` instead of `OK` (drives failure-path tests).
     pub fail_command: Option<String>,
+    /// Mailbox `HIGHESTMODSEQ` reported on `SELECT` (CONDSTORE). `None` omits
+    /// it entirely, which the client reads as `NOMODSEQ`.
+    pub highest_modseq: Option<u64>,
+    /// UIDs the server reports as `VANISHED (EARLIER)` in response to a fetch
+    /// carrying the `VANISHED` modifier (QRESYNC expunge delta).
+    pub vanished: Vec<u32>,
+    /// When set, a `VANISHED` fetch modifier yields this raw response line
+    /// (verbatim, no trailing CRLF) instead of the `vanished`-derived one —
+    /// used to script malformed/ambiguous responses.
+    pub vanished_override: Option<String>,
 }
 
 impl Spec {
@@ -109,6 +123,9 @@ impl Spec {
             list_lines: Vec::new(),
             disruption: Disruption::None,
             fail_command: None,
+            highest_modseq: None,
+            vanished: Vec::new(),
+            vanished_override: None,
         }
     }
 }
@@ -287,13 +304,18 @@ where
             logged_in = handle_xoauth2(stream, tag, spec).await?;
         } else if upper.starts_with("CAPABILITY") {
             send_capability(stream, tag, spec).await?;
+        } else if upper.starts_with("ENABLE") {
+            // QRESYNC/CONDSTORE ENABLE: echo the enabled extensions.
+            let enabled = rest.get("ENABLE".len()..).unwrap_or("").trim();
+            send(stream, &format!("* ENABLED {enabled}\r\n")).await?;
+            send(stream, &format!("{tag} OK ENABLE completed\r\n")).await?;
         } else if upper.starts_with("LIST") {
             for entry in &spec.list_lines {
                 send(stream, entry).await?;
             }
             send(stream, &format!("{tag} OK LIST completed\r\n")).await?;
         } else if upper.starts_with("SELECT") || upper.starts_with("EXAMINE") {
-            handle_select(stream, tag, spec).await?;
+            handle_select(stream, tag, &upper, spec).await?;
         } else if upper.starts_with("UID SEARCH") {
             handle_search(stream, tag, spec).await?;
         } else if upper.starts_with("UID FETCH") {
@@ -422,11 +444,18 @@ where
     send(stream, &format!("{tag} OK CAPABILITY completed\r\n")).await
 }
 
-/// Sends a SELECT response advertising UIDVALIDITY/UIDNEXT.
-async fn handle_select<S>(stream: &mut BufReader<S>, tag: &str, spec: &Spec) -> io::Result<()>
+/// Sends a SELECT response advertising UIDVALIDITY/UIDNEXT (and, when the
+/// select requested CONDSTORE/QRESYNC, the mailbox mod-sequence).
+async fn handle_select<S>(
+    stream: &mut BufReader<S>,
+    tag: &str,
+    upper: &str,
+    spec: &Spec,
+) -> io::Result<()>
 where
     S: AsyncRead + AsyncWrite + Unpin,
 {
+    let condstore = upper.contains("CONDSTORE") || upper.contains("QRESYNC");
     send(stream, &format!("* {} EXISTS\r\n", spec.messages.len())).await?;
     send(stream, "* 0 RECENT\r\n").await?;
     send(
@@ -444,6 +473,22 @@ where
         "* FLAGS (\\Seen \\Answered \\Flagged \\Deleted \\Draft)\r\n",
     )
     .await?;
+    // CONDSTORE: only a mod-sequence-enabling select advertises HIGHESTMODSEQ
+    // (or NOMODSEQ when the mailbox has none); a plain select stays untouched.
+    if condstore {
+        match spec.highest_modseq {
+            Some(modseq) => {
+                send(
+                    stream,
+                    &format!("* OK [HIGHESTMODSEQ {modseq}] Highest mod-sequence\r\n"),
+                )
+                .await?;
+            }
+            None => {
+                send(stream, "* OK [NOMODSEQ] No mod-sequences\r\n").await?;
+            }
+        }
+    }
     send(
         stream,
         &format!("{tag} OK [READ-WRITE] SELECT completed\r\n"),
@@ -477,9 +522,17 @@ where
     let set = parts.next().unwrap_or("");
     let query = parts.next().unwrap_or("").to_ascii_uppercase();
     let max_uid = spec.messages.iter().map(|m| m.uid).max().unwrap_or(0);
+    // CONDSTORE `CHANGEDSINCE n` restricts the reply to messages whose
+    // mod-sequence exceeds `n`.
+    let changed_since = changedsince_arg(&query);
 
     for (idx, msg) in spec.messages.iter().enumerate() {
         if !uid_in_set(set, msg.uid, max_uid) {
+            continue;
+        }
+        if let Some(floor) = changed_since
+            && msg.modseq <= floor
+        {
             continue;
         }
         let seq = idx + 1;
@@ -491,7 +544,30 @@ where
             send(stream, &flags_response(seq, msg)).await?;
         }
     }
+    // QRESYNC: a `VANISHED` fetch modifier draws a `VANISHED (EARLIER)` line
+    // naming the expunged UIDs (or a scripted override for malformed cases).
+    if query.contains("VANISHED") {
+        if let Some(line) = &spec.vanished_override {
+            send(stream, &format!("{line}\r\n")).await?;
+        } else if !spec.vanished.is_empty() {
+            let uids: Vec<String> = spec.vanished.iter().map(u32::to_string).collect();
+            send(
+                stream,
+                &format!("* VANISHED (EARLIER) {}\r\n", uids.join(",")),
+            )
+            .await?;
+        }
+    }
     send(stream, &format!("{tag} OK FETCH completed\r\n")).await
+}
+
+/// Extracts the numeric argument of a `CHANGEDSINCE n` fetch modifier, if any.
+fn changedsince_arg(query: &str) -> Option<u64> {
+    let idx = query.find("CHANGEDSINCE")?;
+    query[idx + "CHANGEDSINCE".len()..]
+        .split_whitespace()
+        .next()
+        .and_then(|token| token.trim_end_matches(')').parse().ok())
 }
 
 /// Builds an ENVELOPE FETCH response line for a message.

@@ -184,6 +184,7 @@ async fn cascade_on_message_and_account_delete() {
     let base = SyncOutcome {
         uid_validity: Some(100),
         highest_uid: Some(1),
+        highest_modseq: None,
         has_more: false,
         new_envelopes: vec![remote_envelope(1, 100, "Hello")],
         flag_updates: Vec::new(),
@@ -201,6 +202,7 @@ async fn cascade_on_message_and_account_delete() {
     let remove = SyncOutcome {
         uid_validity: Some(100),
         highest_uid: Some(1),
+        highest_modseq: None,
         has_more: false,
         new_envelopes: Vec::new(),
         flag_updates: Vec::new(),
@@ -239,6 +241,7 @@ async fn ingest_auto_creates_tag_from_inbound_keyword() {
     let outcome = SyncOutcome {
         uid_validity: Some(100),
         highest_uid: Some(1),
+        highest_modseq: None,
         has_more: false,
         new_envelopes: vec![envelope],
         flag_updates: Vec::new(),
@@ -274,6 +277,7 @@ async fn ingest_reconciles_keywords_on_flag_update() {
             &SyncOutcome {
                 uid_validity: Some(100),
                 highest_uid: Some(1),
+                highest_modseq: None,
                 has_more: false,
                 new_envelopes: vec![envelope],
                 flag_updates: Vec::new(),
@@ -303,6 +307,7 @@ async fn ingest_reconciles_keywords_on_flag_update() {
             &SyncOutcome {
                 uid_validity: Some(100),
                 highest_uid: Some(1),
+                highest_modseq: None,
                 has_more: false,
                 new_envelopes: Vec::new(),
                 flag_updates: vec![(

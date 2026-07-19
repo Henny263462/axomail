@@ -40,6 +40,12 @@ pub struct MailboxSyncState {
     pub uid_validity: Option<u32>,
     /// Highest UID already ingested (IMAP).
     pub highest_uid: Option<u32>,
+    /// `HIGHESTMODSEQ` recorded during the previous sync (IMAP
+    /// CONDSTORE/QRESYNC). `None` when the server never reported one, which
+    /// forces the adapter to fall back to the newest-UID flag-window scan and
+    /// the present-set removal diff for this mailbox.
+    #[serde(default)]
+    pub highest_modseq: Option<u64>,
 }
 
 /// Instruction for one synchronization pass over one mailbox.
@@ -53,6 +59,13 @@ pub struct SyncRequest {
     pub state: MailboxSyncState,
     /// Maximum number of envelopes to fetch in this pass.
     pub batch_size: u32,
+    /// When set, the adapter must recompute removals from the authoritative
+    /// present set even on a fast QRESYNC pass (the periodic safety net that
+    /// backstops the VANISHED delta). The engine raises this on a documented
+    /// cadence; adapters that always diff the present set (POP3, non-CONDSTORE
+    /// IMAP) ignore it.
+    #[serde(default)]
+    pub full_reconcile: bool,
 }
 
 /// Envelope data for a message discovered on the server.
@@ -86,6 +99,12 @@ pub struct SyncOutcome {
     pub uid_validity: Option<u32>,
     /// Highest UID covered after this pass; feeds the next request.
     pub highest_uid: Option<u32>,
+    /// `HIGHESTMODSEQ` observed at `SELECT` this pass (IMAP CONDSTORE),
+    /// persisted so the next pass can request `CHANGEDSINCE` deltas. `None`
+    /// when the server does not support mod-sequences for this mailbox
+    /// (no CONDSTORE, or a `NOMODSEQ` select), keeping the legacy paths intact.
+    #[serde(default)]
+    pub highest_modseq: Option<u64>,
     /// Whether more messages remain beyond `batch_size`.
     pub has_more: bool,
     /// Newly discovered messages.

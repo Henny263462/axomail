@@ -30,6 +30,11 @@ pub(crate) struct Connected {
     pub session: ImapSession,
     /// Upper-cased capability atoms (e.g. `MOVE`, `UIDPLUS`, `SPECIAL-USE`).
     pub capabilities: HashSet<String>,
+    /// Whether `ENABLE QRESYNC` has already run on this connection. QRESYNC is
+    /// enabled lazily by the sync path (see [`crate::condstore`]) and never on
+    /// the write-back connection, so per-message `EXPUNGE`s keep their plain
+    /// semantics. `ENABLE` is only issued once per connection.
+    pub qresync_enabled: bool,
 }
 
 impl Connected {
@@ -192,6 +197,7 @@ async fn login_password(
     Ok(Connected {
         session,
         capabilities,
+        qresync_enabled: false,
     })
 }
 
@@ -213,6 +219,7 @@ async fn login_xoauth2(
     Ok(Connected {
         session,
         capabilities,
+        qresync_enabled: false,
     })
 }
 

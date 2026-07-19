@@ -66,6 +66,9 @@ pub struct FakeWorld {
     raw_messages: Mutex<HashMap<RemoteMessageId, Vec<u8>>>,
     fetch_calls: Mutex<usize>,
     sync_calls: Mutex<HashMap<MailboxId, usize>>,
+    /// Every `SyncRequest::full_reconcile` value observed per mailbox, in call
+    /// order — used to assert the QRESYNC reconcile-cadence.
+    reconcile_flags: Mutex<HashMap<MailboxId, Vec<bool>>>,
     connect_calls: Mutex<usize>,
     discovery: Mutex<HashMap<AccountId, RemoteMailboxState>>,
     active: Mutex<HashMap<AccountId, usize>>,
@@ -140,6 +143,16 @@ impl FakeWorld {
         lock(&self.sync_calls).get(&mailbox).copied().unwrap_or(0)
     }
 
+    /// The `SyncRequest::full_reconcile` flags observed for a mailbox, in call
+    /// order (one entry per sync pass).
+    #[must_use]
+    pub fn reconcile_flags(&self, mailbox: MailboxId) -> Vec<bool> {
+        lock(&self.reconcile_flags)
+            .get(&mailbox)
+            .cloned()
+            .unwrap_or_default()
+    }
+
     /// Number of `connect` calls observed overall.
     #[must_use]
     pub fn connect_calls(&self) -> usize {
@@ -188,8 +201,12 @@ impl FakeWorld {
         matches!(*lock(&self.pause_at), Some(target) if target == current)
     }
 
-    fn record_sync(&self, mailbox: MailboxId) {
+    fn record_sync(&self, mailbox: MailboxId, full_reconcile: bool) {
         *lock(&self.sync_calls).entry(mailbox).or_insert(0) += 1;
+        lock(&self.reconcile_flags)
+            .entry(mailbox)
+            .or_default()
+            .push(full_reconcile);
     }
 
     fn pop_pass(&self, mailbox: MailboxId) -> Option<Pass> {
@@ -272,7 +289,8 @@ impl IncomingMailProvider for FakeProvider {
             // engine is dropped (task abort). Never notified in tests.
             self.world.gate.notified().await;
         }
-        self.world.record_sync(request.mailbox);
+        self.world
+            .record_sync(request.mailbox, request.full_reconcile);
         match self.world.pop_pass(request.mailbox) {
             Some(Pass::Batch(outcome)) => Ok(outcome),
             Some(Pass::Fail(kind)) => Err(kind.build()),
@@ -280,6 +298,7 @@ impl IncomingMailProvider for FakeProvider {
             None => Ok(SyncOutcome {
                 uid_validity: request.state.uid_validity,
                 highest_uid: request.state.highest_uid,
+                highest_modseq: None,
                 has_more: false,
                 new_envelopes: Vec::new(),
                 flag_updates: Vec::new(),
@@ -413,6 +432,7 @@ pub fn test_config() -> SyncConfig {
         batch_size: 100,
         offline_download_batch: 25,
         max_attempts: 4,
+        full_reconcile_every: 10,
         backoff_base: Duration::from_secs(2),
         backoff_cap: Duration::from_secs(60),
         command_buffer: 16,
@@ -518,6 +538,7 @@ pub fn batch(
     SyncOutcome {
         uid_validity: Some(uid_validity),
         highest_uid: Some(highest_uid),
+        highest_modseq: None,
         has_more,
         new_envelopes: new,
         flag_updates: Vec::new(),
@@ -537,6 +558,7 @@ pub fn changes(
     SyncOutcome {
         uid_validity: Some(uid_validity),
         highest_uid: Some(highest_uid),
+        highest_modseq: None,
         has_more: false,
         new_envelopes: Vec::new(),
         flag_updates,

@@ -446,6 +446,7 @@ async fn threading_identity_round_trips_through_ingest() {
     let outcome = SyncOutcome {
         uid_validity: None,
         highest_uid: None,
+        highest_modseq: None,
         has_more: false,
         new_envelopes: vec![pop3_envelope_with_threading("uidl-1", "Re: Hello", headers)],
         flag_updates: Vec::new(),
@@ -478,6 +479,75 @@ async fn threading_identity_round_trips_through_ingest() {
         ]
     );
     assert_eq!(stored.parent_id(), Some("mid-1@example.org"));
+}
+
+#[tokio::test]
+async fn ingest_persists_and_reuses_highest_modseq() {
+    let store = Store::open_in_memory().await.unwrap();
+    let account = store
+        .accounts()
+        .insert(&sample_account("Work", "klaus@theferbers.eu"))
+        .await
+        .unwrap();
+    let mailbox = store
+        .mailboxes()
+        .upsert(&sample_mailbox(account.id, "INBOX"))
+        .await
+        .unwrap();
+
+    // A first CONDSTORE pass records the mailbox mod-sequence cursor.
+    let first = SyncOutcome {
+        uid_validity: Some(42),
+        highest_uid: Some(7),
+        highest_modseq: Some(1000),
+        has_more: false,
+        new_envelopes: Vec::new(),
+        flag_updates: Vec::new(),
+        removed: Vec::new(),
+        present_remote_ids: None,
+    };
+    store.ingest().apply(mailbox.id, &first).await.unwrap();
+
+    let reused = store.sync_state().get(mailbox.id).await.unwrap();
+    assert_eq!(reused.uid_validity, Some(42));
+    assert_eq!(reused.highest_uid, Some(7));
+    assert_eq!(
+        reused.highest_modseq,
+        Some(1000),
+        "the mod-sequence cursor survives to the next pass"
+    );
+
+    // A later pass advances it; a NOMODSEQ pass would clear it.
+    let second = SyncOutcome {
+        highest_modseq: Some(2500),
+        ..first.clone()
+    };
+    store.ingest().apply(mailbox.id, &second).await.unwrap();
+    assert_eq!(
+        store
+            .sync_state()
+            .get(mailbox.id)
+            .await
+            .unwrap()
+            .highest_modseq,
+        Some(2500)
+    );
+
+    let cleared = SyncOutcome {
+        highest_modseq: None,
+        ..first
+    };
+    store.ingest().apply(mailbox.id, &cleared).await.unwrap();
+    assert_eq!(
+        store
+            .sync_state()
+            .get(mailbox.id)
+            .await
+            .unwrap()
+            .highest_modseq,
+        None,
+        "a NOMODSEQ pass resets the cursor"
+    );
 }
 
 /// The lazy backfill writes threading once; a message that already carries
@@ -576,6 +646,7 @@ async fn find_by_message_id_is_account_scoped() {
     let outcome = |uidl: &str| SyncOutcome {
         uid_validity: None,
         highest_uid: None,
+        highest_modseq: None,
         has_more: false,
         new_envelopes: vec![pop3_envelope_with_threading(
             uidl,

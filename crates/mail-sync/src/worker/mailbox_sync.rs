@@ -45,7 +45,19 @@ where
             message: "account for sync job no longer exists".to_owned(),
         })?;
     let remote_name = resolve_mailbox_name(shared, account_id, mailbox_id).await?;
-    run_with_retry(shared, job.id, mailbox_id, &remote_name, &account, token).await
+    // Decide the QRESYNC present-set safety-net cadence once per job, so a
+    // reconcile pass is consistent across this job's retries and passes.
+    let full_reconcile = shared.take_full_reconcile(mailbox_id);
+    run_with_retry(
+        shared,
+        job.id,
+        mailbox_id,
+        &remote_name,
+        &account,
+        full_reconcile,
+        token,
+    )
+    .await
 }
 
 /// Finds the remote name of `mailbox_id` within its account.
@@ -80,6 +92,7 @@ async fn run_with_retry<P, F>(
     mailbox_id: MailboxId,
     remote_name: &MailboxName,
     account: &Account,
+    full_reconcile: bool,
     token: &CancellationToken,
 ) -> Result<SyncJobSummary, MailError>
 where
@@ -91,7 +104,17 @@ where
         if token.is_cancelled() {
             return Err(MailError::Cancelled);
         }
-        match run_passes(shared, job_id, mailbox_id, remote_name, account, token).await {
+        match run_passes(
+            shared,
+            job_id,
+            mailbox_id,
+            remote_name,
+            account,
+            full_reconcile,
+            token,
+        )
+        .await
+        {
             Ok(summary) => return Ok(summary),
             Err(error) => {
                 if error.class() != ErrorClass::Temporary {
@@ -120,6 +143,7 @@ async fn run_passes<P, F>(
     mailbox_id: MailboxId,
     remote_name: &MailboxName,
     account: &Account,
+    full_reconcile: bool,
     token: &CancellationToken,
 ) -> Result<SyncJobSummary, MailError>
 where
@@ -133,6 +157,7 @@ where
         job_id,
         mailbox_id,
         remote_name,
+        full_reconcile,
         &mut provider,
         token,
     )
@@ -162,6 +187,7 @@ async fn pump<P, F>(
     job_id: SyncJobId,
     mailbox_id: MailboxId,
     remote_name: &MailboxName,
+    full_reconcile: bool,
     provider: &mut P,
     token: &CancellationToken,
 ) -> Result<SyncJobSummary, MailError>
@@ -183,6 +209,7 @@ where
             remote_name: remote_name.clone(),
             state,
             batch_size: shared.config.batch_size,
+            full_reconcile,
         };
         let outcome = guarded(token, net, provider.sync(request)).await?;
         let ingest = shared.store.ingest().apply(mailbox_id, &outcome).await?;

@@ -21,6 +21,7 @@
 //! trait: `connect`, then `discover`/`sync`, then per-message operations.
 #![forbid(unsafe_code)]
 
+mod condstore;
 mod config;
 mod connection;
 mod convert;

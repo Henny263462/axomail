@@ -111,6 +111,7 @@ pub(crate) async fn run(
     let outcome = SyncOutcome {
         uid_validity: None,
         highest_uid: None,
+        highest_modseq: None,
         has_more,
         new_envelopes,
         flag_updates: Vec::new(),
@@ -128,6 +129,7 @@ fn empty_outcome(known: &HashSet<String>) -> SyncOutcome {
     SyncOutcome {
         uid_validity: None,
         highest_uid: None,
+        highest_modseq: None,
         has_more: false,
         new_envelopes: Vec::new(),
         flag_updates: Vec::new(),

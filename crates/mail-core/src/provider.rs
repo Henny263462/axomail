@@ -229,6 +229,7 @@ mod tests {
             remote_name: MailboxName::new("INBOX"),
             state: MailboxSyncState::default(),
             batch_size: 100,
+            full_reconcile: false,
         }));
         assert_send_future(provider.select_mailbox(&MailboxName::new("INBOX")));
         let delta = FlagDelta::default();

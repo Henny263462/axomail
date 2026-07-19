@@ -10,7 +10,7 @@ use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
-use axomail_core::AccountId;
+use axomail_core::{AccountId, MailboxId};
 use axomail_storage::{Store, SyncJobId};
 use tokio::sync::{Mutex as AsyncMutex, Notify, Semaphore, broadcast};
 use tokio_util::sync::CancellationToken;
@@ -50,6 +50,10 @@ pub(crate) struct Shared<P, F> {
     account_locks: Mutex<HashMap<AccountId, Arc<AsyncMutex<()>>>>,
     /// Cancellation token per in-flight job.
     cancels: Mutex<HashMap<SyncJobId, CancellationToken>>,
+    /// Per-mailbox mailbox-sync job counter driving the QRESYNC present-set
+    /// safety-net cadence (see [`SyncConfig::full_reconcile_every`]). In-process
+    /// only: a restart resets it, so the first job after start reconciles.
+    reconcile_counters: Mutex<HashMap<MailboxId, u32>>,
     _provider: PhantomData<fn() -> P>,
 }
 
@@ -78,8 +82,25 @@ where
             semaphore: Arc::new(Semaphore::new(config.max_parallel_jobs.max(1))),
             account_locks: Mutex::new(HashMap::new()),
             cancels: Mutex::new(HashMap::new()),
+            reconcile_counters: Mutex::new(HashMap::new()),
             _provider: PhantomData,
         })
+    }
+
+    /// Advances the mailbox's reconcile counter and reports whether this
+    /// mailbox-sync job should run the QRESYNC present-set safety net.
+    ///
+    /// The counter starts absent, so the first job for a mailbox (including the
+    /// first after a restart) reconciles; thereafter every
+    /// [`SyncConfig::full_reconcile_every`]-th job does. Only the
+    /// CONDSTORE+QRESYNC fast path consults the returned flag.
+    pub(crate) fn take_full_reconcile(&self, mailbox: MailboxId) -> bool {
+        let every = self.config.full_reconcile_every.max(1);
+        let mut counters = lock(&self.reconcile_counters);
+        let count = counters.entry(mailbox).or_insert(0);
+        let reconcile = count.is_multiple_of(every);
+        *count = count.wrapping_add(1);
+        reconcile
     }
 
     /// Whether the engine is currently working offline (no new claims).
