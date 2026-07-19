@@ -73,6 +73,7 @@ const unifiedItems: UnifiedItemDto[] = [
     seen: true,
     flagged: false,
     preview: "note",
+    tags: [],
   },
   {
     id: 101,
@@ -85,6 +86,7 @@ const unifiedItems: UnifiedItemDto[] = [
     seen: false,
     flagged: false,
     preview: "hi",
+    tags: [],
   },
 ];
 

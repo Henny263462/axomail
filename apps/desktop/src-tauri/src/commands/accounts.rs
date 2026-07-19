@@ -255,6 +255,7 @@ async fn finish_account(
     }
     let mailboxes = create_default_mailboxes(store, account.id).await?;
     seed_default_identity(store, account).await?;
+    crate::commands::tag_seed::seed_default_tags(store, account.id).await?;
     let summaries = mailboxes
         .iter()
         .map(|mailbox| MailboxSummaryDto::from_domain(mailbox, 0))

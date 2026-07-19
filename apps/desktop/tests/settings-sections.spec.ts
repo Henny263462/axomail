@@ -17,6 +17,15 @@ vi.mock("../src/api/settings", () => ({
   setPop3DeletePolicy: vi.fn(),
 }));
 
+// The Tags section loads its list on mount; stub the tag api so the registry
+// tests can mount it without a live backend.
+vi.mock("../src/api/tags", () => ({
+  listTags: vi.fn().mockResolvedValue([]),
+  createTag: vi.fn(),
+  updateTag: vi.fn(),
+  deleteTag: vi.fn(),
+}));
+
 const getSettingsMock = vi.mocked(getSettings);
 const setPop3DeletePolicyMock = vi.mocked(setPop3DeletePolicy);
 
@@ -85,6 +94,7 @@ describe("settings section registry", () => {
       "appearance",
       "pop3-delete",
       "identities",
+      "tags",
       "accounts",
     ]);
   });

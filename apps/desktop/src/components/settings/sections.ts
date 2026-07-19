@@ -7,6 +7,7 @@ import IdentitiesSection from "./IdentitiesSection.vue";
 import NotificationsSection from "./NotificationsSection.vue";
 import Pop3DeleteSection from "./Pop3DeleteSection.vue";
 import SyncIntervalSection from "./SyncIntervalSection.vue";
+import TagsSection from "./TagsSection.vue";
 
 /**
  * One registered settings section. `component` renders inside the dialog's
@@ -42,5 +43,6 @@ export const settingsSections: SettingsSection[] = [
     component: Pop3DeleteSection,
   },
   { id: "identities", title: "Identities", component: IdentitiesSection },
+  { id: "tags", title: "Tags", component: TagsSection },
   { id: "accounts", title: "Accounts", component: AccountsSection },
 ];

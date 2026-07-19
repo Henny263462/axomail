@@ -2,6 +2,7 @@
 import { computed } from "vue";
 
 import type { MessageListItem } from "../../types/mail";
+import TagChips from "../message/TagChips.vue";
 
 const props = withDefaults(
   defineProps<{
@@ -61,6 +62,12 @@ const date = computed(() => formatDate(props.message.dateUnix));
         v-if="message.preview"
         class="preview"
       >{{ message.preview }}</span>
+      <TagChips
+        v-if="message.tags.length > 0"
+        class="tags"
+        :tags="message.tags"
+        :label="`Tags on ${message.subject ?? 'this message'}`"
+      />
     </button>
   </li>
 </template>
@@ -168,5 +175,9 @@ const date = computed(() => formatDate(props.message.dateUnix));
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.tags {
+  margin-top: 2px;
 }
 </style>

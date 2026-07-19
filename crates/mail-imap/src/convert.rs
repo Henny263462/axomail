@@ -2,16 +2,20 @@
 
 use async_imap::imap_proto::types::Address as ImapAddress;
 use async_imap::types::{Fetch, Flag};
-use axomail_core::{Address, EmailAddress, FlagSet, MessageFlags, RemoteEnvelope, RemoteMessageId};
+use axomail_core::{
+    Address, EmailAddress, FlagSet, Keyword, MessageFlags, RemoteEnvelope, RemoteMessageId,
+};
 
 use crate::{date, rfc2047};
 
-/// Reads the system flags of a `FETCH` response into [`MessageFlags`].
+/// Reads the flags of a `FETCH` response into [`MessageFlags`].
 ///
-/// Keywords (IMAP custom flags, `Flag::Custom`) are **not** read here yet:
-/// Wave 2 track 2.4 wires `Flag::Custom` → `MessageFlags::keywords` in this
-/// function, together with the `message_tags` persistence. Until then the
-/// keyword set is left empty; the write path never depends on it.
+/// The five system flags map to their booleans; every `Flag::Custom` (an IMAP
+/// keyword such as `$Junk` or a user label) that parses as a valid RFC 3501
+/// keyword is collected into [`MessageFlags::keywords`]. Non-keyword server
+/// tokens (`\Recent`, `\*`) and any custom flag that is not a valid keyword
+/// atom are ignored. The storage layer projects the keyword set into
+/// `message_tags` on ingest (track 2.4).
 #[must_use]
 pub(crate) fn flags_from_fetch(fetch: &Fetch) -> MessageFlags {
     let mut flags = MessageFlags::default();
@@ -22,6 +26,11 @@ pub(crate) fn flags_from_fetch(fetch: &Fetch) -> MessageFlags {
             Flag::Flagged => flags.flagged = true,
             Flag::Draft => flags.draft = true,
             Flag::Deleted => flags.deleted = true,
+            Flag::Custom(name) => {
+                if let Ok(keyword) = Keyword::parse(name.as_ref()) {
+                    flags.keywords.insert(keyword);
+                }
+            }
             _ => {}
         }
     }

@@ -1,9 +1,12 @@
 //! Message-list DTOs.
 
+use std::collections::HashMap;
+
 use axomail_core::{MailError, MessageEnvelope};
-use axomail_storage::MessagePage;
+use axomail_storage::{MessagePage, Tag};
 use serde::Serialize;
 
+use super::TagChipDto;
 use super::checked_id;
 
 /// A single row in a message list.
@@ -28,10 +31,14 @@ pub struct MessageListItemDto {
     pub flagged: bool,
     /// Sanitized plain-text preview, no markup.
     pub preview: Option<String>,
+    /// Tag chips for this row, in display order (empty when untagged, or when
+    /// the caller does not attach tags — e.g. the unified inbox).
+    pub tags: Vec<TagChipDto>,
 }
 
 impl MessageListItemDto {
-    /// Builds a list item from a stored envelope, validating its ids.
+    /// Builds a list item from a stored envelope, validating its ids. The row
+    /// starts untagged; [`MessageListItemDto::with_tags`] attaches chips.
     ///
     /// # Errors
     ///
@@ -53,7 +60,22 @@ impl MessageListItemDto {
             seen: envelope.flags.seen,
             flagged: envelope.flags.flagged,
             preview: envelope.preview.clone(),
+            tags: Vec::new(),
         })
+    }
+
+    /// Attaches tag chips to this row (builder form).
+    ///
+    /// # Errors
+    ///
+    /// Returns [`MailError::Configuration`] if a tag id is out of the safe
+    /// integer range.
+    pub fn with_tags(mut self, tags: &[Tag]) -> Result<Self, MailError> {
+        self.tags = tags
+            .iter()
+            .map(TagChipDto::from_tag)
+            .collect::<Result<_, _>>()?;
+        Ok(self)
     }
 }
 
@@ -85,4 +107,57 @@ impl MessageListPageDto {
             next_cursor: page.next.map(|cursor| cursor.token()),
         })
     }
+
+    /// Maps a storage page to its DTO form, attaching tag chips from a
+    /// message-id → tags map (built by one batched query, so the list stays
+    /// O(page)). Rows absent from the map are simply untagged.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`MailError::Configuration`] if any id is out of the safe
+    /// integer range.
+    pub fn from_page_with_tags(
+        page: &MessagePage,
+        tags: &HashMap<i64, Vec<Tag>>,
+    ) -> Result<Self, MailError> {
+        Ok(Self {
+            items: items_with_tags(&page.items, tags)?,
+            next_cursor: page.next.map(|cursor| cursor.token()),
+        })
+    }
+
+    /// Builds a cursorless page from a flat list of envelopes plus a tag map,
+    /// used by the tag-filter view (no pagination).
+    ///
+    /// # Errors
+    ///
+    /// Returns [`MailError::Configuration`] if any id is out of the safe
+    /// integer range.
+    pub fn from_envelopes_with_tags(
+        envelopes: &[MessageEnvelope],
+        tags: &HashMap<i64, Vec<Tag>>,
+    ) -> Result<Self, MailError> {
+        Ok(Self {
+            items: items_with_tags(envelopes, tags)?,
+            next_cursor: None,
+        })
+    }
+}
+
+/// Builds list items from envelopes, attaching each message's tags from the
+/// map (untagged when absent).
+fn items_with_tags(
+    envelopes: &[MessageEnvelope],
+    tags: &HashMap<i64, Vec<Tag>>,
+) -> Result<Vec<MessageListItemDto>, MailError> {
+    envelopes
+        .iter()
+        .map(|envelope| {
+            let item = MessageListItemDto::from_envelope(envelope)?;
+            match tags.get(&envelope.id.value()) {
+                Some(tags) => item.with_tags(tags),
+                None => Ok(item),
+            }
+        })
+        .collect()
 }

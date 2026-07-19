@@ -8,9 +8,11 @@
 //! every cached UID is meaningless, so the mailbox's messages are wiped
 //! before the fresh envelopes land.
 
+mod present;
+
 use axomail_core::{
-    Address, MailError, MailboxId, MailboxSyncState, MessageFlags, RemoteEnvelope, RemoteMessageId,
-    SyncOutcome,
+    AccountId, Address, MailError, MailboxId, MailboxSyncState, MessageFlags, RemoteEnvelope,
+    RemoteMessageId, SyncOutcome,
 };
 use serde::{Deserialize, Serialize};
 use sqlx::{SqliteConnection, SqlitePool};
@@ -69,6 +71,7 @@ impl<'a> IngestRepo<'a> {
             .map_err(|error| map_sqlx("ingest_begin", error))?;
 
         let stored = read_state(&mut *tx, mailbox).await?;
+        let account = resolve_account(&mut tx, mailbox).await?;
         let wiped = uid_validity_changed(stored, outcome.uid_validity);
         if wiped {
             sqlx::query("DELETE FROM messages WHERE mailbox_id = ?")
@@ -84,13 +87,25 @@ impl<'a> IngestRepo<'a> {
                 insert_recipients(&mut tx, message_id, "from", &envelope.from).await?;
                 insert_recipients(&mut tx, message_id, "to", &envelope.to).await?;
                 index_envelope_content(&mut tx, message_id, envelope).await?;
+                // Project the server's keywords onto the fresh message, creating
+                // account tags for any not seen before. Pure inserts: a brand-new
+                // row has no prior associations to reconcile.
+                if !envelope.flags.keywords.is_empty() {
+                    crate::tags::sync::add_message_keywords(
+                        &mut tx,
+                        account,
+                        message_id,
+                        &envelope.flags.keywords,
+                    )
+                    .await?;
+                }
                 inserted += 1;
             }
         }
 
         let mut flags_updated = 0u64;
         for (remote_id, flags) in &outcome.flag_updates {
-            flags_updated += apply_flags(&mut tx, mailbox, remote_id, flags).await?;
+            flags_updated += apply_flags(&mut tx, mailbox, account, remote_id, flags).await?;
         }
 
         let mut removed = 0u64;
@@ -101,7 +116,7 @@ impl<'a> IngestRepo<'a> {
         // whose remote id is no longer reported by the server. Bounded
         // by the number of *stored* rows, never by the remote id space.
         if let Some(present) = &outcome.present_remote_ids {
-            removed += delete_absent(&mut tx, mailbox, present).await?;
+            removed += present::delete_absent(&mut tx, mailbox, present).await?;
         }
 
         let next_state = MailboxSyncState {
@@ -247,17 +262,18 @@ async fn insert_recipients(
 }
 
 /// Overwrites the system flags of the message with a matching remote
-/// identity in this mailbox. Returns the number of rows changed (`0` if
-/// unknown).
+/// identity in this mailbox, and reconciles its keyword tags to the
+/// server-reported set. Returns the number of rows changed (`0` if unknown).
 ///
-/// Only the five system-flag columns are written. Any `flags.keywords` are
-/// intentionally dropped here: `message_tags` persistence lands in Wave 2
-/// track 2.4, which extends this function to upsert the keyword set. The
+/// The five system-flag columns are written by remote identity; the keyword
+/// set is reconciled against `message_tags` (auto-creating account tags for
+/// unknown keywords) so a keyword the server dropped is unlinked locally. The
 /// server-side write path (`store_flags`) is delta-based, so nothing is
 /// clobbered on the server regardless.
 async fn apply_flags(
     conn: &mut SqliteConnection,
     mailbox: MailboxId,
+    account: AccountId,
     remote_id: &RemoteMessageId,
     flags: &MessageFlags,
 ) -> Result<u64, MailError> {
@@ -273,13 +289,68 @@ async fn apply_flags(
         .execute(&mut *conn)
         .await
         .map_err(|error| map_sqlx("ingest_flags", error))?;
-    Ok(result.rows_affected())
+    let updated = result.rows_affected();
+    if updated > 0
+        && let Some(message_id) = resolve_message_id(conn, mailbox, remote_id).await?
+    {
+        crate::tags::sync::reconcile_message_keywords(conn, account, message_id, &flags.keywords)
+            .await?;
+    }
+    Ok(updated)
+}
+
+/// Resolves the owning account of a mailbox within the ingest transaction.
+async fn resolve_account(
+    tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
+    mailbox: MailboxId,
+) -> Result<AccountId, MailError> {
+    let account_id: i64 = sqlx::query_scalar("SELECT account_id FROM mailboxes WHERE id = ?")
+        .bind(mailbox.value())
+        .fetch_optional(&mut **tx)
+        .await
+        .map_err(|error| map_sqlx("ingest_resolve_account", error))?
+        .ok_or_else(|| MailError::Database {
+            message: "ingest: mailbox has no owning account".to_owned(),
+        })?;
+    Ok(AccountId::new(account_id))
+}
+
+/// Resolves the local message id for a remote identity within a mailbox.
+async fn resolve_message_id(
+    conn: &mut SqliteConnection,
+    mailbox: MailboxId,
+    remote_id: &RemoteMessageId,
+) -> Result<Option<i64>, MailError> {
+    let id = match remote_id {
+        RemoteMessageId::Imap { uid, uid_validity } => {
+            sqlx::query_scalar::<_, i64>(
+                "SELECT id FROM messages WHERE mailbox_id = ? AND remote_kind = 'imap' \
+             AND remote_uid_validity = ? AND remote_uid = ?",
+            )
+            .bind(mailbox.value())
+            .bind(i64::from(*uid_validity))
+            .bind(i64::from(*uid))
+            .fetch_optional(&mut *conn)
+            .await
+        }
+        RemoteMessageId::Pop3 { uidl } => {
+            sqlx::query_scalar::<_, i64>(
+                "SELECT id FROM messages WHERE mailbox_id = ? AND remote_kind = 'pop3' \
+             AND remote_uidl = ?",
+            )
+            .bind(mailbox.value())
+            .bind(uidl.as_str())
+            .fetch_optional(&mut *conn)
+            .await
+        }
+    };
+    id.map_err(|error| map_sqlx("ingest_resolve_message", error))
 }
 
 /// Deletes the message with a matching remote identity in this mailbox.
 /// The `WHERE` clause intersects with stored rows, so `rows_affected`
 /// reports how many were genuinely present and removed.
-async fn delete_message(
+pub(super) async fn delete_message(
     conn: &mut SqliteConnection,
     mailbox: MailboxId,
     remote_id: &RemoteMessageId,
@@ -295,52 +366,6 @@ async fn delete_message(
         .await
         .map_err(|error| map_sqlx("ingest_delete", error))?;
     Ok(result.rows_affected())
-}
-
-/// Deletes stored IMAP messages absent from the server's present set.
-///
-/// Loads the mailbox's stored `(uid, uid_validity)` pairs (bounded by
-/// local row count), diffs them in memory against the reported present
-/// ids, and deletes the absent ones inside the ingest transaction.
-async fn delete_absent(
-    tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
-    mailbox: MailboxId,
-    present: &[RemoteMessageId],
-) -> Result<u64, MailError> {
-    use std::collections::HashSet;
-
-    let present_set: HashSet<(u32, u32)> = present
-        .iter()
-        .filter_map(|id| match id {
-            RemoteMessageId::Imap { uid, uid_validity } => Some((*uid, *uid_validity)),
-            RemoteMessageId::Pop3 { .. } => None,
-        })
-        .collect();
-
-    let stored: Vec<(i64, i64)> = sqlx::query_as(
-        "SELECT remote_uid, remote_uid_validity FROM messages
-         WHERE mailbox_id = ? AND remote_kind = 'imap'
-           AND remote_uid IS NOT NULL AND remote_uid_validity IS NOT NULL",
-    )
-    .bind(mailbox.value())
-    .fetch_all(&mut **tx)
-    .await
-    .map_err(|error| map_sqlx("ingest_present_load", error))?;
-
-    let mut removed = 0u64;
-    for (uid, validity) in stored {
-        let (Ok(uid), Ok(validity)) = (u32::try_from(uid), u32::try_from(validity)) else {
-            continue;
-        };
-        if !present_set.contains(&(uid, validity)) {
-            let remote_id = RemoteMessageId::Imap {
-                uid,
-                uid_validity: validity,
-            };
-            removed += delete_message(tx, mailbox, &remote_id).await?;
-        }
-    }
-    Ok(removed)
 }
 
 /// `UPDATE ... SET flags WHERE mailbox and remote identity` statement.

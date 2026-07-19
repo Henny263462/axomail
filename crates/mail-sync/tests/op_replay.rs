@@ -5,11 +5,11 @@
 mod support;
 
 use axomail_core::{
-    AccountId, Address, EmailAddress, MailboxId, MailboxName, MessageFlags, MessageId,
+    AccountId, Address, EmailAddress, Keyword, MailboxId, MailboxName, MessageFlags, MessageId,
     RemoteMessageId,
 };
 use axomail_storage::{NewMessage, NewPendingOp, PendingOpKind, Store};
-use axomail_sync::{SyncEngine, SyncEvent, WorkRequest, flagged_op, seen_op};
+use axomail_sync::{SyncEngine, SyncEvent, WorkRequest, flagged_op, keyword_op, seen_op};
 use support::{
     FailKind, FakeFactory, FakeProvider, FakeWorld, drain_until_terminal, store_with_mailbox,
     test_config,
@@ -108,6 +108,42 @@ async fn seen_op_replays_as_an_additive_store_then_completes() {
             ..
         }
     )));
+}
+
+#[tokio::test]
+async fn a_tag_keyword_op_replays_as_an_additive_keyword_store() {
+    // Round-trip proof for the folded keyword executor: the `keyword_op`
+    // builder is exactly what the tag/untag command (`set_message_tag`)
+    // enqueues, and the single OpReplay executor drains it into an additive
+    // `+FLAGS (keyword)` STORE that never clobbers other server keywords.
+    let world = FakeWorld::new();
+    let (store, account, mailbox) = store_with_mailbox().await;
+    let message = insert_remote(&store, mailbox, 1).await;
+    let junk = Keyword::parse("$Junk").unwrap();
+
+    // Tag (add) then untag (remove) the same keyword on one message.
+    enqueue(&store, account, message, keyword_op(junk.clone(), true)).await;
+    enqueue(&store, account, message, keyword_op(junk.clone(), false)).await;
+
+    let engine = SyncEngine::start(
+        store.clone(),
+        FakeFactory::new(world.clone()),
+        test_config(),
+    );
+    run_replay(&engine, account).await;
+
+    let flags = world.flag_calls();
+    assert_eq!(flags.len(), 2, "both keyword ops replayed");
+    // Add side: +FLAGS ($Junk), nothing removed.
+    assert!(flags[0].1.add.keywords.contains(&junk));
+    assert!(flags[0].1.add.system.is_empty());
+    assert!(flags[0].1.remove.is_empty());
+    // Remove side: -FLAGS ($Junk), nothing added.
+    assert!(flags[1].1.remove.keywords.contains(&junk));
+    assert!(flags[1].1.add.is_empty());
+
+    let counts = store.pending_ops().counts(account).await.unwrap();
+    assert_eq!((counts.pending, counts.inflight, counts.failed), (0, 0, 0));
 }
 
 #[tokio::test]

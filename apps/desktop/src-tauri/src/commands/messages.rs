@@ -1,6 +1,6 @@
 //! Message listing and unread-count queries.
 
-use axomail_core::{MailError, MailboxId};
+use axomail_core::{MailError, MailboxId, MessageId};
 use axomail_storage::{MessageCursor, Store};
 
 use crate::commands::map_command_error;
@@ -31,7 +31,10 @@ pub async fn list_messages_impl(
         None => None,
     };
     let page = store.messages().list_page(mailbox, cursor, limit).await?;
-    MessageListPageDto::from_page(&page)
+    // One batched tags-for-page query keeps row chips O(page), not O(rows).
+    let ids: Vec<MessageId> = page.items.iter().map(|envelope| envelope.id).collect();
+    let tags = store.tags().tags_for_messages(&ids).await?;
+    MessageListPageDto::from_page_with_tags(&page, &tags)
 }
 
 /// Counts unread messages in a mailbox by scanning its pages.

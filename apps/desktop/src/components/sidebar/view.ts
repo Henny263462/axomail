@@ -4,6 +4,12 @@
  * `<script setup>` export (which the Vue compiler disallows).
  *
  * `unified` is the fixed "All inboxes" view that merges every account's
- * inbox-role mailbox.
+ * inbox-role mailbox. `tag` is the tag-filter view: the messages carrying a
+ * single tag, selected from the sidebar Tags group.
  */
-export type SidebarView = "mailbox" | "unified" | "drafts" | "outbox";
+export type SidebarView =
+  | "mailbox"
+  | "unified"
+  | "drafts"
+  | "outbox"
+  | "tag";

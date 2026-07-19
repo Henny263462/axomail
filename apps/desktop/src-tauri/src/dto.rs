@@ -27,6 +27,7 @@ mod oauth;
 mod search;
 mod settings;
 mod sync_event;
+mod tag;
 mod unified;
 
 pub use account::{
@@ -44,6 +45,7 @@ pub use oauth::{OAuthAuthorizeResult, OAuthAuthorizeStatus};
 pub use search::SearchResultDto;
 pub use settings::{Pop3DeletePolicyDto, SettingsDto, ThemePreference};
 pub use sync_event::SyncEventDto;
+pub use tag::{MessageTagOptionDto, MessageTagOptionsDto, TagChipDto, TagDto};
 pub use unified::{UnifiedItemDto, UnifiedPageDto};
 
 /// Largest integer a JavaScript `number` can represent exactly: `2^53 - 1`.

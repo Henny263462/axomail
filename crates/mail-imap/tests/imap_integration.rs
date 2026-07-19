@@ -357,6 +357,41 @@ async fn incremental_sync_reports_flag_updates() {
 }
 
 #[tokio::test]
+async fn sync_reads_custom_flags_as_keywords() {
+    let mut spec = Spec::base(TlsMode::Implicit);
+    let mut message = Message::new(1);
+    // A system flag plus two custom keywords and a non-keyword server token.
+    message.flags = vec![
+        "\\Seen".to_owned(),
+        "$Junk".to_owned(),
+        "$label2".to_owned(),
+        "\\Recent".to_owned(),
+    ];
+    spec.messages = vec![message];
+    let server = common::start(spec).await;
+    let mut provider = ImapProvider::new(config_for(&server, ConnectionSecurity::Tls, "pass"));
+
+    provider.connect().await.expect("connect");
+    let outcome = provider
+        .sync(sync_request(MailboxSyncState::default(), 100))
+        .await
+        .expect("sync");
+
+    let envelope = &outcome.new_envelopes[0];
+    assert!(envelope.flags.seen);
+    let keywords: Vec<&str> = envelope
+        .flags
+        .keywords
+        .iter()
+        .map(Keyword::as_str)
+        .collect();
+    // Both custom flags become keywords; the session-only `\Recent` does not.
+    assert!(keywords.contains(&"$Junk"));
+    assert!(keywords.contains(&"$label2"));
+    assert_eq!(keywords.len(), 2, "keywords: {keywords:?}");
+}
+
+#[tokio::test]
 async fn fetch_message_returns_full_bytes_via_peek() {
     let mut spec = Spec::base(TlsMode::Implicit);
     let mut message = Message::new(1);

@@ -69,6 +69,20 @@ pub fn flagged_op(flagged: bool) -> (PendingOpKind, String) {
     )
 }
 
+/// Builds the `(kind, payload)` for adding or removing one IMAP keyword (tag)
+/// on a message. `add = true` issues `+FLAGS (keyword)`; `add = false` issues
+/// `-FLAGS (keyword)`. Used by the tag/untag command to enqueue a keyword op
+/// that the single write-back executor drains additively.
+#[must_use]
+pub fn keyword_op(keyword: Keyword, add: bool) -> (PendingOpKind, String) {
+    let kind = if add {
+        PendingOpKind::AddKeyword
+    } else {
+        PendingOpKind::RemoveKeyword
+    };
+    (kind, encode(&KeywordPayload { keyword }))
+}
+
 /// Builds the `(kind, payload)` for moving a message to `target`.
 #[must_use]
 pub fn move_op(target: MailboxId) -> (PendingOpKind, String) {
@@ -189,6 +203,22 @@ mod tests {
         let delta = flag_delta(&op(kind, &payload)).unwrap();
         assert!(delta.add.system.flagged);
         assert!(!delta.add.system.seen);
+    }
+
+    #[test]
+    fn keyword_op_round_trips_to_an_additive_keyword_delta() {
+        let keyword = Keyword::parse("$Junk").unwrap();
+        let (kind, payload) = keyword_op(keyword.clone(), true);
+        assert_eq!(kind, PendingOpKind::AddKeyword);
+        let delta = flag_delta(&op(kind, &payload)).unwrap();
+        assert!(delta.add.keywords.contains(&keyword));
+        assert!(delta.remove.is_empty());
+
+        let (kind, payload) = keyword_op(keyword.clone(), false);
+        assert_eq!(kind, PendingOpKind::RemoveKeyword);
+        let delta = flag_delta(&op(kind, &payload)).unwrap();
+        assert!(delta.remove.keywords.contains(&keyword));
+        assert!(delta.add.is_empty());
     }
 
     #[test]

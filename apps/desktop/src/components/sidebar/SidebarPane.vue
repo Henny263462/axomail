@@ -3,6 +3,7 @@ import { computed } from "vue";
 
 import type { AccountSummary } from "../../types/mail";
 import EmptyState from "../common/EmptyState.vue";
+import SidebarTagsPane from "./SidebarTagsPane.vue";
 import type { SidebarView } from "./view";
 
 const props = withDefaults(
@@ -13,8 +14,10 @@ const props = withDefaults(
     activeView?: SidebarView;
     /** Account ids with a sync job currently running. */
     syncingAccountIds?: number[];
+    /** Active tag filter, for highlighting the Tags group. */
+    activeTagId?: number | null;
   }>(),
-  { activeView: "mailbox", syncingAccountIds: () => [] },
+  { activeView: "mailbox", syncingAccountIds: () => [], activeTagId: null },
 );
 
 const emit = defineEmits<{
@@ -25,6 +28,7 @@ const emit = defineEmits<{
   syncAccount: [accountId: number];
   selectDrafts: [];
   selectOutbox: [];
+  selectTag: [tagId: number, name: string];
 }>();
 
 const hasAccounts = computed(() => props.accounts.length > 0);
@@ -132,6 +136,13 @@ function isSyncing(accountId: number): boolean {
         </ul>
       </section>
     </template>
+
+    <!-- Track 2.4 mount point: the Tags filter group. A self-contained child
+         component so it does not collide with the folder-tree rewrite. -->
+    <SidebarTagsPane
+      :active-tag-id="activeTagId"
+      @select-tag="(tagId, name) => emit('selectTag', tagId, name)"
+    />
 
     <div class="fixed-views">
       <button
