@@ -21,6 +21,8 @@ pub mod remote_content;
 pub mod search;
 pub mod settings;
 pub mod sync;
+pub mod tag_seed;
+pub mod tags;
 pub mod unified;
 
 use axomail_core::MailError;

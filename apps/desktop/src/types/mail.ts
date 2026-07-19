@@ -37,6 +37,14 @@ export interface AccountSummary {
   mailboxes: MailboxSummary[];
 }
 
+/** A compact tag chip (colored dot + label) shown on rows and the detail. */
+export interface TagChip {
+  id: number;
+  displayName: string;
+  /** Presentation color as `#rrggbb`, or null for colorless. */
+  color: string | null;
+}
+
 export interface MessageListItem {
   id: number;
   mailboxId: number;
@@ -49,6 +57,34 @@ export interface MessageListItem {
   flagged: boolean;
   /** Sanitized plain-text preview, no markup. */
   preview: string | null;
+  /** Tag chips for this row, in display order (empty when untagged). */
+  tags: TagChip[];
+}
+
+/** A full tag record for the tag manager (keyword + usage count). */
+export interface TagDto {
+  id: number;
+  accountId: number;
+  keyword: string;
+  displayName: string;
+  color: string | null;
+  sortOrder: number;
+  usageCount: number;
+}
+
+/** One option in the per-message tag picker. */
+export interface MessageTagOption {
+  id: number;
+  displayName: string;
+  color: string | null;
+  applied: boolean;
+}
+
+/** The tag picker payload for one message: its account plus every option. */
+export interface MessageTagOptions {
+  messageId: number;
+  accountId: number;
+  options: MessageTagOption[];
 }
 
 /** One page of message envelopes plus the cursor for the next page. */

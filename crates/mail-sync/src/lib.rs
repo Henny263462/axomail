@@ -35,6 +35,7 @@ mod engine;
 mod event;
 mod factory;
 mod job;
+mod op_replay;
 mod scheduler;
 mod shared;
 mod worker;
@@ -44,6 +45,7 @@ pub use engine::SyncEngine;
 pub use event::{SyncErrorClass, SyncEvent, SyncJobSummary};
 pub use factory::ProviderFactory;
 pub use job::{SyncMailbox, WorkRequest};
+pub use op_replay::{KeywordReplayOutcome, replay_keyword_op};
 pub use scheduler::{BackgroundScheduler, SchedulerConfig, SchedulerStatus};
 
 // Re-exported so callers can name job identifiers and states without a

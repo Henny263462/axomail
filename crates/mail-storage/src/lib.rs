@@ -39,6 +39,7 @@ mod settings;
 mod store;
 mod sync_jobs;
 mod sync_state;
+mod tags;
 mod threading_json;
 mod unified;
 
@@ -62,4 +63,5 @@ pub use settings::SettingsRepo;
 pub use store::Store;
 pub use sync_jobs::{JobKind, JobState, NewSyncJob, SyncJob, SyncJobId, SyncJobRepo};
 pub use sync_state::SyncStateRepo;
+pub use tags::{KeywordOpPayload, NewTag, Tag, TagColor, TagId, TagRepo, TagUpdate};
 pub use unified::{UnifiedInboxPage, UnifiedMessage, UnifiedRepo};

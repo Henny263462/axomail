@@ -4,6 +4,7 @@ import { computed } from "vue";
 import type { MessageDetailDto } from "../../types/mail";
 import { formatBytes, formatDateTime, formatRecipients } from "./format";
 import MessageBody from "./MessageBody.vue";
+import MessageTagArea from "./MessageTagArea.vue";
 
 const props = defineProps<{
   detail: MessageDetailDto;
@@ -55,6 +56,7 @@ function alwaysAllow(): void {
           <dd>{{ dateLine }}</dd>
         </template>
       </dl>
+      <MessageTagArea :message-id="detail.id" />
     </header>
 
     <ul

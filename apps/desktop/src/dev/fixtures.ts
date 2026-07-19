@@ -37,6 +37,7 @@ export const fixtureMessages: MessageListItem[] = [
     seen: false,
     flagged: true,
     preview: "The white-mode palette looks calm; two border values feel close…",
+    tags: [{ id: 1, displayName: "Work", color: "#e08a3c" }],
   },
   {
     id: 102,
@@ -48,6 +49,7 @@ export const fixtureMessages: MessageListItem[] = [
     seen: false,
     flagged: false,
     preview: "Backoff windows should be jittered; see the attached sketch…",
+    tags: [],
   },
   {
     id: 103,
@@ -59,5 +61,6 @@ export const fixtureMessages: MessageListItem[] = [
     seen: true,
     flagged: false,
     preview: "A changed validity must invalidate every cached UID mapping…",
+    tags: [],
   },
 ];

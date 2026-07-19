@@ -14,6 +14,7 @@ import { cancelAllSyncJobs } from "./api/jobs";
 import { listMessages, markMessageSeen } from "./api/messages";
 import { getSettings } from "./api/settings";
 import { syncAccount } from "./api/sync";
+import { listMessagesForTag } from "./api/tags";
 import { listUnifiedInbox } from "./api/unified";
 import EmptyState from "./components/common/EmptyState.vue";
 import AppShell from "./components/layout/AppShell.vue";
@@ -21,6 +22,7 @@ import DialogHost from "./components/layout/DialogHost.vue";
 import type { AppDialogMap } from "./components/layout/dialogs";
 import DraftListPane from "./components/list/DraftListPane.vue";
 import MailListRegion from "./components/list/MailListRegion.vue";
+import MessageListPane from "./components/list/MessageListPane.vue";
 import OutboxListPane from "./components/list/OutboxListPane.vue";
 import MessageViewPane from "./components/message/MessageViewPane.vue";
 import SidebarPane from "./components/sidebar/SidebarPane.vue";
@@ -49,6 +51,7 @@ const outbox = ref<OutboxItemDto[]>([]);
 const selectedMailboxId = ref<number | null>(null);
 const selectedMessageId = ref<number | null>(null);
 const selectedDraftId = ref<number | null>(null);
+const selectedTagId = ref<number | null>(null);
 const activeView = ref<SidebarView>("mailbox");
 
 // Open-state + payload for every app-level dialog; DialogHost mounts them.
@@ -81,9 +84,12 @@ const composeAccountId = computed<number | null>(() => {
   return owning?.id ?? accounts.value[0]?.id ?? null;
 });
 
-/** True for the message-backed views (a single mailbox or the unified inbox). */
+/** True for the message-backed views (a mailbox, the unified inbox, or a tag). */
 const messageView = computed(
-  () => activeView.value === "mailbox" || activeView.value === "unified",
+  () =>
+    activeView.value === "mailbox" ||
+    activeView.value === "unified" ||
+    activeView.value === "tag",
 );
 
 const viewedMessageId = computed(() =>
@@ -217,6 +223,19 @@ async function selectOutbox(): Promise<void> {
   await loadOutbox();
 }
 
+/** Filters the message list to a single tag (snapshot; not live-synced). */
+async function selectTag(tagId: number): Promise<void> {
+  activeView.value = "tag";
+  selectedTagId.value = tagId;
+  selectedMailboxId.value = null;
+  selectedMessageId.value = null;
+  shell.value?.showPane("list");
+  const page = await listMessagesForTag(tagId);
+  // Guard against a slower response arriving after another tag/view was picked.
+  if (activeView.value !== "tag" || selectedTagId.value !== tagId) return;
+  messages.value = page?.items ?? [];
+}
+
 function onSelectMessage(messageId: number): void {
   selectedMessageId.value = messageId;
   shell.value?.showPane("message");
@@ -337,6 +356,7 @@ function onSyncEvent(event: SyncEventDto): void {
         :selected-mailbox-id="selectedMailboxId"
         :active-view="activeView"
         :syncing-account-ids="syncingAccountIds"
+        :active-tag-id="activeView === 'tag' ? selectedTagId : null"
         @select-mailbox="selectMailbox"
         @select-unified="selectUnified"
         @add-account="dialogs.open('setup')"
@@ -344,6 +364,7 @@ function onSyncEvent(event: SyncEventDto): void {
         @sync-account="syncAccount"
         @select-drafts="selectDrafts"
         @select-outbox="selectOutbox"
+        @select-tag="selectTag"
       />
     </template>
     <template #list>
@@ -359,6 +380,12 @@ function onSyncEvent(event: SyncEventDto): void {
         @retry="onRetryOutbox"
         @send-now="onSendOutboxNow"
         @cancel-schedule="onCancelSchedule"
+      />
+      <MessageListPane
+        v-else-if="activeView === 'tag'"
+        :messages="messages"
+        :selected-message-id="selectedMessageId"
+        @select="onSelectMessage"
       />
       <MailListRegion
         v-else

@@ -38,6 +38,7 @@ use crate::search::SearchRepo;
 use crate::settings::SettingsRepo;
 use crate::sync_jobs::SyncJobRepo;
 use crate::sync_state::SyncStateRepo;
+use crate::tags::TagRepo;
 use crate::unified::UnifiedRepo;
 
 /// Migrations embedded at compile time from `migrations/` (ADR-0001).
@@ -188,6 +189,12 @@ impl Store {
     #[must_use]
     pub fn pending_ops(&self) -> PendingOpsRepo<'_> {
         PendingOpsRepo::new(&self.pool)
+    }
+
+    /// The tag / IMAP-keyword repository.
+    #[must_use]
+    pub fn tags(&self) -> TagRepo<'_> {
+        TagRepo::new(&self.pool)
     }
 
     /// The POP3 `UIDL` de-duplication repository.
