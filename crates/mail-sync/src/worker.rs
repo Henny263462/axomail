@@ -280,13 +280,13 @@ async fn finalize<P, F>(
             });
         }
         Err(MailError::Cancelled) => {
+            // Cooperative cancellation is a deliberate user action, not an
+            // error: record the cancelled state and announce it with a
+            // distinct terminal event so the frontend never renders it as a
+            // failure.
             let message = MailError::Cancelled.to_string();
             record(shared, job, JobState::Cancelled, Some(&message)).await;
-            shared.emit(SyncEvent::JobFailed {
-                job_id: job.id,
-                class: ErrorClass::Permanent.into(),
-                message,
-            });
+            shared.emit(SyncEvent::JobCancelled { job_id: job.id });
         }
         Err(error) => {
             // `MailError` messages are redacted by construction (ADR-0003),

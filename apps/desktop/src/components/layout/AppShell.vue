@@ -6,13 +6,19 @@ withDefaults(
   defineProps<{
     /** Redacted sync failure surfaced in the status bar, or null. */
     statusError?: string | null;
+    /** True while at least one sync job is queued or running. */
+    syncing?: boolean;
+    /** Number of jobs currently queued or running. */
+    syncCount?: number;
   }>(),
-  { statusError: null },
+  { statusError: null, syncing: false, syncCount: 0 },
 );
 
 const emit = defineEmits<{
   dismissStatusError: [];
   openSettings: [];
+  openActivity: [];
+  cancelSync: [];
 }>();
 
 const { isStacked, activePane, showPane, paneVisible } = usePaneNavigation();
@@ -70,8 +76,12 @@ defineExpose({ showPane });
     </div>
     <StatusBar
       :error="statusError"
+      :syncing="syncing"
+      :sync-count="syncCount"
       @dismiss-error="emit('dismissStatusError')"
       @open-settings="emit('openSettings')"
+      @open-activity="emit('openActivity')"
+      @cancel-sync="emit('cancelSync')"
     />
   </div>
 </template>

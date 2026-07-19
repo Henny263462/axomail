@@ -10,6 +10,7 @@ pub mod compose;
 pub mod connection;
 pub mod detail;
 pub mod drafts;
+pub mod jobs;
 pub mod messages;
 pub mod meta;
 pub mod remote_content;

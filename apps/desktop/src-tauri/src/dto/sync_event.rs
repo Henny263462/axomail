@@ -56,6 +56,7 @@ impl SyncEventDto {
                 dto.new_messages = Some(summary.new_messages);
                 dto
             }
+            SyncEvent::JobCancelled { job_id } => Self::base("jobCancelled", job_id.value())?,
             SyncEvent::JobFailed {
                 job_id,
                 class,

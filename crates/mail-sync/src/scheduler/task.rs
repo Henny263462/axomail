@@ -169,6 +169,11 @@ fn handle_event(
                 on_temporary_failure(state, schedule, account, base);
             }
         }
+        SyncEvent::JobCancelled { job_id } => {
+            // A cancellation is neither success nor failure: forget the job
+            // without touching the account's backoff schedule.
+            jobs.remove(job_id);
+        }
         SyncEvent::JobStarted { .. } | SyncEvent::BatchIngested { .. } => {}
     }
 }

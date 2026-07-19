@@ -452,17 +452,18 @@ async fn cancellation_mid_job_marks_cancelled_and_stops() {
     tokio::time::sleep(Duration::from_millis(30)).await;
     engine.cancel(job_id);
 
+    // Cooperative cancellation surfaces as its own terminal event, never as a
+    // failure, so the frontend does not render it with an error class.
     let terminal = wait_for_terminal_event(&mut events).await;
     match terminal {
-        SyncEvent::JobFailed { class, message, .. } => {
-            assert_eq!(class, SyncErrorClass::Permanent);
-            assert_eq!(message, "operation was cancelled");
-        }
-        other => panic!("expected JobFailed(cancelled), got {other:?}"),
+        SyncEvent::JobCancelled { job_id: cancelled } => assert_eq!(cancelled, job_id),
+        other => panic!("expected JobCancelled, got {other:?}"),
     }
 
     let job = store.sync_jobs().get(job_id).await.unwrap().unwrap();
     assert_eq!(job.state, JobState::Cancelled);
+    // The recorded reason is the redacted cancellation message.
+    assert_eq!(job.error.as_deref(), Some("operation was cancelled"));
     assert_eq!(world.sync_calls(mailbox), 0, "no pass completed");
     assert_eq!(message_count(&store, mailbox).await, 0);
 }
@@ -767,7 +768,9 @@ async fn wait_for_terminal_event(
             Ok(Ok(event))
                 if matches!(
                     event,
-                    SyncEvent::JobFinished { .. } | SyncEvent::JobFailed { .. }
+                    SyncEvent::JobFinished { .. }
+                        | SyncEvent::JobFailed { .. }
+                        | SyncEvent::JobCancelled { .. }
                 ) =>
             {
                 return event;
@@ -803,6 +806,7 @@ fn event_kind(event: &SyncEvent) -> &'static str {
         SyncEvent::JobStarted { .. } => "started",
         SyncEvent::BatchIngested { .. } => "batch",
         SyncEvent::JobFinished { .. } => "finished",
+        SyncEvent::JobCancelled { .. } => "cancelled",
         SyncEvent::JobFailed { .. } => "failed",
     }
 }

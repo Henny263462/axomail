@@ -3,6 +3,7 @@ import { computed } from "vue";
 
 import type { DialogController } from "../../composables/useDialogs";
 import type { AccountSummary } from "../../types/mail";
+import ActivityDialog from "../activity/ActivityDialog.vue";
 import ComposerDialog from "../compose/ComposerDialog.vue";
 import SettingsDialog from "../settings/SettingsDialog.vue";
 import AccountSetupDialog from "../setup/AccountSetupDialog.vue";
@@ -46,5 +47,9 @@ const composer = computed(
     v-if="dialogs.isOpen('settings')"
     :accounts="accounts"
     @close="dialogs.close('settings')"
+  />
+  <ActivityDialog
+    v-if="dialogs.isOpen('activity')"
+    @close="dialogs.close('activity')"
   />
 </template>

@@ -8,6 +8,7 @@ import {
   listOutbox,
   retryOutbox,
 } from "./api/compose";
+import { cancelAllSyncJobs } from "./api/jobs";
 import { listMessages, markMessageSeen } from "./api/messages";
 import { syncAccount } from "./api/sync";
 import { listUnifiedInbox } from "./api/unified";
@@ -54,7 +55,7 @@ const dialogs = useDialogs<AppDialogMap>();
 let fixtureMessages: MessageListItem[] = [];
 const usingFixtures = ref(false);
 
-const { syncingMailboxIds, syncError, dismissError } =
+const { syncingMailboxIds, isSyncing, runningCount, syncError, dismissError } =
   useSyncStatus(onSyncEvent);
 
 /** Account ids that have at least one mailbox currently syncing. */
@@ -207,6 +208,11 @@ function decrementUnread(mailboxId: number): void {
   }
 }
 
+/** Cancels every running/queued sync job from the status-bar affordance. */
+async function onCancelSync(): Promise<void> {
+  await cancelAllSyncJobs();
+}
+
 async function onAccountCreated(account: AccountSummary): Promise<void> {
   dialogs.close("setup");
   await loadAccounts();
@@ -269,8 +275,12 @@ function onSyncEvent(event: SyncEventDto): void {
   <AppShell
     ref="shell"
     :status-error="syncError"
+    :syncing="isSyncing"
+    :sync-count="runningCount"
     @dismiss-status-error="dismissError"
     @open-settings="dialogs.open('settings')"
+    @open-activity="dialogs.open('activity')"
+    @cancel-sync="onCancelSync"
   >
     <template #sidebar>
       <SidebarPane

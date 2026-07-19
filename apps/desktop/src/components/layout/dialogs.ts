@@ -15,5 +15,6 @@ export interface ComposerPayload {
 export type AppDialogMap = {
   setup: undefined;
   settings: undefined;
+  activity: undefined;
   composer: ComposerPayload;
 };

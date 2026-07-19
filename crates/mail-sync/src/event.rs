@@ -91,7 +91,18 @@ pub enum SyncEvent {
         /// Aggregate progress.
         summary: SyncJobSummary,
     },
-    /// A job ended without success (error or cancellation).
+    /// A job was cancelled cooperatively before completion.
+    ///
+    /// This is a distinct terminal state from [`Self::JobFailed`]: a
+    /// cancelled job is a deliberate user action, not an error, so the
+    /// frontend must not surface it as a failure (see the activity manager
+    /// and `dto/sync_event.rs`).
+    JobCancelled {
+        /// Persisted job id.
+        job_id: SyncJobId,
+    },
+    /// A job ended with an error (never cancellation — see
+    /// [`Self::JobCancelled`]).
     JobFailed {
         /// Persisted job id.
         job_id: SyncJobId,
