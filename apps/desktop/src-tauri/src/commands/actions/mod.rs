@@ -19,6 +19,7 @@
 //! under the file-size gate; this root owns the shared helpers and the Tauri
 //! wrappers.
 
+mod archive;
 mod copy;
 mod relocate;
 
@@ -35,10 +36,9 @@ use crate::commands::map_command_error;
 use crate::dto::{MessageMoveDto, MoveOutcomeDto};
 use crate::state::AppState;
 
+pub use archive::archive_messages_impl;
 pub use copy::copy_messages_impl;
-pub use relocate::{
-    archive_messages_impl, delete_to_trash_impl, move_messages_impl, undo_move_impl,
-};
+pub use relocate::{delete_to_trash_impl, move_messages_impl, undo_move_impl};
 
 /// Shorthand for a user-facing configuration error.
 pub(super) fn config(message: &str) -> MailError {
@@ -172,13 +172,13 @@ pub async fn copy_messages(
     .map_err(map_command_error)
 }
 
-/// Archives a selection of messages.
+/// Archives a selection of messages (honoring the identity's archive granularity).
 #[tauri::command]
 pub async fn archive_messages(
     state: tauri::State<'_, AppState>,
     message_ids: Vec<i64>,
 ) -> Result<MoveOutcomeDto, String> {
-    archive_messages_impl(state.store(), state.engine(), message_ids)
+    archive_messages_impl(state.store(), state.engine(), state.factory(), message_ids)
         .await
         .map_err(map_command_error)
 }

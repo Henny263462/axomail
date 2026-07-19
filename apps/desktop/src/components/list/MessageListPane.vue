@@ -18,8 +18,10 @@ withDefaults(
     hasMore?: boolean;
     /** Whether a next-page fetch is in flight. */
     loadingMore?: boolean;
+    /** Bumped by the host to clear the selection after a bulk relocation. */
+    selectionResetKey?: number;
   }>(),
-  { threaded: false, hasMore: false, loadingMore: false },
+  { threaded: false, hasMore: false, loadingMore: false, selectionResetKey: 0 },
 );
 
 const emit = defineEmits<{
@@ -43,6 +45,7 @@ const emit = defineEmits<{
     :show-mark-all-read="true"
     :has-more="hasMore"
     :loading-more="loadingMore"
+    :selection-reset-key="selectionResetKey"
     @select="emit('select', $event)"
     @toggle-flag="emit('toggleFlag', $event)"
     @mark-all-read="emit('markAllRead')"

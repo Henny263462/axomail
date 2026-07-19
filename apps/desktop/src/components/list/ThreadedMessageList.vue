@@ -50,6 +50,8 @@ const props = withDefaults(
     accounts?: AccountSummary[];
     /** Whether each row shows its account name (unified inbox). */
     showAccount?: boolean;
+    /** Bumped by the host to clear the selection after a bulk relocation. */
+    selectionResetKey?: number;
   }>(),
   {
     showMarkAllRead: false,
@@ -57,6 +59,7 @@ const props = withDefaults(
     loadingMore: false,
     accounts: () => [],
     showAccount: false,
+    selectionResetKey: 0,
   },
 );
 
@@ -157,9 +160,21 @@ const { activeIndex, activeRow, activate, toggle, range, onKeydown } = nav;
 const contextMenu = ref<{ x: number; y: number; ids: number[] } | null>(null);
 
 function openContext(event: MouseEvent, row: VisibleRow, index: number): void {
-  const ids = actionTargets(row);
+  // Thunderbird semantics: right-clicking a row already in the selection acts
+  // on the whole selection (and keeps it); right-clicking a row outside the
+  // selection first selects just that row, then acts on it — never silently
+  // acting on a prior selection the user can no longer see.
+  let ids: number[];
+  if (view.selection.isSelected(row.rowId)) {
+    ids = [...view.selectedMessageIds.value];
+    activeIndex.value = index; // move focus without collapsing the selection
+  } else {
+    activate(row, index); // select-only + open, exactly like a plain click
+    ids = rowMessageIds(row);
+  }
   if (ids.length === 0) return;
-  activate(row, index);
+  // Keep keyboard focus on the listbox so the menu can hand it back on close.
+  virtual.scroller.value?.focus();
   contextMenu.value = { x: event.clientX, y: event.clientY, ids };
 }
 
@@ -187,6 +202,13 @@ watch(
   view.selectedMessageIds,
   (ids) => emit("selectionChange", [...ids]),
   { flush: "post" },
+);
+
+// The host bumps this after a completed bulk relocation; clear the selection so
+// no vanished ids linger (belt to the list-change reconciliation's suspenders).
+watch(
+  () => props.selectionResetKey,
+  () => view.selection.clear(),
 );
 
 // Infinite scroll: pull the next page once the window nears the loaded end.

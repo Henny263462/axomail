@@ -48,15 +48,17 @@ where
 
 /// Which well-known destination a bulk relocation resolves per account.
 #[derive(Clone, Copy)]
-enum TargetRole {
+pub(super) enum TargetRole {
     Trash,
     Archive,
 }
 
 /// Resolves each involved account's Trash or Archive destination, erroring if
 /// any account lacks one. Pre-flighting the whole set keeps a missing folder
-/// from moving *some* messages before it is discovered.
-async fn resolve_targets(
+/// from moving *some* messages before it is discovered. The Archive variant
+/// resolves the account's *base* archive; the granularity sub-foldering lives in
+/// [`super::archive`].
+pub(super) async fn resolve_targets(
     store: &Store,
     ids: &[i64],
     role: TargetRole,
@@ -148,26 +150,6 @@ where
     // Every message in the target's account maps to the one chosen target.
     let mut targets = HashMap::new();
     targets.insert(target_mailbox.account, target);
-    relocate_set(store, engine, message_ids, &targets, false).await
-}
-
-/// Archives a selection, each message into its account's archive destination
-/// (default-identity `archive_dest`, else the `Archive` role).
-///
-/// # Errors
-///
-/// Returns [`MailError::Configuration`] if any involved account has no archive
-/// destination, and [`MailError::Database`] on any query failure.
-pub async fn archive_messages_impl<P, F>(
-    store: &Store,
-    engine: &SyncEngine<P, F>,
-    message_ids: Vec<i64>,
-) -> Result<MoveOutcomeDto, MailError>
-where
-    P: IncomingMailProvider + 'static,
-    F: ProviderFactory<P>,
-{
-    let targets = resolve_targets(store, &message_ids, TargetRole::Archive).await?;
     relocate_set(store, engine, message_ids, &targets, false).await
 }
 

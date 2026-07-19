@@ -17,6 +17,16 @@
 //! | `move` | `{"sourceMailboxId": 1, "targetMailboxId": 7, "copy": false}` | relocate (or, with `copy`, duplicate) from source to target |
 //! | `delete` | `{"sourceMailboxId": 1}` | move to the account's Trash from source |
 //!
+//! # Legacy payloads without a source
+//!
+//! `source_mailbox_id` was added in Wave 3 Stage B; pre-Stage-B rows are
+//! `{"targetMailboxId": n}` (move) or `{}` (delete). Both fields are therefore
+//! `Option`al with a serde default, so an old payload still decodes rather than
+//! failing permanently and wedging the account's FIFO queue. When the source is
+//! absent the executor falls back to the message's *current* envelope mailbox,
+//! reproducing the pre-Stage-B behavior (those ops predate the optimistic local
+//! move, so the live mailbox is still the server source).
+//!
 //! # Why move/copy/delete record their *source* mailbox
 //!
 //! Flag/keyword ops replay against the message's *live* mailbox (the executor
@@ -64,7 +74,11 @@ struct KeywordPayload {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct MovePayload {
-    source_mailbox_id: MailboxId,
+    /// Server-side source mailbox, captured before the optimistic local move.
+    /// `Option` (serde default) so a legacy `{"targetMailboxId": n}` payload
+    /// still decodes; a missing source falls back to the live envelope mailbox.
+    #[serde(default)]
+    source_mailbox_id: Option<MailboxId>,
     target_mailbox_id: MailboxId,
     /// `true` → copy (keep the source); `false` → move. Defaults to a move so
     /// any historical `{source,target}` payload still deserializes.
@@ -77,15 +91,21 @@ struct MovePayload {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct DeletePayload {
-    source_mailbox_id: MailboxId,
+    /// Server-side source mailbox. `Option` (serde default) so a legacy `{}`
+    /// delete payload still decodes; a missing source falls back to the live
+    /// envelope mailbox.
+    #[serde(default)]
+    source_mailbox_id: Option<MailboxId>,
 }
 
 /// A resolved relocate op: where the message is, where it goes, and whether the
 /// source is kept (copy) or removed (move).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct Relocation {
-    /// Mailbox to select on the server (the current server location).
-    pub source: MailboxId,
+    /// Mailbox to select on the server (the current server location), or `None`
+    /// for a legacy payload that recorded no source — the executor then selects
+    /// the message's live envelope mailbox.
+    pub source: Option<MailboxId>,
     /// Destination mailbox.
     pub target: MailboxId,
     /// `true` for a copy (keep source), `false` for a move.
@@ -153,7 +173,7 @@ pub fn move_op(source: MailboxId, target: MailboxId) -> (PendingOpKind, String) 
     (
         PendingOpKind::Move,
         encode(&MovePayload {
-            source_mailbox_id: source,
+            source_mailbox_id: Some(source),
             target_mailbox_id: target,
             copy: false,
         }),
@@ -167,7 +187,7 @@ pub fn copy_op(source: MailboxId, target: MailboxId) -> (PendingOpKind, String) 
     (
         PendingOpKind::Move,
         encode(&MovePayload {
-            source_mailbox_id: source,
+            source_mailbox_id: Some(source),
             target_mailbox_id: target,
             copy: true,
         }),
@@ -180,7 +200,7 @@ pub fn delete_op(source: MailboxId) -> (PendingOpKind, String) {
     (
         PendingOpKind::Delete,
         encode(&DeletePayload {
-            source_mailbox_id: source,
+            source_mailbox_id: Some(source),
         }),
     )
 }
@@ -239,8 +259,10 @@ pub(crate) fn relocation(op: &PendingOp) -> Result<Relocation, MailError> {
     })
 }
 
-/// Resolves the source mailbox to select for a [`PendingOpKind::Delete`] op.
-pub(crate) fn delete_source(op: &PendingOp) -> Result<MailboxId, MailError> {
+/// Resolves the source mailbox to select for a [`PendingOpKind::Delete`] op, or
+/// `None` for a legacy payload without one (the executor then uses the live
+/// envelope mailbox).
+pub(crate) fn delete_source(op: &PendingOp) -> Result<Option<MailboxId>, MailError> {
     Ok(decode::<DeletePayload>(op)?.source_mailbox_id)
 }
 
@@ -332,7 +354,7 @@ mod tests {
         let (kind, payload) = move_op(MailboxId::new(3), MailboxId::new(42));
         assert_eq!(kind, PendingOpKind::Move);
         let relocation = relocation(&op(kind, &payload)).unwrap();
-        assert_eq!(relocation.source, MailboxId::new(3));
+        assert_eq!(relocation.source, Some(MailboxId::new(3)));
         assert_eq!(relocation.target, MailboxId::new(42));
         assert!(!relocation.copy);
     }
@@ -342,7 +364,7 @@ mod tests {
         let (kind, payload) = copy_op(MailboxId::new(3), MailboxId::new(42));
         assert_eq!(kind, PendingOpKind::Move);
         let relocation = relocation(&op(kind, &payload)).unwrap();
-        assert_eq!(relocation.source, MailboxId::new(3));
+        assert_eq!(relocation.source, Some(MailboxId::new(3)));
         assert_eq!(relocation.target, MailboxId::new(42));
         assert!(relocation.copy);
     }
@@ -353,7 +375,7 @@ mod tests {
         assert_eq!(kind, PendingOpKind::Delete);
         assert_eq!(
             delete_source(&op(kind, &payload)).unwrap(),
-            MailboxId::new(9)
+            Some(MailboxId::new(9))
         );
     }
 
@@ -366,6 +388,26 @@ mod tests {
         ))
         .unwrap();
         assert!(!relocation.copy);
+    }
+
+    #[test]
+    fn legacy_move_payload_without_source_decodes_with_no_source() {
+        // A pre-Stage-B move op recorded only the target; it must still decode
+        // (source `None`) so the executor can fall back to the live mailbox
+        // rather than the whole account's queue wedging on a decode failure.
+        let relocation = relocation(&op(PendingOpKind::Move, r#"{"targetMailboxId":7}"#)).unwrap();
+        assert_eq!(relocation.source, None);
+        assert_eq!(relocation.target, MailboxId::new(7));
+        assert!(!relocation.copy);
+    }
+
+    #[test]
+    fn legacy_delete_payload_without_source_decodes_with_no_source() {
+        // A pre-Stage-B delete op was the empty object `{}`.
+        assert_eq!(
+            delete_source(&op(PendingOpKind::Delete, "{}")).unwrap(),
+            None
+        );
     }
 
     #[test]

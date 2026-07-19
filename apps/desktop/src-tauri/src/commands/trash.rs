@@ -18,7 +18,7 @@ use std::collections::HashSet;
 use std::path::Path;
 
 use axomail_core::{
-    Account, IncomingMailProvider, IncomingProtocol, MailError, MailboxId, MailboxRole,
+    Account, IncomingMailProvider, IncomingProtocol, MailError, MailboxId, MailboxRole, MessageId,
 };
 use axomail_storage::{Store, raw_message_path, remove_raw};
 use axomail_sync::ProviderFactory;
@@ -70,18 +70,26 @@ where
         .await?
         .ok_or_else(|| config("the folder's account no longer exists"))?;
 
-    // Collect ids first so the out-of-database raw bodies can be reclaimed after
-    // the rows (which the ids key) are gone.
-    let ids = store.messages().list_ids_in_mailbox(folder.id).await?;
-
     // Server-first: expunge on the server before touching local state so a
     // failure leaves the Trash intact rather than desynchronized.
     if account.incoming.protocol == IncomingProtocol::Imap {
         expunge_on_server(factory, &account, &folder.remote_name).await?;
     }
 
-    let removed = store.messages().delete_in_mailbox(folder.id).await?;
-    for id in ids {
+    // Delete only *purgeable* rows — those with no un-replayed relocate op still
+    // queued. A message moved/deleted to Trash optimistically but not yet
+    // replayed still physically sits in its server source folder; deleting its
+    // row would cascade away the pending op and resurrect the mail (see
+    // `delete_in_mailbox_purgeable` and ADR-0013). Such rows survive to a later
+    // Empty Trash after their op replays. Reclaim the raw `.eml` bodies of
+    // exactly the rows deleted — never a stale snapshot — so a message that left
+    // Trash concurrently keeps its still-live blob.
+    let purged = store
+        .messages()
+        .delete_in_mailbox_purgeable(folder.id)
+        .await?;
+    let removed = purged.len() as u64;
+    for id in purged {
         // Best-effort: a missing or unreadable blob must not fail the purge.
         let _ = remove_raw(&raw_message_path(raw_root, id.value())).await;
     }
@@ -165,12 +173,36 @@ pub async fn compact_storage_impl(
         .into_iter()
         .map(|id| id.value())
         .collect();
+    let reclaimed = reclaim_orphaned_blobs(store, raw_root, &existing).await?;
+    Ok(CompactOutcomeDto { reclaimed })
+}
 
+/// Scans `<raw_root>/raw/` and unlinks each `.eml` whose message id is orphaned,
+/// returning how many were removed. `snapshot` is the up-front set of live ids.
+///
+/// A candidate whose id is **absent from `snapshot`** is re-checked against the
+/// live database immediately before unlinking: the snapshot is taken once at the
+/// start, so a message inserted and body-downloaded *after* it (its id therefore
+/// missing) would otherwise have its valid blob deleted (the compact TOCTOU).
+/// Only a candidate absent from the snapshot **and** confirmed gone by the live
+/// re-check is removed. Temp files from an interrupted atomic write carry a
+/// `.tmp` suffix and are skipped. Split out (and taking the snapshot as an
+/// argument) so a test can drive the stale-snapshot path deterministically.
+///
+/// # Errors
+///
+/// Returns [`MailError::Database`] on a query failure and
+/// [`MailError::Filesystem`] on a directory-read or removal failure.
+pub async fn reclaim_orphaned_blobs(
+    store: &Store,
+    raw_root: &Path,
+    snapshot: &HashSet<i64>,
+) -> Result<u64, MailError> {
     let raw_dir = raw_root.join("raw");
     let mut dir = match tokio::fs::read_dir(&raw_dir).await {
         Ok(dir) => dir,
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
-            return Ok(CompactOutcomeDto::default());
+            return Ok(0);
         }
         Err(error) => {
             return Err(MailError::Filesystem {
@@ -199,11 +231,18 @@ pub async fn compact_storage_impl(
         else {
             continue;
         };
-        if !existing.contains(&id) && remove_raw(&path).await? {
+        // A blob absent from the up-front snapshot might belong to a message
+        // inserted (and body-downloaded) *after* it was taken. Re-confirm the id
+        // is still orphaned against the live database immediately before
+        // unlinking, so a concurrently-arrived message never loses its blob.
+        if !snapshot.contains(&id)
+            && !store.messages().exists(MessageId::new(id)).await?
+            && remove_raw(&path).await?
+        {
             reclaimed += 1;
         }
     }
-    Ok(CompactOutcomeDto { reclaimed })
+    Ok(reclaimed)
 }
 
 /// Empties a Trash folder after a typed confirmation in the UI.

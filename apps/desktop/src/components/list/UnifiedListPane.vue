@@ -19,8 +19,10 @@ withDefaults(
     hasMore?: boolean;
     /** Whether a next-page fetch is in flight. */
     loadingMore?: boolean;
+    /** Bumped by the host to clear the selection after a bulk relocation. */
+    selectionResetKey?: number;
   }>(),
-  { threaded: false, hasMore: false, loadingMore: false },
+  { threaded: false, hasMore: false, loadingMore: false, selectionResetKey: 0 },
 );
 
 const emit = defineEmits<{
@@ -44,6 +46,7 @@ const emit = defineEmits<{
     empty-detail="Messages from every account's inbox appear here once synchronized."
     :has-more="hasMore"
     :loading-more="loadingMore"
+    :selection-reset-key="selectionResetKey"
     @select="emit('select', $event)"
     @toggle-flag="emit('toggleFlag', $event)"
     @load-more="emit('loadMore')"

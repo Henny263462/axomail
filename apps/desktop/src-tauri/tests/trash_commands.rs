@@ -6,13 +6,20 @@
 
 mod common;
 
+use std::collections::HashSet;
+
 use axomail_core::{
     AccountId, Address, EmailAddress, MailboxId, MailboxRole, MessageFlags, MessageId, UtcTimestamp,
 };
 use axomail_desktop_lib::commands::accounts::create_account_impl;
-use axomail_desktop_lib::commands::trash::{compact_storage_impl, empty_trash_impl};
+use axomail_desktop_lib::commands::trash::{
+    compact_storage_impl, empty_trash_impl, reclaim_orphaned_blobs,
+};
 use axomail_desktop_lib::settings::{empty_trash_on_exit_enabled, set_empty_trash_on_exit_enabled};
-use axomail_storage::{NewMessage, Store, raw_message_path, read_raw, write_raw_atomically};
+use axomail_storage::{
+    NewMessage, NewPendingOp, PendingOpKind, Store, raw_message_path, read_raw,
+    write_raw_atomically,
+};
 use common::provider::StubFactory;
 use common::{pop3_account_input, secret_stores, seed_standard_folders, valid_input};
 use tempfile::tempdir;
@@ -93,6 +100,131 @@ async fn empty_trash_deletes_local_rows_and_raw_bodies() {
             .await
             .unwrap()
             .is_none()
+    );
+}
+
+#[tokio::test]
+async fn empty_trash_spares_a_row_with_an_unreplayed_relocate_op_and_its_blob() {
+    // Findings 1 & 2: a message moved/deleted to Trash *optimistically* still
+    // sits in its server source until its relocate op replays. Empty Trash must
+    // neither delete that local row (the row-delete cascades away the pending op,
+    // resurrecting the mail) nor reclaim its raw blob (which is still live). A
+    // Trash message with no such op is purged, and only its blob is removed.
+    let store = Store::open_in_memory().await.unwrap();
+    let (_c, secrets) = secret_stores();
+    // POP3 so Empty Trash skips the server expunge; the purgeable logic is
+    // protocol-agnostic (it keys off the pending op, not the account type).
+    let account = AccountId::new(
+        create_account_impl(&store, &secrets, pop3_account_input(995))
+            .await
+            .unwrap()
+            .id,
+    );
+    seed_standard_folders(&store, account).await;
+    let trash = mailbox_by_role(&store, account, MailboxRole::Trash).await;
+    let dir = tempdir().unwrap();
+
+    let purged = insert(&store, trash).await;
+    let kept = insert(&store, trash).await; // carries an un-replayed delete op
+    for id in [purged, kept] {
+        write_raw_atomically(&raw_message_path(dir.path(), id.value()), b"raw")
+            .await
+            .unwrap();
+    }
+    // An un-replayed move-to-Trash op still queued for `kept`.
+    store
+        .pending_ops()
+        .enqueue(&NewPendingOp {
+            account_id: account,
+            message_id: kept,
+            kind: PendingOpKind::Delete,
+            payload_json: "{}".to_owned(),
+        })
+        .await
+        .unwrap();
+
+    let removed = empty_trash_impl(&store, &StubFactory, dir.path(), trash.value())
+        .await
+        .unwrap();
+
+    // Only the op-free message was purged.
+    assert_eq!(removed, 1);
+    assert!(
+        store.messages().get(purged).await.unwrap().is_none(),
+        "the fully-replayed Trash message is purged"
+    );
+    assert!(
+        read_raw(&raw_message_path(dir.path(), purged.value()))
+            .await
+            .unwrap()
+            .is_none(),
+        "the purged message's blob is reclaimed"
+    );
+    // The op-bearing message and its op both survive, and its blob is kept.
+    assert!(
+        store.messages().get(kept).await.unwrap().is_some(),
+        "the message with an un-replayed op survives Empty Trash"
+    );
+    assert_eq!(
+        store.pending_ops().counts(account).await.unwrap().pending,
+        1,
+        "its pending relocate op is not cascaded away"
+    );
+    assert!(
+        read_raw(&raw_message_path(dir.path(), kept.value()))
+            .await
+            .unwrap()
+            .is_some(),
+        "the surviving message keeps its still-live raw blob"
+    );
+}
+
+#[tokio::test]
+async fn compact_spares_a_live_blob_absent_from_a_stale_snapshot() {
+    // Finding 3: the compact snapshot is taken once up front; a message inserted
+    // and body-downloaded after it (its id therefore missing from the snapshot)
+    // must not lose its valid blob. The live re-check spares it.
+    let store = Store::open_in_memory().await.unwrap();
+    let (_c, secrets) = secret_stores();
+    let account = AccountId::new(
+        create_account_impl(&store, &secrets, valid_input())
+            .await
+            .unwrap()
+            .id,
+    );
+    let inbox = mailbox_by_role(&store, account, MailboxRole::Inbox).await;
+    let dir = tempdir().unwrap();
+
+    // A live message whose blob is on disk, plus a true orphan with no row.
+    let live = insert(&store, inbox).await;
+    write_raw_atomically(&raw_message_path(dir.path(), live.value()), b"live")
+        .await
+        .unwrap();
+    write_raw_atomically(&raw_message_path(dir.path(), 999_999), b"orphan")
+        .await
+        .unwrap();
+
+    // A deliberately stale snapshot that omits `live` — as if it arrived after
+    // the snapshot was taken.
+    let stale: HashSet<i64> = HashSet::new();
+    let reclaimed = reclaim_orphaned_blobs(&store, dir.path(), &stale)
+        .await
+        .unwrap();
+
+    assert_eq!(reclaimed, 1, "only the true orphan is reclaimed");
+    assert!(
+        read_raw(&raw_message_path(dir.path(), live.value()))
+            .await
+            .unwrap()
+            .is_some(),
+        "the live message keeps its blob despite being absent from the snapshot"
+    );
+    assert!(
+        read_raw(&raw_message_path(dir.path(), 999_999))
+            .await
+            .unwrap()
+            .is_none(),
+        "the orphan is reclaimed"
     );
 }
 

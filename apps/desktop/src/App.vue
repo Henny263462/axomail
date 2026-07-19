@@ -37,10 +37,7 @@ import type {
 const shell = ref<InstanceType<typeof AppShell> | null>(null);
 
 const accounts = ref<AccountSummary[]>([]);
-// Only the currently selected mailbox's loaded pages are held; switching
-// mailboxes reloads from the backend rather than caching every mailbox
-// client-side. Infinite scroll appends further pages via the cursors owned by
-// the list-loading composable below.
+// Loaded pages for the current mailbox only; switching mailboxes reloads.
 const messages = ref<MessageListItem[]>([]);
 const unifiedItems = ref<UnifiedItemDto[]>([]);
 const selectedMailboxId = ref<number | null>(null);
@@ -48,9 +45,9 @@ const selectedMessageId = ref<number | null>(null);
 const selectedTagId = ref<number | null>(null);
 const activeView = ref<SidebarView>("mailbox");
 const tagsRefreshKey = ref(0); // Bumped to reload the sidebar Tags group.
+const selectionResetKey = ref(0); // Bumped to clear the list's selection.
 
-// Next-page cursors + infinite-scroll appenders, the persisted threaded/flat
-// preference, and the multi-selection projection (for bulk actions, track 3.2).
+// Next-page cursors, infinite-scroll appenders, and the threaded/flat pref.
 const listLoading = useMessageListLoading({
   messages,
   unifiedItems,
@@ -88,14 +85,16 @@ const mailboxActions = useMailboxActions({
   selectedMessageId,
   dialogs,
   reload: reloadCurrentList,
+  clearSelection: () => (selectionResetKey.value += 1),
 });
 
-/** Reloads the currently shown list (after an undo or a failed relocation). */
-function reloadCurrentList(): void {
-  if (activeView.value === "unified") void loadUnified();
-  else if (activeView.value === "tag" && selectedTagId.value !== null)
-    void selectTag(selectedTagId.value);
-  else if (selectedMailboxId.value !== null) void loadMessages(selectedMailboxId.value);
+/** Reloads the currently shown list (after an undo or a folder change). */
+function reloadCurrentList(): Promise<void> {
+  if (activeView.value === "unified") return loadUnified();
+  if (activeView.value === "tag" && selectedTagId.value !== null)
+    return selectTag(selectedTagId.value);
+  if (selectedMailboxId.value !== null) return loadMessages(selectedMailboxId.value);
+  return Promise.resolve();
 }
 
 // dev-fixtures: sample envelopes are held here so mailbox selection can
@@ -185,22 +184,26 @@ async function refreshAccounts(): Promise<void> {
 }
 
 /**
- * Handles an account edit/delete made in Settings. Re-fetches the account
- * summaries (so the sidebar reflects a renamed account) and then reconciles
- * the current selection: if the selected mailbox's account was removed, fall
- * back cleanly to the unified inbox rather than leaving a dangling selection.
+ * Reacts to an account edit/delete or a folder mutation (Empty Trash, delete).
+ * If the open mailbox's account vanished, fall back to the unified inbox;
+ * otherwise reload the open list so permanently-removed messages do not linger,
+ * dropping the open detail when that reload comes back empty.
  */
 async function onAccountsChanged(): Promise<void> {
   await refreshAccounts();
   const mailboxId = selectedMailboxId.value;
-  if (activeView.value !== "mailbox" || mailboxId === null) return;
-  const stillExists = accounts.value.some((account) =>
-    account.mailboxes.some((mailbox) => mailbox.id === mailboxId),
-  );
-  if (!stillExists) {
+  const accountGone =
+    activeView.value === "mailbox" &&
+    mailboxId !== null &&
+    !accounts.value.some((a) => a.mailboxes.some((m) => m.id === mailboxId));
+  if (accountGone) {
     messages.value = [];
     await selectUnified();
+    return;
   }
+  await reloadCurrentList();
+  const list = activeView.value === "unified" ? unifiedItems : messages;
+  if (list.value.length === 0) selectedMessageId.value = null;
 }
 
 async function loadMessages(mailboxId: number): Promise<void> {
@@ -210,8 +213,7 @@ async function loadMessages(mailboxId: number): Promise<void> {
     return;
   }
   const page = await listMessages(mailboxId, null, 50);
-  // Guard against a slow response arriving after the user has already
-  // switched mailboxes or views — never overwrite the newer selection.
+  // Guard a slow response arriving after a mailbox/view switch (stale write).
   if (selectedMailboxId.value !== mailboxId || activeView.value !== "mailbox") {
     return;
   }
@@ -355,6 +357,7 @@ function onSyncEvent(event: SyncEventDto): void {
         :messages="messages"
         :selected-message-id="selectedMessageId"
         :threaded="listLoading.threaded.value"
+        :selection-reset-key="selectionResetKey"
         @select="onSelectMessage"
         @toggle-flag="messageActions.toggleStar"
         @mark-all-read="messageActions.markListRead"
@@ -373,6 +376,7 @@ function onSyncEvent(event: SyncEventDto): void {
         :threaded="listLoading.threaded.value"
         :has-more="listLoading.hasMore.value"
         :loading-more="listLoading.loadingMore.value"
+        :selection-reset-key="selectionResetKey"
         @select="onSelectMessage"
         @toggle-flag="messageActions.toggleStar"
         @mark-all-read="onMarkAllRead"

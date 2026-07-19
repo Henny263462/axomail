@@ -8,11 +8,19 @@
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use axomail_core::{Address, MailError, OutgoingMessage};
+use axomail_core::{Address, MailError, OutgoingAttachment, OutgoingMessage};
 use mail_builder::MessageBuilder;
 use mail_builder::headers::address::Address as BuilderAddress;
 use mail_builder::headers::content_type::ContentType;
 use mail_builder::headers::message_id::MessageId;
+use mail_builder::headers::raw::Raw;
+use mail_builder::mime::MimePart;
+
+/// Cap on the number of `References` ids written to an outgoing message: the
+/// root plus the most recent `MAX_REFERENCES - 1`. Bounds header growth on long
+/// threads while preserving the thread root and the immediate parent (the
+/// widely-used "keep the first reference and the last ~20" trimming rule).
+const MAX_REFERENCES: usize = 21;
 
 /// EHLO/HELO identity. An address literal keeps the local host name out of the
 /// wire while staying RFC 5321 valid.
@@ -67,18 +75,15 @@ pub fn render_message(message: &OutgoingMessage) -> Result<RenderedMessage, Mail
     if let Some(parent) = &message.in_reply_to {
         builder = builder.in_reply_to(MessageId::new(parent.clone()));
     }
-    if !message.references.is_empty() {
-        builder = builder.references(MessageId::from(message.references.clone()));
+    let references = trim_references(&message.references);
+    if !references.is_empty() {
+        builder = builder.references(MessageId::from(references));
     }
     if let Some(html) = &message.html_body {
         builder = builder.html_body(html.as_str());
     }
-    for attachment in &message.attachments {
-        builder = builder.attachment(
-            ContentType::new(attachment.mime_type.as_str()),
-            attachment.filename.as_str(),
-            attachment.bytes.as_slice(),
-        );
+    if !message.attachments.is_empty() {
+        builder.attachments = Some(message.attachments.iter().map(attachment_part).collect());
     }
 
     let bytes = builder.write_to_vec().map_err(|err| MailError::Protocol {
@@ -101,6 +106,91 @@ pub(crate) fn collect_recipients(message: &OutgoingMessage) -> Vec<String> {
         }
     }
     recipients
+}
+
+/// Builds one attachment MIME part with an RFC-correct filename and, for an
+/// embedded message, an RFC-2045-legal transfer encoding.
+///
+/// Two corrections over mail-builder's high-level `attachment` helper:
+///
+/// - **Filename (RFC 2231).** mail-builder writes a non-ASCII `filename`
+///   parameter as an RFC 2047 encoded-word, which RFC-compliant receivers do
+///   not decode in a parameter (the umlaut name corrupts). We emit the
+///   Content-Disposition ourselves: a quoted `filename=` for ASCII, an RFC 2231
+///   `filename*=UTF-8''…` for anything else.
+/// - **`message/rfc822` encoding (RFC 2045 §6.4).** A `message/*` part may only
+///   use `7bit`/`8bit`/`binary`, never `base64` (mail-builder's default for a
+///   non-text binary). We force `7bit`/`8bit` there, which also writes the
+///   embedded message verbatim.
+fn attachment_part(attachment: &OutgoingAttachment) -> MimePart<'_> {
+    let part = MimePart::new(
+        ContentType::new(attachment.mime_type.as_str()),
+        attachment.bytes.as_slice(),
+    )
+    .header(
+        "Content-Disposition",
+        Raw::new(content_disposition(&attachment.filename)),
+    );
+    if attachment.mime_type.eq_ignore_ascii_case("message/rfc822") {
+        part.transfer_encoding(message_transfer_encoding(&attachment.bytes))
+    } else {
+        part
+    }
+}
+
+/// The RFC-2045-allowed transfer encoding for an embedded `message/*` part:
+/// `8bit` when it carries any non-ASCII byte, else `7bit`. `base64` is forbidden
+/// on `message/*`.
+fn message_transfer_encoding(bytes: &[u8]) -> &'static str {
+    if bytes.iter().any(|&byte| byte >= 0x80) {
+        "8bit"
+    } else {
+        "7bit"
+    }
+}
+
+/// Builds a `Content-Disposition: attachment` value carrying `filename`.
+///
+/// An all-ASCII name is a quoted `filename="…"` (embedded `"`/`\` escaped); a
+/// name with any non-ASCII byte is an RFC 2231 `filename*=UTF-8''<pct-encoded>`
+/// so compliant receivers reconstruct the exact Unicode name.
+fn content_disposition(filename: &str) -> String {
+    if filename.is_ascii() {
+        let escaped = filename.replace('\\', "\\\\").replace('"', "\\\"");
+        format!("attachment; filename=\"{escaped}\"")
+    } else {
+        format!("attachment; filename*=UTF-8''{}", rfc2231_encode(filename))
+    }
+}
+
+/// Percent-encodes `value` per RFC 2231/5987 `ext-value`: ASCII `A-Za-z0-9` and
+/// `-._~` pass through; every other byte becomes `%HH` (upper-hex).
+fn rfc2231_encode(value: &str) -> String {
+    let mut out = String::with_capacity(value.len());
+    for &byte in value.as_bytes() {
+        if byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'.' | b'_' | b'~') {
+            out.push(byte as char);
+        } else {
+            out.push('%');
+            out.push_str(&format!("{byte:02X}"));
+        }
+    }
+    out
+}
+
+/// Caps a `References` chain to [`MAX_REFERENCES`] ids: the root (first) plus the
+/// most recent `MAX_REFERENCES - 1`, dropping the middle. Shorter chains pass
+/// through unchanged. Always keeps the thread root and the immediate parent
+/// (the last id).
+fn trim_references(references: &[String]) -> Vec<String> {
+    if references.len() <= MAX_REFERENCES {
+        return references.to_vec();
+    }
+    let tail_start = references.len() - (MAX_REFERENCES - 1);
+    let mut trimmed = Vec::with_capacity(MAX_REFERENCES);
+    trimmed.push(references[0].clone());
+    trimmed.extend_from_slice(&references[tail_start..]);
+    trimmed
 }
 
 /// Converts a core [`Address`] into a mail-builder address, preserving any
@@ -149,7 +239,7 @@ mod tests {
 
     use axomail_core::{Address, EmailAddress, OutgoingAttachment, OutgoingMessage};
 
-    use super::render_message;
+    use super::{MAX_REFERENCES, render_message};
 
     /// A minimal message: one sender, one recipient, plain body, no threading.
     fn base_message() -> OutgoingMessage {
@@ -223,8 +313,6 @@ mod tests {
 
         // An attachment forces a multipart/mixed wrapper carrying the
         // message/rfc822 part (an `attachment` disposition with the filename).
-        // The builder base64-encodes the embedded message, so the original is
-        // present as encoded content rather than literal header lines.
         assert!(
             out.contains("multipart/mixed"),
             "expected a mixed wrapper: {out}"
@@ -241,9 +329,96 @@ mod tests {
             out.contains("Original.eml"),
             "expected the attachment filename: {out}"
         );
+    }
+
+    #[test]
+    fn forwarded_message_rfc822_part_is_not_base64() {
+        // RFC 2045 §6.4 forbids any content-transfer-encoding other than
+        // 7bit/8bit/binary on a message/* part. The all-ASCII embedded message
+        // must therefore be 7bit (verbatim), not base64.
+        let original = b"From: carol@example.net\r\nSubject: Original\r\n\r\nHi there.\r\n";
+        let mut message = base_message();
+        message.attachments = vec![OutgoingAttachment {
+            filename: "Original.eml".to_owned(),
+            mime_type: "message/rfc822".to_owned(),
+            bytes: original.to_vec(),
+        }];
+        let out = rendered(&message);
+
         assert!(
-            out.contains("Content-Transfer-Encoding: base64"),
-            "expected the embedded message to be base64-encoded: {out}"
+            !out.contains("Content-Transfer-Encoding: base64"),
+            "message/rfc822 must not be base64: {out}"
+        );
+        assert!(
+            out.contains("Content-Transfer-Encoding: 7bit"),
+            "an all-ASCII embedded message should be 7bit: {out}"
+        );
+        // Verbatim, so the original header lines appear literally.
+        assert!(
+            out.contains("Subject: Original"),
+            "expected the embedded message written verbatim: {out}"
+        );
+    }
+
+    #[test]
+    fn non_ascii_attachment_name_uses_rfc2231_filename_star() {
+        // A non-ASCII filename must be an RFC 2231 `filename*=UTF-8''…`
+        // parameter, never an RFC 2047 encoded-word (which compliant receivers
+        // do not decode inside a parameter → the umlaut name corrupts).
+        let mut message = base_message();
+        message.attachments = vec![OutgoingAttachment {
+            filename: "Anhang-Übersicht.pdf".to_owned(),
+            mime_type: "application/pdf".to_owned(),
+            bytes: b"%PDF-1.4".to_vec(),
+        }];
+        let out = rendered(&message);
+
+        assert!(
+            out.contains("filename*=UTF-8''Anhang-%C3%9Cbersicht.pdf"),
+            "expected an RFC 2231 filename* parameter: {out}"
+        );
+        assert!(
+            !out.contains("=?UTF-8?"),
+            "must not fall back to an RFC 2047 encoded-word: {out}"
+        );
+    }
+
+    #[test]
+    fn references_chain_is_trimmed_to_root_plus_recent_tail() {
+        // A long References chain is capped, but always keeps the root and the
+        // immediate parent (the last id).
+        let mut message = base_message();
+        let root = "root@example.org".to_owned();
+        let parent = "parent-030@example.org".to_owned();
+        let mut references = vec![root.clone()];
+        for n in 1..30 {
+            references.push(format!("mid-{n:03}@example.org"));
+        }
+        references.push(parent.clone());
+        assert!(references.len() > MAX_REFERENCES);
+        message.references = references;
+        let out = rendered(&message);
+
+        let header = out
+            .lines()
+            .skip_while(|line| !line.starts_with("References:"))
+            .take_while(|line| line.starts_with("References:") || line.starts_with([' ', '\t']))
+            .collect::<Vec<_>>()
+            .join(" ");
+        assert!(header.contains(&format!("<{root}>")), "root kept: {header}");
+        assert!(
+            header.contains(&format!("<{parent}>")),
+            "immediate parent kept: {header}"
+        );
+        // The middle was dropped: an early middle id is gone.
+        assert!(
+            !header.contains("<mid-002@example.org>"),
+            "an early middle id should be trimmed: {header}"
+        );
+        assert_eq!(
+            header.matches('<').count(),
+            MAX_REFERENCES,
+            "capped to MAX_REFERENCES ids: {header}"
         );
     }
 }

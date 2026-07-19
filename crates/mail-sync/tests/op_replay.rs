@@ -16,15 +16,15 @@ use axomail_sync::{
     seen_op,
 };
 use support::{
-    FailKind, FakeFactory, FakeProvider, FakeWorld, drain_until_terminal, store_with_mailbox,
-    store_with_two_mailboxes, test_config,
+    ARCHIVE_UID_VALIDITY, FailKind, FakeFactory, FakeProvider, FakeWorld, drain_until_terminal,
+    store_with_mailbox, store_with_two_mailboxes, test_config,
 };
 
 /// Polls until `account`'s queue has no `pending`/`inflight` ops, or panics
 /// after a generous timeout. Used to observe drains that recovery or the
 /// drain-window successor trigger without an explicit command to await.
 async fn wait_until_drained(store: &Store, account: AccountId) {
-    for _ in 0..300 {
+    for _ in 0..600 {
         let counts = store.pending_ops().counts(account).await.unwrap();
         if counts.pending + counts.inflight == 0 {
             return;
@@ -32,6 +32,23 @@ async fn wait_until_drained(store: &Store, account: AccountId) {
         tokio::time::sleep(Duration::from_millis(10)).await;
     }
     panic!("pending ops were not drained within the timeout");
+}
+
+/// Waits for the fake world to observe at least `expected` flag calls. The
+/// queue drains (op leaves the pending table) a beat before the provider's
+/// call is recorded, so asserting the count the instant `wait_until_drained`
+/// returns races under CPU load; poll for the observable effect instead.
+async fn wait_for_flag_calls(world: &FakeWorld, expected: usize) {
+    for _ in 0..600 {
+        if world.flag_calls().len() >= expected {
+            return;
+        }
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
+    panic!(
+        "expected {expected} flag calls, saw {}",
+        world.flag_calls().len()
+    );
 }
 
 const UV: u32 = 100;
@@ -336,6 +353,7 @@ async fn a_drain_window_op_is_not_stranded() {
         test_config(),
     );
     wait_until_drained(&store, account).await;
+    wait_for_flag_calls(&world, 2).await;
 
     assert_eq!(
         world.flag_calls().len(),
@@ -484,4 +502,53 @@ async fn delete_op_replays_as_a_move_to_trash_from_the_recorded_source() {
     );
     let counts = store.pending_ops().counts(account).await.unwrap();
     assert_eq!((counts.pending, counts.inflight, counts.failed), (0, 0, 0));
+}
+
+#[tokio::test]
+async fn a_chained_op_after_a_move_is_deferred_not_parked_on_stale_uidvalidity() {
+    // Regression (Wave 3 finding 4): an optimistic move sets a message's mailbox
+    // but the server op replays later; the local row keeps the source
+    // UID+UIDVALIDITY. A *second* write-back (here a star) replaying after the
+    // move used to SELECT the destination (Archive) and hit a UIDVALIDITY
+    // mismatch in `resolve_uid` → permanent park + local/server divergence. The
+    // move now flags the identity stale, so the queue *defers* the message's
+    // later ops (never parks them) until the next sync reconciles the row.
+    let world = FakeWorld::new();
+    let (store, account, inbox, archive) = store_with_two_mailboxes().await;
+    // Model each mailbox's server UIDVALIDITY so the fake validates like a real
+    // adapter's `resolve_uid`; the distinct values make the mismatch real.
+    world.set_mailbox_validity(MailboxName::new("INBOX"), UV);
+    world.set_mailbox_validity(MailboxName::new("Archive"), ARCHIVE_UID_VALIDITY);
+    // A message in INBOX (uid=1, uid_validity=UV), moved to Archive optimistically.
+    let message = insert_remote(&store, inbox, 1).await;
+    store
+        .messages()
+        .set_mailbox(message, archive)
+        .await
+        .unwrap();
+    // The queued move, then a star on the same (now moved) message.
+    enqueue(&store, account, message, move_op(inbox, archive)).await;
+    enqueue(&store, account, message, flagged_op(true)).await;
+
+    let engine = SyncEngine::start(
+        store.clone(),
+        FakeFactory::new(world.clone()),
+        test_config(),
+    );
+    run_replay(&engine, account).await;
+
+    // The move replayed against the INBOX source and succeeded.
+    assert_eq!(world.move_calls().len(), 1, "the move replayed");
+    // The star did NOT park: it is deferred (still pending), held by the
+    // stale-identity exclusion — never sent against the stale Archive UID.
+    assert!(
+        world.flag_calls().is_empty(),
+        "the star was deferred, not replayed against a stale UID"
+    );
+    let counts = store.pending_ops().counts(account).await.unwrap();
+    assert_eq!(
+        (counts.pending, counts.inflight, counts.failed),
+        (1, 0, 0),
+        "the star waits (pending), and nothing is parked"
+    );
 }

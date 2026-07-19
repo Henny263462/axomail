@@ -144,16 +144,18 @@ where
 /// Returns a variant of `name` not yet present in `used`, inserting it.
 ///
 /// The first occurrence keeps `name`; later collisions get ` (n)` inserted
-/// before the extension. Case-insensitive so a case-only clash still diverges
-/// on case-preserving filesystems.
+/// before the extension. De-duplication folds case with Unicode-aware
+/// [`str::to_lowercase`] (not ASCII-only), so a case-only clash on a
+/// case-insensitive filesystem — including non-ASCII variants like
+/// `Übersicht.pdf` vs `übersicht.pdf` — still diverges instead of overwriting.
 fn deduplicate(used: &mut HashSet<String>, name: &str) -> String {
-    if used.insert(name.to_ascii_lowercase()) {
+    if used.insert(name.to_lowercase()) {
         return name.to_owned();
     }
     let (stem, ext) = split_extension(name);
     for n in 1.. {
         let candidate = format!("{stem} ({n}){ext}");
-        if used.insert(candidate.to_ascii_lowercase()) {
+        if used.insert(candidate.to_lowercase()) {
             return candidate;
         }
     }
@@ -327,6 +329,25 @@ pub async fn get_message_headers(
     )
     .await
     .map_err(map_command_error)
+}
+
+#[cfg(test)]
+mod tests {
+    use std::collections::HashSet;
+
+    use super::deduplicate;
+
+    #[test]
+    fn case_variants_including_non_ascii_are_not_overwritten() {
+        let mut used = HashSet::new();
+        // ASCII case-only clash: the second diverges.
+        assert_eq!(deduplicate(&mut used, "Datei.pdf"), "Datei.pdf");
+        assert_eq!(deduplicate(&mut used, "datei.pdf"), "datei (1).pdf");
+        // Non-ASCII (umlaut) case-only clash — an ASCII-only fold would leave
+        // Ü/ü distinct and silently overwrite on a case-insensitive filesystem.
+        assert_eq!(deduplicate(&mut used, "Übersicht.pdf"), "Übersicht.pdf");
+        assert_eq!(deduplicate(&mut used, "übersicht.pdf"), "übersicht (1).pdf");
+    }
 }
 
 /// Saves the whole message as a `.eml` file to a dialog-chosen path.

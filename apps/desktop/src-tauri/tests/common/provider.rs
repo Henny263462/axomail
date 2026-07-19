@@ -7,6 +7,8 @@
 //! lazy-fetch path (offline body download).
 #![allow(dead_code, clippy::unwrap_used, clippy::expect_used)]
 
+use std::sync::{Arc, Mutex};
+
 use axomail_core::{
     Account, AppendOutcome, FlagDelta, FlagSet, IncomingMailProvider, MailError, MailboxName,
     RawMessage, RemoteMailboxState, RemoteMessageId, SyncOutcome, SyncRequest,
@@ -222,4 +224,138 @@ impl ProviderFactory<CannedProvider> for CannedFactory {
             bytes: self.bytes.clone(),
         })
     }
+}
+
+/// Shared, observable state for [`FolderCreatingProvider`].
+#[derive(Default)]
+pub struct FolderState {
+    /// Full remote paths passed to `create_mailbox`, in call order.
+    pub creates: Mutex<Vec<String>>,
+}
+
+/// A provider that connects, records every `create_mailbox`, and succeeds on
+/// select/move — enough to drive the archive-granularity path (which creates
+/// dated sub-folders server-first, then relocates). Other ops are unused.
+pub struct FolderCreatingProvider {
+    state: Arc<FolderState>,
+}
+
+impl IncomingMailProvider for FolderCreatingProvider {
+    async fn connect(&mut self) -> Result<(), MailError> {
+        Ok(())
+    }
+    async fn discover(&mut self) -> Result<RemoteMailboxState, MailError> {
+        Ok(RemoteMailboxState {
+            mailboxes: Vec::new(),
+        })
+    }
+    async fn sync(&mut self, _request: SyncRequest) -> Result<SyncOutcome, MailError> {
+        Ok(empty_outcome())
+    }
+    async fn fetch_message(&mut self, _id: &RemoteMessageId) -> Result<RawMessage, MailError> {
+        Err(MailError::Cancelled)
+    }
+    async fn select_mailbox(&mut self, _mailbox: &MailboxName) -> Result<(), MailError> {
+        Ok(())
+    }
+    async fn store_flags(
+        &mut self,
+        _id: &RemoteMessageId,
+        _delta: &FlagDelta,
+    ) -> Result<(), MailError> {
+        Ok(())
+    }
+    async fn move_message(
+        &mut self,
+        _id: &RemoteMessageId,
+        _target: &MailboxName,
+    ) -> Result<(), MailError> {
+        Ok(())
+    }
+    async fn copy_message(
+        &mut self,
+        _id: &RemoteMessageId,
+        _target: &MailboxName,
+    ) -> Result<(), MailError> {
+        Ok(())
+    }
+    async fn delete_message(&mut self, _id: &RemoteMessageId) -> Result<(), MailError> {
+        Err(MailError::Cancelled)
+    }
+    async fn expunge_mailbox(&mut self, _mailbox: &MailboxName) -> Result<(), MailError> {
+        Ok(())
+    }
+    async fn append_message(
+        &mut self,
+        _mailbox: &MailboxName,
+        _flags: &FlagSet,
+        _raw: &[u8],
+    ) -> Result<AppendOutcome, MailError> {
+        Ok(AppendOutcome::default())
+    }
+    async fn create_mailbox(&mut self, path: &MailboxName) -> Result<(), MailError> {
+        self.state
+            .creates
+            .lock()
+            .unwrap()
+            .push(path.as_str().to_owned());
+        Ok(())
+    }
+    async fn rename_mailbox(
+        &mut self,
+        _from: &MailboxName,
+        _to: &MailboxName,
+    ) -> Result<(), MailError> {
+        Ok(())
+    }
+    async fn delete_mailbox(&mut self, _path: &MailboxName) -> Result<(), MailError> {
+        Ok(())
+    }
+    async fn set_mailbox_subscribed(
+        &mut self,
+        _path: &MailboxName,
+        _subscribed: bool,
+    ) -> Result<(), MailError> {
+        Ok(())
+    }
+    async fn disconnect(&mut self) -> Result<(), MailError> {
+        Ok(())
+    }
+}
+
+/// Builds [`FolderCreatingProvider`]s sharing one [`FolderState`].
+pub struct FolderCreatingFactory {
+    state: Arc<FolderState>,
+}
+
+impl ProviderFactory<FolderCreatingProvider> for FolderCreatingFactory {
+    async fn make(&self, _account: &Account) -> Result<FolderCreatingProvider, MailError> {
+        Ok(FolderCreatingProvider {
+            state: Arc::clone(&self.state),
+        })
+    }
+}
+
+/// A running engine plus a matching stand-alone factory and their shared
+/// folder-creation record, for the archive-granularity command test (which
+/// takes an engine **and** a factory of the same provider type).
+pub fn folder_engine(
+    store: &Store,
+) -> (
+    SyncEngine<FolderCreatingProvider, FolderCreatingFactory>,
+    FolderCreatingFactory,
+    Arc<FolderState>,
+) {
+    let state = Arc::new(FolderState::default());
+    let engine = SyncEngine::start(
+        store.clone(),
+        FolderCreatingFactory {
+            state: Arc::clone(&state),
+        },
+        SyncConfig::default(),
+    );
+    let factory = FolderCreatingFactory {
+        state: Arc::clone(&state),
+    };
+    (engine, factory, state)
 }

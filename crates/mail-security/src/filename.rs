@@ -52,11 +52,34 @@ pub fn sanitize_attachment_filename(input: &str) -> String {
 fn map_char(c: char) -> Option<char> {
     if matches!(c, '/' | '\\' | '<' | '>' | ':' | '"' | '|' | '?' | '*') {
         Some('_')
-    } else if c.is_control() {
+    } else if c.is_control() || is_format_control(c) {
         None
     } else {
         Some(c)
     }
+}
+
+/// Whether `c` is a Unicode bidirectional-override, zero-width, or other
+/// invisible format/general-punctuation control that must not survive into a
+/// saved filename.
+///
+/// These carry no printable width but reorder or hide surrounding text, so a
+/// saved name like `photo` + `U+202E` + `gpj.exe` renders as `photoexe.jpg`
+/// while being an executable — the classic right-to-left-override spoof. `char::
+/// is_control` covers only C0/C1 controls (category Cc), so these format
+/// codepoints (category Cf and friends) are stripped separately.
+fn is_format_control(c: char) -> bool {
+    matches!(c,
+        '\u{061C}'                  // Arabic letter mark
+        | '\u{200B}'..='\u{200F}'   // zero-width space/joiners, LRM, RLM
+        | '\u{202A}'..='\u{202E}'   // bidi embeddings/overrides (LRE…RLO)
+        | '\u{2060}'..='\u{2064}'   // word joiner, invisible operators
+        | '\u{2066}'..='\u{206F}'   // bidi isolates + deprecated format chars
+        | '\u{FEFF}'                // zero-width no-break space / BOM
+        | '\u{FFF9}'..='\u{FFFB}'   // interlinear annotation controls
+        | '\u{1D173}'..='\u{1D17A}' // musical-notation format controls
+        | '\u{E0000}'..='\u{E007F}' // tag characters (invisible)
+    )
 }
 
 /// Trims surrounding whitespace and any trailing dots or spaces.
@@ -131,5 +154,19 @@ mod tests {
         let out = sanitize_attachment_filename(&long);
         assert!(out.ends_with(".pdf"));
         assert_eq!(out.chars().count(), MAX_LEN);
+    }
+
+    #[test]
+    fn strips_bidi_and_zero_width_format_controls() {
+        // A right-to-left override spoof: "photo" + U+202E + "gpj.exe" renders as
+        // "photoexe.jpg" but is an executable. The control must be stripped.
+        let out = sanitize_attachment_filename("photo\u{202E}gpj.exe");
+        assert!(!out.contains('\u{202E}'), "RLO not stripped: {out:?}");
+        assert_eq!(out, "photogpj.exe");
+        // Zero-width space and BOM are invisible format controls too.
+        assert_eq!(
+            sanitize_attachment_filename("in\u{200B}voice\u{FEFF}.pdf"),
+            "invoice.pdf"
+        );
     }
 }

@@ -32,7 +32,7 @@
 
 use axomail_core::{
     Account, AccountId, ErrorClass, IncomingMailProvider, MailError, MailboxId, MailboxName,
-    MailboxRole,
+    MailboxRole, MessageId,
 };
 use axomail_storage::{PendingOp, PendingOpId, PendingOpKind, SyncJob};
 use tokio_util::sync::CancellationToken;
@@ -269,23 +269,62 @@ where
         }
         PendingOpKind::Move => {
             let relocation = op_payload::relocation(op)?;
+            // A legacy payload without a recorded source falls back to the live
+            // mailbox (pre-Stage-B behavior); a current payload carries it.
+            let source = relocation.source.unwrap_or(envelope.mailbox);
             let target = mailbox_name(shared, relocation.target).await?;
-            ensure_selected(shared, provider, selected, relocation.source, token).await?;
+            ensure_selected(shared, provider, selected, source, token).await?;
             if relocation.copy {
                 guarded(token, net, provider.copy_message(&remote_id, &target)).await
             } else {
-                guarded(token, net, provider.move_message(&remote_id, &target)).await
+                guarded(token, net, provider.move_message(&remote_id, &target)).await?;
+                // The move gave the message a new UID in the destination, so its
+                // stale local UID would fail resolution for any later per-message
+                // op on this message (`resolve_uid` UIDVALIDITY mismatch →
+                // permanent park). Flag the identity stale so the queue skips
+                // those ops until the next sync reconciles the row.
+                mark_moved_stale(shared, op.message_id).await
             }
         }
         PendingOpKind::Delete => {
-            let source = op_payload::delete_source(op)?;
+            // A legacy payload without a recorded source falls back to the live
+            // mailbox (pre-Stage-B behavior).
+            let source = op_payload::delete_source(op)?.unwrap_or(envelope.mailbox);
             let target = trash.clone().ok_or_else(|| MailError::Configuration {
                 message: "account has no Trash mailbox for a delete op".to_owned(),
             })?;
             ensure_selected(shared, provider, selected, source, token).await?;
-            guarded(token, net, provider.move_message(&remote_id, &target)).await
+            guarded(token, net, provider.move_message(&remote_id, &target)).await?;
+            mark_moved_stale(shared, op.message_id).await
         }
     }
+}
+
+/// Flags the remote identity of a message the server just moved as STALE.
+///
+/// A move gives the message a **new UID** in the destination mailbox, so the
+/// stale local UID+UIDVALIDITY no longer resolves there. Left as-is, the next
+/// per-message op (an undo move, a star, a mark-read) would `SELECT` the
+/// destination and hit a UIDVALIDITY mismatch in the adapter's `resolve_uid`,
+/// returning a permanent [`MailError::Protocol`] that parks the op and diverges
+/// local from server. Marking the identity stale makes the write-back queue skip
+/// the message's later ops (they wait, unclaimed) until the next sync reconciles
+/// the row away — keeping the row's UID intact so present-set reconciliation can
+/// heal it without leaving a duplicate. A gone row is a no-op.
+async fn mark_moved_stale<P, F>(
+    shared: &Shared<P, F>,
+    message_id: MessageId,
+) -> Result<(), MailError>
+where
+    P: IncomingMailProvider + 'static,
+    F: ProviderFactory<P>,
+{
+    shared
+        .store
+        .messages()
+        .mark_remote_stale(message_id)
+        .await?;
+    Ok(())
 }
 
 /// Selects `mailbox` on the provider unless it is already the selected one.

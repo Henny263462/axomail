@@ -5,7 +5,7 @@
  * via a Teleport, with a full-screen backdrop that closes it, Escape to cancel,
  * and arrow-key roving over the menu items.
  */
-import { onMounted, ref } from "vue";
+import { onBeforeUnmount, onMounted, ref } from "vue";
 
 import type { BulkAction } from "../../composables/useMailboxActions";
 
@@ -20,6 +20,9 @@ const emit = defineEmits<{
 }>();
 
 const root = ref<HTMLElement | null>(null);
+// The element focused when the menu opened (the originating listbox row);
+// focus returns to it on close so keyboard navigation is not stranded.
+let invoker: HTMLElement | null = null;
 
 const items: { action: BulkAction; label: string; danger?: boolean }[] = [
   { action: "archive", label: "Archive" },
@@ -30,8 +33,11 @@ const items: { action: BulkAction; label: string; danger?: boolean }[] = [
 ];
 
 onMounted(() => {
+  invoker = document.activeElement as HTMLElement | null;
   root.value?.querySelector<HTMLButtonElement>(".item")?.focus();
 });
+
+onBeforeUnmount(() => invoker?.focus());
 
 function choose(action: BulkAction): void {
   emit("action", action);

@@ -372,6 +372,6 @@ list) both build on this one selection model.
 |---|---|
 | 1 | done 2026-07-19 (7 tracks + integration + adversarial review: 15 confirmed findings fixed, incl. Gmail offline_access, single-ref OAuth tokens, cancel-send TOCTOU, raw-eml cleanup on account delete, STLS re-CAPA, scam-heuristic hardening, accounts-changed propagation, focus traps) |
 | 2 | done 2026-07-19 (Stage 0 engine plumbing, 4 tracks, integration, CONDSTORE/QRESYNC; adversarial review: 20 confirmed findings fixed, incl. tags-OpReplay wiring, stranded-op recovery, umlaut folder-rename corruption, unsafe reconcile rename-merge, optimistic-flag clobbering, UIDPLUS-less expunge collateral, offline-gate bypass) |
-| 3 | pending |
+| 3 | done 2026-07-20 (Stage 0 + A + B: reply/reply-all/forward with threading headers & forward-as-attachment, IMAP APPEND for Sent/Drafts, virtualized+threaded list with multi-select/quick-filter, rich-text compose + attachments, attachment save/inline-cid/view-source, move/copy/archive/delete-to-Trash with undo, Empty Trash scoped EXPUNGE + compact; adversarial review: 18 confirmed findings fixed, incl. Empty-Trash-cascade op preservation, undo UIDVALIDITY adoption, compact TOCTOU, RFC 2231 filenames, References trimming, context-menu selection semantics, archive granularity) |
 | 4 | pending |
 | 5 | pending |

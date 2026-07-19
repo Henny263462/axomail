@@ -163,4 +163,65 @@ describe("ThreadedMessageList selection", () => {
     const change = wrapper.emitted("selectionChange")?.at(-1);
     expect(change).toEqual([[3]]);
   });
+
+  it("clears the selection when the host bumps selectionResetKey", async () => {
+    const wrapper = mount(ThreadedMessageList, {
+      props: { ...base(many(3)), selectionResetKey: 0 },
+    });
+    await nextTick();
+    await wrapper.get("input.check").trigger("change");
+    await flushPromises();
+    expect(wrapper.text()).toContain("1 selected");
+
+    await wrapper.setProps({ selectionResetKey: 1 });
+    await flushPromises();
+    expect(wrapper.text()).not.toContain("1 selected");
+  });
+});
+
+describe("ThreadedMessageList context menu (Thunderbird semantics)", () => {
+  /** Rows are newest-first [5,4,3,2,1]; select the first two (5 and 4). */
+  async function mountWithSelection() {
+    const wrapper = mount(ThreadedMessageList, {
+      props: base(many(5)),
+      attachTo: document.body,
+    });
+    await nextTick();
+    const checks = wrapper.findAll("input.check");
+    await checks[0]!.trigger("change"); // id 5
+    await checks[1]!.trigger("change"); // id 4
+    await flushPromises();
+    return wrapper;
+  }
+
+  function clickMenuItem(label: string): void {
+    const item = [...document.body.querySelectorAll('[role="menuitem"]')].find(
+      (i) => i.textContent?.trim() === label,
+    );
+    if (item === undefined) throw new Error(`menu item ${label} missing`);
+    (item as HTMLElement).click();
+  }
+
+  it("right-clicking a row outside the selection acts on that row alone", async () => {
+    const wrapper = await mountWithSelection();
+    // Right-click the third row (id 3), which is NOT in the {5,4} selection.
+    await wrapper.findAll('[role="option"]')[2]!.trigger("contextmenu");
+    await nextTick();
+    clickMenuItem("Archive");
+
+    expect(wrapper.emitted("bulkAction")?.at(-1)).toEqual(["archive", [3]]);
+    wrapper.unmount();
+  });
+
+  it("right-clicking a row inside the selection acts on the whole selection", async () => {
+    const wrapper = await mountWithSelection();
+    // Right-click the first row (id 5), which IS in the selection.
+    await wrapper.findAll('[role="option"]')[0]!.trigger("contextmenu");
+    await nextTick();
+    clickMenuItem("Delete");
+
+    // Acts on all selected ids, in visible order.
+    expect(wrapper.emitted("bulkAction")?.at(-1)).toEqual(["delete", [5, 4]]);
+    wrapper.unmount();
+  });
 });

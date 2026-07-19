@@ -85,6 +85,15 @@ pub struct FakeWorld {
     move_calls: Mutex<Vec<(RemoteMessageId, MailboxName)>>,
     copy_calls: Mutex<Vec<(RemoteMessageId, MailboxName)>>,
     poison: Mutex<HashMap<u32, FailKind>>,
+    // Optional per-mailbox UIDVALIDITY model. When non-empty, the provider
+    // behaves like a real adapter's `resolve_uid`: `select_mailbox` records the
+    // named mailbox's UIDVALIDITY as *selected*, and every per-message op
+    // rejects an id whose `uid_validity` differs from it (a permanent
+    // `Protocol` error, matching `ImapProvider::resolve_uid`). Left empty, no
+    // validation happens, so tests that do not exercise the chained-op /
+    // stale-UID path are unaffected.
+    mailbox_validity: Mutex<HashMap<MailboxName, u32>>,
+    selected_validity: Mutex<Option<u32>>,
     // A one-shot op enqueued when the next `disconnect` runs. Models an op that
     // arrives in the drain-completion window: after the replay's final empty
     // claim but before its terminal transition (a command's OpReplay enqueue
@@ -176,6 +185,33 @@ impl FakeWorld {
     /// simulating a poison message the write-back drain must not wedge behind.
     pub fn poison_uid(&self, uid: u32, kind: FailKind) {
         lock(&self.poison).insert(uid, kind);
+    }
+
+    /// Models `mailbox`'s server `UIDVALIDITY`. Configuring at least one mailbox
+    /// turns on `resolve_uid`-style validation for every per-message op (see
+    /// [`FakeWorld::mailbox_validity`]).
+    pub fn set_mailbox_validity(&self, mailbox: MailboxName, uid_validity: u32) {
+        lock(&self.mailbox_validity).insert(mailbox, uid_validity);
+    }
+
+    /// Enforces the `UIDVALIDITY` of the currently-selected mailbox against `id`,
+    /// mirroring `ImapProvider::resolve_uid`. A no-op unless a validity model was
+    /// configured via [`Self::set_mailbox_validity`].
+    fn check_validity(&self, id: &RemoteMessageId) -> Result<(), MailError> {
+        if lock(&self.mailbox_validity).is_empty() {
+            return Ok(());
+        }
+        let RemoteMessageId::Imap { uid_validity, .. } = id else {
+            return Ok(());
+        };
+        if *lock(&self.selected_validity) == Some(*uid_validity) {
+            Ok(())
+        } else {
+            Err(MailError::Protocol {
+                message: "the message belongs to a mailbox with a different UIDVALIDITY; re-sync"
+                    .to_owned(),
+            })
+        }
     }
 
     /// Arms a one-shot: the next `disconnect` enqueues `op` into `store`. Used
@@ -341,6 +377,11 @@ impl IncomingMailProvider for FakeProvider {
 
     async fn select_mailbox(&mut self, mailbox: &MailboxName) -> Result<(), MailError> {
         lock(&self.world.select_calls).push(mailbox.clone());
+        // Track the selected mailbox's UIDVALIDITY when a model is configured.
+        if !lock(&self.world.mailbox_validity).is_empty() {
+            *lock(&self.world.selected_validity) =
+                lock(&self.world.mailbox_validity).get(mailbox).copied();
+        }
         Ok(())
     }
 
@@ -352,6 +393,7 @@ impl IncomingMailProvider for FakeProvider {
         if let Some(kind) = self.world.poison_for(id) {
             return Err(kind.build());
         }
+        self.world.check_validity(id)?;
         lock(&self.world.flag_calls).push((id.clone(), delta.clone()));
         Ok(())
     }
@@ -364,6 +406,7 @@ impl IncomingMailProvider for FakeProvider {
         if let Some(kind) = self.world.poison_for(id) {
             return Err(kind.build());
         }
+        self.world.check_validity(id)?;
         lock(&self.world.move_calls).push((id.clone(), target.clone()));
         Ok(())
     }
@@ -376,6 +419,7 @@ impl IncomingMailProvider for FakeProvider {
         if let Some(kind) = self.world.poison_for(id) {
             return Err(kind.build());
         }
+        self.world.check_validity(id)?;
         lock(&self.world.copy_calls).push((id.clone(), target.clone()));
         Ok(())
     }
@@ -503,21 +547,45 @@ pub async fn store_with_mailbox() -> (Store, AccountId, MailboxId) {
     (store, account.id, mailbox.id)
 }
 
-/// Opens an in-memory store with one account and two mailboxes.
+/// UIDVALIDITY seeded onto the INBOX by [`store_with_two_mailboxes`].
+pub const INBOX_UID_VALIDITY: u32 = 100;
+/// UIDVALIDITY seeded onto Archive by [`store_with_two_mailboxes`] — distinct
+/// from the inbox so a chained op that resolves against the wrong mailbox is
+/// actually caught (a same-UIDVALIDITY pair would silently pass).
+pub const ARCHIVE_UID_VALIDITY: u32 = 200;
+
+/// Opens an in-memory store with one account and two mailboxes whose
+/// `UIDVALIDITY` values differ ([`INBOX_UID_VALIDITY`] / [`ARCHIVE_UID_VALIDITY`]).
 pub async fn store_with_two_mailboxes() -> (Store, AccountId, MailboxId, MailboxId) {
     let store = Store::open_in_memory().await.unwrap();
     let account = store.accounts().insert(&sample_account()).await.unwrap();
     let inbox = store
         .mailboxes()
-        .upsert(&sample_mailbox(account.id, "INBOX"))
+        .upsert(&mailbox_with_validity(
+            account.id,
+            "INBOX",
+            INBOX_UID_VALIDITY,
+        ))
         .await
         .unwrap();
     let archive = store
         .mailboxes()
-        .upsert(&sample_mailbox(account.id, "Archive"))
+        .upsert(&mailbox_with_validity(
+            account.id,
+            "Archive",
+            ARCHIVE_UID_VALIDITY,
+        ))
         .await
         .unwrap();
     (store, account.id, inbox.id, archive.id)
+}
+
+/// A seed mailbox carrying a known `UIDVALIDITY`.
+fn mailbox_with_validity(account: AccountId, name: &str, uid_validity: u32) -> NewMailbox {
+    NewMailbox {
+        uid_validity: Some(uid_validity),
+        ..sample_mailbox(account, name)
+    }
 }
 
 fn sample_account() -> NewAccount {

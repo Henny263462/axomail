@@ -28,7 +28,12 @@ const { onKeydown } = useFocusTrap(root, () => emit("close"));
 
 onMounted(() => {
   invoker = document.activeElement as HTMLElement | null;
-  root.value?.querySelector<HTMLButtonElement>(".folder")?.focus();
+  // Focus the first folder, or the always-present Cancel button when an account
+  // has no folders, so the trap has an anchor and Escape reaches the overlay.
+  const target =
+    root.value?.querySelector<HTMLElement>(".folder") ??
+    root.value?.querySelector<HTMLElement>(".button");
+  target?.focus();
 });
 
 onBeforeUnmount(() => invoker?.focus());

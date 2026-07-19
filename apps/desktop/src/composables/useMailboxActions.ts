@@ -1,4 +1,4 @@
-import { ref, type Ref } from "vue";
+import { onScopeDispose, ref, type Ref } from "vue";
 
 import {
   archiveMessages,
@@ -8,10 +8,12 @@ import {
   undoMove,
 } from "../api/actions";
 import { markMessagesRead } from "../api/messages";
+import { isTauri } from "../lib/tauri";
 import type { DialogController } from "./useDialogs";
 import type { AppDialogMap } from "../components/layout/dialogs";
 import type {
   AccountSummary,
+  MailboxSummary,
   MessageListItem,
   MessageMove,
   UnifiedItemDto,
@@ -21,6 +23,8 @@ import type {
 const UNDO_TIMEOUT_MS = 8000;
 /** How long a transient notice (copy/error) stays. */
 const NOTICE_TIMEOUT_MS = 4000;
+/** Shown when a mutating action cannot reach the backend (browser preview). */
+const UNAVAILABLE = "This action needs the desktop app.";
 
 /** The bulk actions the list/context-menu surfaces dispatch. */
 export type BulkAction = "archive" | "delete" | "move" | "copy" | "markRead";
@@ -44,17 +48,30 @@ interface Deps {
   selectedMessageId: Ref<number | null>;
   /** App dialog controller, used to open the move/copy folder picker. */
   dialogs: DialogController<AppDialogMap>;
-  /** Reloads the current list from the backend (after undo or a failed op). */
+  /** Reloads the current list from the backend (after an undo). */
   reload: () => void;
+  /** Clears the list's multi-selection after a completed bulk relocation. */
+  clearSelection?: () => void;
+}
+
+/** A snapshot for reverting an optimistic relocation exactly. */
+interface Relocation {
+  prevMessages: MessageListItem[];
+  prevUnified: UnifiedItemDto[];
+  /** Mailboxes whose unread badge was decremented, with their prior value. */
+  badgeReverts: { mailbox: MailboxSummary; previous: number }[];
+  /** The open message id cleared by this relocation, or null. */
+  clearedSelection: number | null;
 }
 
 /**
  * Owns the reading-pane / list message actions (move, copy, archive,
  * delete-to-Trash) and their undo. Each relocation is applied optimistically —
  * the affected rows are spliced out of the current list at once — then pushed
- * to the backend; a failure reverts by reloading, and a success raises a
- * time-boxed undo toast whose {@link MessageMove} records move the messages
- * back. Copy leaves the source in place and is not undoable.
+ * to the backend; a failure (or an unreachable backend) reverts by restoring
+ * the exact snapshot, and a success raises a time-boxed undo toast whose
+ * {@link MessageMove} records move the messages back. Copy leaves the source in
+ * place and is not undoable.
  */
 export function useMailboxActions(deps: Deps) {
   const undoState = ref<{ message: string; moves: MessageMove[] } | null>(null);
@@ -87,39 +104,79 @@ export function useMailboxActions(deps: Deps) {
     }, NOTICE_TIMEOUT_MS);
   }
 
-  /** Decrements the source folder's unread badge for an unseen removed row. */
-  function decrementUnread(mailboxId: number): void {
+  /** Finds the mailbox with `id` across all accounts. */
+  function findMailbox(mailboxId: number): MailboxSummary | undefined {
     for (const account of deps.accounts.value) {
       const mailbox = account.mailboxes.find((m) => m.id === mailboxId);
-      if (mailbox !== undefined) {
-        mailbox.unreadCount = Math.max(0, mailbox.unreadCount - 1);
-        return;
-      }
+      if (mailbox !== undefined) return mailbox;
+    }
+    return undefined;
+  }
+
+  /** Decrements the source folder's unread badge by one (clamped at zero). */
+  function decrementUnread(mailboxId: number): void {
+    const mailbox = findMailbox(mailboxId);
+    if (mailbox !== undefined) {
+      mailbox.unreadCount = Math.max(0, mailbox.unreadCount - 1);
     }
   }
 
-  /** Splices `ids` out of both lists, updating badges and the open message. */
-  function removeRows(ids: number[]): void {
+  /**
+   * Splices `ids` out of both caches and returns a snapshot {@link restore} can
+   * undo exactly. A message present in both the mailbox and unified caches is
+   * counted once, so its source-folder unread badge drops by exactly one.
+   */
+  function removeRows(ids: number[]): Relocation {
     const set = new Set(ids);
-    for (const list of [deps.messages, deps.unifiedItems]) {
-      const remaining = [];
-      for (const row of list.value) {
-        if (set.has(row.id)) {
-          if (!row.seen) decrementUnread(row.mailboxId);
-        } else {
-          remaining.push(row);
-        }
+    const prevMessages = deps.messages.value;
+    const prevUnified = deps.unifiedItems.value;
+    const prevSelected = deps.selectedMessageId.value;
+
+    // Count each removed unseen message once, even if it lives in both caches.
+    const perMailbox = new Map<number, number>();
+    const counted = new Set<number>();
+    for (const row of [...prevMessages, ...prevUnified]) {
+      if (set.has(row.id) && !row.seen && !counted.has(row.id)) {
+        counted.add(row.id);
+        perMailbox.set(row.mailboxId, (perMailbox.get(row.mailboxId) ?? 0) + 1);
       }
-      list.value = remaining as never;
     }
-    if (deps.selectedMessageId.value !== null && set.has(deps.selectedMessageId.value)) {
-      deps.selectedMessageId.value = null;
+    const badgeReverts: Relocation["badgeReverts"] = [];
+    for (const [mailboxId, count] of perMailbox) {
+      const mailbox = findMailbox(mailboxId);
+      if (mailbox !== undefined) {
+        badgeReverts.push({ mailbox, previous: mailbox.unreadCount });
+        mailbox.unreadCount = Math.max(0, mailbox.unreadCount - count);
+      }
+    }
+
+    deps.messages.value = prevMessages.filter((row) => !set.has(row.id));
+    deps.unifiedItems.value = prevUnified.filter((row) => !set.has(row.id));
+
+    const clearedSelection =
+      prevSelected !== null && set.has(prevSelected) ? prevSelected : null;
+    if (clearedSelection !== null) deps.selectedMessageId.value = null;
+
+    return { prevMessages, prevUnified, badgeReverts, clearedSelection };
+  }
+
+  /** Reverts a {@link removeRows} snapshot: rows, unread badges, open message. */
+  function restore(snapshot: Relocation): void {
+    deps.messages.value = snapshot.prevMessages;
+    deps.unifiedItems.value = snapshot.prevUnified;
+    for (const { mailbox, previous } of snapshot.badgeReverts) {
+      mailbox.unreadCount = previous;
+    }
+    if (snapshot.clearedSelection !== null) {
+      deps.selectedMessageId.value = snapshot.clearedSelection;
     }
   }
 
   /**
    * Runs a relocation that removes rows: splice optimistically, await the
-   * backend, and either raise the undo toast (success) or revert (failure).
+   * backend, and either raise the undo toast (success) or fully revert. A
+   * `null` result means the backend was unreachable (browser preview), which is
+   * a non-success: the optimistic removal is reverted, never confirmed.
    */
   async function relocate(
     ids: number[],
@@ -127,12 +184,18 @@ export function useMailboxActions(deps: Deps) {
     label: (n: number) => string,
   ): Promise<void> {
     if (ids.length === 0) return;
-    removeRows(ids);
+    const snapshot = removeRows(ids);
     try {
       const outcome = await run();
-      if (outcome !== null) showUndo(label(outcome.moves.length), outcome.moves);
+      if (outcome === null) {
+        restore(snapshot);
+        showNotice(UNAVAILABLE);
+        return;
+      }
+      showUndo(label(outcome.moves.length), outcome.moves);
+      deps.clearSelection?.();
     } catch (error) {
-      deps.reload();
+      restore(snapshot);
       showNotice(errorText(error));
     }
   }
@@ -163,6 +226,14 @@ export function useMailboxActions(deps: Deps) {
     mailboxName: string,
   ): Promise<void> {
     if (ids.length === 0) return;
+    // Copy leaves the source in place, so there is nothing to revert — but the
+    // browser preview cannot copy, so never claim success there (copy resolves
+    // to `null` on both a real success and a missing bridge; only the bridge
+    // check distinguishes them).
+    if (!isTauri()) {
+      showNotice(UNAVAILABLE);
+      return;
+    }
     try {
       await copyMessages(ids, mailboxId);
       showNotice(`Copied to ${mailboxName}`);
@@ -176,11 +247,16 @@ export function useMailboxActions(deps: Deps) {
     if (ids.length === 0) return;
     const set = new Set(ids);
     const flipped: MessageListItem[] = [];
+    // Decrement each message's badge once even if it appears in both caches.
+    const counted = new Set<number>();
     for (const list of [deps.messages, deps.unifiedItems]) {
       for (const row of list.value) {
         if (set.has(row.id) && !row.seen) {
           row.seen = true;
-          decrementUnread(row.mailboxId);
+          if (!counted.has(row.id)) {
+            counted.add(row.id);
+            decrementUnread(row.mailboxId);
+          }
           flipped.push(row);
         }
       }
@@ -232,6 +308,13 @@ export function useMailboxActions(deps: Deps) {
     else if (action === "copy") requestCopy(ids);
     else void markRead(ids);
   }
+
+  // Clear pending timers on teardown/HMR so a fired callback never mutates
+  // disposed state (`failSilently` keeps direct, scope-less unit calls quiet).
+  onScopeDispose(() => {
+    if (undoTimer !== null) clearTimeout(undoTimer);
+    if (noticeTimer !== null) clearTimeout(noticeTimer);
+  }, true);
 
   return {
     undoState,

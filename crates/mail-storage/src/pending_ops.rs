@@ -29,6 +29,26 @@ use crate::error_map::map_sqlx;
 const OP_COLUMNS: &str = "id, account_id, message_id, kind, payload_json, state, \
     attempts, last_error, created_at_unix, updated_at_unix";
 
+/// SQL predicate fragment (assumes a `pending_ops` row aliased `head`) that
+/// excludes ops whose message has a STALE remote identity.
+///
+/// After a `move`/`delete` op replays, the message's stored IMAP UID is stale
+/// (the server assigned a new one in the destination), so replaying a *later*
+/// per-message op against it would `SELECT` the destination and park on a
+/// UIDVALIDITY mismatch. `MessageRepo::mark_remote_stale` flags such a row by
+/// writing a sentinel into its otherwise-NULL `remote_uidl`; a genuine IMAP row
+/// never has one, so `remote_kind = 'imap' AND remote_uidl IS NOT NULL`
+/// identifies exactly the stale rows. Their ops wait, unclaimed (never parked,
+/// never wedging other messages), until the next sync reconciles the row away
+/// and the ops cascade off. Applied identically to the claim and both
+/// claimable-probe queries so their eligibility stays in lockstep.
+const STALE_IDENTITY_EXCLUSION: &str = "AND NOT EXISTS (
+    SELECT 1 FROM messages stale
+     WHERE stale.id = head.message_id
+       AND stale.remote_kind = 'imap'
+       AND stale.remote_uidl IS NOT NULL
+)";
+
 /// Repository over the `pending_ops` table.
 #[derive(Debug)]
 pub struct PendingOpsRepo<'a> {
@@ -95,6 +115,7 @@ impl<'a> PendingOpsRepo<'a> {
                         WHERE earlier.message_id = head.message_id
                           AND earlier.id < head.id
                     )
+                    {STALE_IDENTITY_EXCLUSION}
                   ORDER BY head.id
                   LIMIT ?
               )
@@ -209,15 +230,16 @@ impl<'a> PendingOpsRepo<'a> {
     ///
     /// Returns [`MailError::Database`] on any query failure.
     pub async fn accounts_with_claimable_ops(&self) -> Result<Vec<AccountId>, MailError> {
-        let ids = sqlx::query_scalar::<_, i64>(
+        let ids = sqlx::query_scalar::<_, i64>(sqlx::AssertSqlSafe(format!(
             "SELECT DISTINCT head.account_id FROM pending_ops head
               WHERE head.state = 'pending'
                 AND NOT EXISTS (
                     SELECT 1 FROM pending_ops earlier
                     WHERE earlier.message_id = head.message_id
                       AND earlier.id < head.id
-                )",
-        )
+                )
+                {STALE_IDENTITY_EXCLUSION}"
+        )))
         .fetch_all(self.pool)
         .await
         .map_err(|error| map_sqlx("accounts_with_claimable_ops", error))?;
@@ -234,7 +256,7 @@ impl<'a> PendingOpsRepo<'a> {
     ///
     /// Returns [`MailError::Database`] on any query failure.
     pub async fn account_has_claimable_ops(&self, account: AccountId) -> Result<bool, MailError> {
-        let exists = sqlx::query_scalar::<_, i64>(
+        let exists = sqlx::query_scalar::<_, i64>(sqlx::AssertSqlSafe(format!(
             "SELECT EXISTS(
                  SELECT 1 FROM pending_ops head
                   WHERE head.account_id = ? AND head.state = 'pending'
@@ -243,8 +265,9 @@ impl<'a> PendingOpsRepo<'a> {
                         WHERE earlier.message_id = head.message_id
                           AND earlier.id < head.id
                     )
-             )",
-        )
+                    {STALE_IDENTITY_EXCLUSION}
+             )"
+        )))
         .bind(account.value())
         .fetch_one(self.pool)
         .await
