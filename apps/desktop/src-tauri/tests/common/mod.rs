@@ -6,15 +6,15 @@ pub mod pop3_server;
 use std::sync::Arc;
 
 use axomail_core::{
-    Address, ConnectionSecurity, EmailAddress, IncomingProtocol, MailboxId, MessageFlags,
-    UtcTimestamp,
+    AccountId, Address, ConnectionSecurity, EmailAddress, IncomingProtocol, MailboxId, MailboxName,
+    MailboxRole, MessageFlags, UtcTimestamp,
 };
 use axomail_desktop_lib::dto::{
     AuthInput, ComposeInput, CreateAccountInput, IncomingInput, ServerInput,
 };
 use axomail_desktop_lib::state::SharedSecretStore;
 use axomail_security::InMemorySecretStore;
-use axomail_storage::NewMessage;
+use axomail_storage::{NewMailbox, NewMessage, Store};
 
 /// Builds an in-memory secret store, returning both a concrete handle for
 /// assertions and the shared trait-object handle the commands take.
@@ -22,6 +22,34 @@ pub fn secret_stores() -> (Arc<InMemorySecretStore>, SharedSecretStore) {
     let concrete = Arc::new(InMemorySecretStore::new());
     let shared: SharedSecretStore = concrete.clone();
     (concrete, shared)
+}
+
+/// Seeds the four non-inbox standard folders on an account.
+///
+/// IMAP accounts now seed only the inbox (folder discovery fills the rest), so
+/// tests that need Drafts/Sent/Archive/Trash present up front add them here.
+/// Inserted in the classic display order right after the seeded inbox, so a
+/// re-listed account reads `[Inbox, Drafts, Sent, Archive, Trash]`.
+pub async fn seed_standard_folders(store: &Store, account: AccountId) {
+    for (name, role) in [
+        ("Drafts", MailboxRole::Drafts),
+        ("Sent", MailboxRole::Sent),
+        ("Archive", MailboxRole::Archive),
+        ("Trash", MailboxRole::Trash),
+    ] {
+        store
+            .mailboxes()
+            .upsert(&NewMailbox {
+                account,
+                name: MailboxName::new(name),
+                remote_name: MailboxName::new(name),
+                role,
+                uid_validity: None,
+                uid_next: None,
+            })
+            .await
+            .unwrap();
+    }
 }
 
 /// A valid account-creation input whose SMTP server points at a local test

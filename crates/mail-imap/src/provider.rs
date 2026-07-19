@@ -8,7 +8,7 @@ use axomail_core::{
 use crate::config::ImapConfig;
 use crate::connection::{self, Connected};
 use crate::error::{map_imap_error, with_deadline};
-use crate::{discover, message_ops, sync, utf7};
+use crate::{discover, folder_ops, message_ops, sync, utf7};
 
 /// Records which mailbox the session currently has selected, so that
 /// per-message operations can validate the caller's message identity.
@@ -150,6 +150,43 @@ impl IncomingMailProvider for ImapProvider {
         let timeout = self.config.timeout;
         let connected = self.require_session()?;
         message_ops::delete(connected, uid, timeout).await
+    }
+
+    async fn create_mailbox(&mut self, path: &MailboxName) -> Result<(), MailError> {
+        let timeout = self.config.timeout;
+        let encoded = utf7::encode(path.as_str());
+        let connected = self.require_session()?;
+        folder_ops::create(connected, &encoded, timeout).await
+    }
+
+    async fn rename_mailbox(
+        &mut self,
+        from: &MailboxName,
+        to: &MailboxName,
+    ) -> Result<(), MailError> {
+        let timeout = self.config.timeout;
+        let encoded_from = utf7::encode(from.as_str());
+        let encoded_to = utf7::encode(to.as_str());
+        let connected = self.require_session()?;
+        folder_ops::rename(connected, &encoded_from, &encoded_to, timeout).await
+    }
+
+    async fn delete_mailbox(&mut self, path: &MailboxName) -> Result<(), MailError> {
+        let timeout = self.config.timeout;
+        let encoded = utf7::encode(path.as_str());
+        let connected = self.require_session()?;
+        folder_ops::delete(connected, &encoded, timeout).await
+    }
+
+    async fn set_mailbox_subscribed(
+        &mut self,
+        path: &MailboxName,
+        subscribed: bool,
+    ) -> Result<(), MailError> {
+        let timeout = self.config.timeout;
+        let encoded = utf7::encode(path.as_str());
+        let connected = self.require_session()?;
+        folder_ops::set_subscribed(connected, &encoded, subscribed, timeout).await
     }
 
     async fn disconnect(&mut self) -> Result<(), MailError> {

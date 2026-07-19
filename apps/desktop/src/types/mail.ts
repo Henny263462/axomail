@@ -23,9 +23,25 @@ export * from "./identity";
 
 export interface MailboxSummary {
   id: number;
+  /** Full decoded folder path; the tree derives a leaf from it + delimiter. */
   name: string;
   role: "inbox" | "drafts" | "sent" | "trash" | "archive" | "junk" | "custom";
   unreadCount: number;
+  /**
+   * The following fields are always populated by the backend DTO. They are
+   * optional here only so lightweight test fixtures may omit them; the folder
+   * tree normalizes any missing value to a safe default.
+   */
+  /** Containing folder id, or null for a top-level folder. */
+  parentId?: number | null;
+  /** Server hierarchy delimiter for this folder, or null when flat. */
+  delimiter?: string | null;
+  /** Whether the folder is subscribed. */
+  subscribed?: boolean;
+  /** Whether the folder vanished from the server but still holds messages. */
+  orphaned?: boolean;
+  /** Total number of messages in the folder. */
+  totalCount?: number;
 }
 
 export interface AccountSummary {

@@ -6,9 +6,10 @@
 //! pending row, announce `JobStarted`, run the kind's executor, then record a
 //! terminal state and emit the closing event. [`dispatch`] routes the claimed
 //! job to its executor: `MailboxSync` keeps its full incremental pipeline (in
-//! [`mailbox_sync`]); `OpReplay` drains the write-back queue (in
-//! [`op_replay`]); `Discover` is the not-yet-implemented seam track 2.2 fills.
+//! [`mailbox_sync`]); `Discover` reconciles the remote folder tree (in
+//! [`discover`]); `OpReplay` drains the write-back queue (in [`op_replay`]).
 
+mod discover;
 mod mailbox_sync;
 mod offline_download;
 mod op_replay;
@@ -99,8 +100,8 @@ where
 /// Routes a claimed job to its per-kind executor.
 ///
 /// The account lock, permit, and claim are already held/done by [`run_job`],
-/// so each executor only implements the kind-specific work. `Discover` and
-/// `OpReplay` are placeholder seams (see below); `Fetch`/`Send` are not
+/// so each executor only implements the kind-specific work. `MailboxSync`,
+/// `Discover`, and `OpReplay` each have a real executor; `Fetch`/`Send` are not
 /// engine-driven kinds.
 async fn dispatch<P, F>(
     shared: &Arc<Shared<P, F>>,
@@ -114,35 +115,12 @@ where
 {
     match job.kind {
         JobKind::MailboxSync => mailbox_sync::execute(shared, job, account_id, token).await,
-        JobKind::Discover => execute_discover(shared, account_id, token).await,
+        JobKind::Discover => discover::execute(shared, account_id, token).await,
         JobKind::OpReplay => op_replay::execute(shared, job, account_id, token).await,
         JobKind::Fetch | JobKind::Send => Err(MailError::NotImplemented {
             feature: format!("job kind {} is not engine-driven", job.kind.as_str()),
         }),
     }
-}
-
-/// Executor seam for [`JobKind::Discover`] — **Wave 2 track 2.2 (Folders)**.
-///
-/// Placeholder: returns a typed [`MailError::NotImplemented`]. Track 2.2
-/// replaces this body with the real LIST + SPECIAL-USE reconcile into the
-/// mailbox repo, reusing [`guarded`] for every network round-trip. The
-/// account lock, permit, and claim are already applied by [`run_job`].
-async fn execute_discover<P, F>(
-    shared: &Arc<Shared<P, F>>,
-    account_id: AccountId,
-    token: &CancellationToken,
-) -> Result<SyncJobSummary, MailError>
-where
-    P: IncomingMailProvider + 'static,
-    F: ProviderFactory<P>,
-{
-    let _ = (shared, token);
-    Err(MailError::NotImplemented {
-        feature: format!(
-            "folder discovery (JobKind::Discover) for account {account_id}; Wave 2 track 2.2"
-        ),
-    })
 }
 
 /// Awaits a fallible network future under both a per-operation timeout and the

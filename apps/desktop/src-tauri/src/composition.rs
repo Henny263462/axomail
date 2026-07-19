@@ -106,6 +106,42 @@ impl IncomingMailProvider for AnyIncomingProvider {
         }
     }
 
+    async fn create_mailbox(&mut self, path: &MailboxName) -> Result<(), MailError> {
+        match self {
+            Self::Imap(provider) => provider.create_mailbox(path).await,
+            Self::Pop3(provider) => provider.create_mailbox(path).await,
+        }
+    }
+
+    async fn rename_mailbox(
+        &mut self,
+        from: &MailboxName,
+        to: &MailboxName,
+    ) -> Result<(), MailError> {
+        match self {
+            Self::Imap(provider) => provider.rename_mailbox(from, to).await,
+            Self::Pop3(provider) => provider.rename_mailbox(from, to).await,
+        }
+    }
+
+    async fn delete_mailbox(&mut self, path: &MailboxName) -> Result<(), MailError> {
+        match self {
+            Self::Imap(provider) => provider.delete_mailbox(path).await,
+            Self::Pop3(provider) => provider.delete_mailbox(path).await,
+        }
+    }
+
+    async fn set_mailbox_subscribed(
+        &mut self,
+        path: &MailboxName,
+        subscribed: bool,
+    ) -> Result<(), MailError> {
+        match self {
+            Self::Imap(provider) => provider.set_mailbox_subscribed(path, subscribed).await,
+            Self::Pop3(provider) => provider.set_mailbox_subscribed(path, subscribed).await,
+        }
+    }
+
     async fn disconnect(&mut self) -> Result<(), MailError> {
         match self {
             Self::Imap(provider) => provider.disconnect().await,

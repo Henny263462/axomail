@@ -4,29 +4,29 @@ use std::num::NonZeroU16;
 use std::path::Path;
 
 use axomail_core::{
-    Account, AccountAuth, AccountId, EmailAddress, IncomingServerConfig, MailError, Mailbox,
-    MailboxName, MailboxRole, OutgoingServerConfig, ServerEndpoint,
+    Account, AccountAuth, AccountId, EmailAddress, IncomingProtocol, IncomingServerConfig,
+    MailError, Mailbox, MailboxName, MailboxRole, OutgoingServerConfig, ServerEndpoint,
 };
 use axomail_security::{Direction, credential_ref_for_account, credential_ref_for_oauth};
 use axomail_storage::{
-    AccountUpdate, ArchiveGranularity, ForwardMode, IdentityFields, NewAccount, NewIdentity,
-    NewMailbox, ReplyPosition, SignaturePlacement, Store,
+    AccountUpdate, ArchiveGranularity, ForwardMode, IdentityFields, MailboxCounts, NewAccount,
+    NewIdentity, NewMailbox, ReplyPosition, SignaturePlacement, Store,
 };
 
 use crate::commands::account_secrets::{
     delete_secret_best_effort, remove_raw_best_effort, set_secret,
 };
 use crate::commands::map_command_error;
-use crate::commands::messages::count_unread;
 use crate::dto::{
     AccountDetailDto, AccountSummaryDto, CreateAccountInput, MailboxSummaryDto, UpdateAccountInput,
 };
 use crate::state::{AppState, SharedSecretStore};
 
-/// Default mailbox set created for a new account, in display order, so the UI
-/// has a folder tree before any sync exists. IMAP folder discovery in phase 2
-/// upserts real folders by name over this baseline.
-const DEFAULT_MAILBOXES: [(&str, MailboxRole); 5] = [
+/// Default mailbox set seeded for a **POP3** account, in display order. POP3 has
+/// no server-side folders to discover, so this local tree is the whole folder
+/// set. IMAP accounts seed only the inbox (see [`inbox_seed`]) and let folder
+/// discovery build the real tree.
+const POP3_MAILBOXES: [(&str, MailboxRole); 5] = [
     ("Inbox", MailboxRole::Inbox),
     ("Drafts", MailboxRole::Drafts),
     ("Sent", MailboxRole::Sent),
@@ -46,10 +46,11 @@ pub async fn list_accounts_impl(store: &Store) -> Result<Vec<AccountSummaryDto>,
     let mut summaries = Vec::with_capacity(accounts.len());
     for account in &accounts {
         let mailboxes = store.mailboxes().list(account.id).await?;
+        let counts = store.mailboxes().counts_for_account(account.id).await?;
         let mut mailbox_summaries = Vec::with_capacity(mailboxes.len());
         for mailbox in &mailboxes {
-            let unread = count_unread(store, mailbox.id).await?;
-            mailbox_summaries.push(MailboxSummaryDto::from_domain(mailbox, unread)?);
+            let mailbox_counts = counts.get(&mailbox.id).copied().unwrap_or_default();
+            mailbox_summaries.push(MailboxSummaryDto::from_domain(mailbox, mailbox_counts)?);
         }
         summaries.push(AccountSummaryDto::new(account, mailbox_summaries)?);
     }
@@ -253,12 +254,12 @@ async fn finish_account(
             message: "create_account: account id allocation was not sequential".to_owned(),
         });
     }
-    let mailboxes = create_default_mailboxes(store, account.id).await?;
+    let mailboxes = create_default_mailboxes(store, account).await?;
     seed_default_identity(store, account).await?;
     crate::commands::tag_seed::seed_default_tags(store, account.id).await?;
     let summaries = mailboxes
         .iter()
-        .map(|mailbox| MailboxSummaryDto::from_domain(mailbox, 0))
+        .map(|mailbox| MailboxSummaryDto::from_domain(mailbox, MailboxCounts::default()))
         .collect::<Result<Vec<_>, _>>()?;
     AccountSummaryDto::new(account, summaries)
 }
@@ -309,18 +310,38 @@ fn nonzero_port(port: u16) -> Result<NonZeroU16, MailError> {
     })
 }
 
-/// Creates the default mailbox set for a freshly inserted account.
+/// Seeds the initial mailbox set for a freshly inserted account.
+///
+/// IMAP accounts get only the inbox (mapped to the server's canonical `INBOX`
+/// remote name); the real tree is then filled by folder discovery. POP3
+/// accounts, which have no server folders, get the full local
+/// [`POP3_MAILBOXES`] set.
 async fn create_default_mailboxes(
     store: &Store,
-    account_id: AccountId,
+    account: &Account,
 ) -> Result<Vec<Mailbox>, MailError> {
-    let mut mailboxes = Vec::with_capacity(DEFAULT_MAILBOXES.len());
-    for (name, role) in DEFAULT_MAILBOXES {
+    let seeds: Vec<(MailboxName, MailboxName, MailboxRole)> = match account.incoming.protocol {
+        IncomingProtocol::Imap => {
+            vec![(
+                MailboxName::new("Inbox"),
+                MailboxName::new("INBOX"),
+                MailboxRole::Inbox,
+            )]
+        }
+        IncomingProtocol::Pop3 => POP3_MAILBOXES
+            .iter()
+            .map(|(name, role)| (MailboxName::new(*name), MailboxName::new(*name), *role))
+            .collect(),
+    };
+
+    let mut mailboxes = Vec::with_capacity(seeds.len());
+    for (name, remote_name, role) in seeds {
         let mailbox = store
             .mailboxes()
             .upsert(&NewMailbox {
-                account: account_id,
-                name: MailboxName::new(name),
+                account: account.id,
+                name,
+                remote_name,
                 role,
                 uid_validity: None,
                 uid_next: None,
@@ -352,6 +373,9 @@ pub async fn create_account(
         .map_err(map_command_error)?;
     // The new account's inbox joins the background-sync target set.
     refresh_scheduler_targets(&state).await;
+    // Discover the real folder tree for IMAP accounts (POP3 keeps its local
+    // seed). Best-effort: a failed enqueue never fails account creation.
+    crate::commands::folders::enqueue_discover_if_imap(&state, summary.id).await;
     Ok(summary)
 }
 

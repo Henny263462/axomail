@@ -366,6 +366,7 @@ function onSyncEvent(event: SyncEventDto): void {
         @select-drafts="selectDrafts"
         @select-outbox="selectOutbox"
         @select-tag="selectTag"
+        @folders-changed="onAccountsChanged"
       />
     </template>
     <template #list>

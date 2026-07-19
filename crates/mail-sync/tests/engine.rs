@@ -6,7 +6,9 @@ mod support;
 
 use std::time::Duration;
 
-use axomail_core::{MessageFlags, RemoteMessageId};
+use axomail_core::{
+    MailboxName, MailboxRole, MessageFlags, RemoteMailbox, RemoteMailboxState, RemoteMessageId,
+};
 use axomail_storage::{JobKind, NewSyncJob};
 use axomail_sync::{
     JobState, SyncConfig, SyncEngine, SyncErrorClass, SyncEvent, SyncJobId, SyncMailbox,
@@ -36,6 +38,64 @@ async fn stored_subjects(
         .collect();
     subjects.sort();
     subjects
+}
+
+#[tokio::test]
+async fn discover_reconciles_folder_tree() {
+    let world = FakeWorld::new();
+    let (store, account, inbox) = store_with_mailbox().await;
+    let delimiter = || Some("/".to_owned());
+    world.set_discovery(
+        account,
+        RemoteMailboxState {
+            mailboxes: vec![
+                RemoteMailbox {
+                    name: MailboxName::new("INBOX"),
+                    role: None,
+                    delimiter: delimiter(),
+                },
+                RemoteMailbox {
+                    name: MailboxName::new("INBOX/Work"),
+                    role: None,
+                    delimiter: delimiter(),
+                },
+                RemoteMailbox {
+                    name: MailboxName::new("Sent"),
+                    role: Some(MailboxRole::Sent),
+                    delimiter: delimiter(),
+                },
+            ],
+        },
+    );
+
+    let engine = SyncEngine::start(store.clone(), FakeFactory::new(world), test_config());
+    let mut events = engine.subscribe();
+    engine
+        .enqueue_work(WorkRequest::Discover {
+            account_id: account,
+        })
+        .await
+        .unwrap();
+    let collected = drain_until_terminal(&mut events).await;
+    assert!(
+        collected
+            .iter()
+            .any(|event| matches!(event, SyncEvent::JobFinished { .. })),
+        "discover job should finish successfully"
+    );
+
+    let mailboxes = store.mailboxes().list(account).await.unwrap();
+    let work = mailboxes
+        .iter()
+        .find(|mailbox| mailbox.remote_name.as_str() == "INBOX/Work")
+        .expect("Work subfolder discovered");
+    assert_eq!(work.parent, Some(inbox), "nested under the existing inbox");
+    let sent = mailboxes
+        .iter()
+        .find(|mailbox| mailbox.remote_name.as_str() == "Sent")
+        .expect("Sent discovered");
+    assert_eq!(sent.role, MailboxRole::Sent);
+    assert_eq!(sent.parent, None);
 }
 
 #[tokio::test]
@@ -727,15 +787,20 @@ async fn duplicate_enqueue_is_deduplicated() {
 }
 
 #[tokio::test]
-async fn discover_work_runs_placeholder_and_fails_not_implemented() {
+async fn op_replay_work_is_account_scoped_and_succeeds_on_an_empty_queue() {
     let world = FakeWorld::new();
     let (store, account, _mailbox) = store_with_mailbox().await;
     let engine = SyncEngine::start(store.clone(), FakeFactory::new(world), test_config());
     let mut events = engine.subscribe();
 
-    // The general entry point accepts an account-scoped Discover work request.
+    // The general entry point accepts an account-scoped OpReplay work request.
+    // OpReplay now runs the real write-back drain (track 2.1): with no pending
+    // ops queued it connects, finds an empty queue, and finishes successfully —
+    // proving the account-scoped enqueue path and the executor's happy path.
+    // (Discover likewise runs its real reconcile — see
+    // `discover_reconciles_folder_tree`.)
     engine
-        .enqueue_work(WorkRequest::Discover {
+        .enqueue_work(WorkRequest::OpReplay {
             account_id: account,
         })
         .await
@@ -752,22 +817,17 @@ async fn discover_work_runs_placeholder_and_fails_not_implemented() {
             _ => None,
         })
         .expect("a JobQueued event was emitted");
-    assert_eq!(mailbox, None, "account-scoped Discover has no mailbox");
+    assert_eq!(mailbox, None, "account-scoped OpReplay has no mailbox");
 
-    // The persisted row is a Discover job that reached a terminal Failed state
-    // through the honest not-yet-implemented placeholder executor.
+    // The persisted row is an OpReplay job that reached a terminal Succeeded
+    // state through the real (empty-queue) write-back drain.
     let job = store.sync_jobs().get(job_id).await.unwrap().unwrap();
-    assert_eq!(job.kind, JobKind::Discover);
-    assert_eq!(job.state, JobState::Failed);
+    assert_eq!(job.kind, JobKind::OpReplay);
+    assert_eq!(job.state, JobState::Succeeded);
+    assert_eq!(job.error, None, "an empty-queue replay is not a failure");
     match collected.last().unwrap() {
-        SyncEvent::JobFailed { class, message, .. } => {
-            assert_eq!(*class, SyncErrorClass::Permanent);
-            assert!(
-                message.contains("not yet implemented"),
-                "placeholder should report not-implemented, got {message:?}"
-            );
-        }
-        other => panic!("expected JobFailed, got {other:?}"),
+        SyncEvent::JobFinished { .. } => {}
+        other => panic!("expected JobFinished, got {other:?}"),
     }
 
     // Serde round-trip proves the optional-mailbox JobQueued stays wire-ready.

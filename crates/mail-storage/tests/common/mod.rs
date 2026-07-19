@@ -72,6 +72,7 @@ pub fn sample_mailbox(account: axomail_core::AccountId, name: &str) -> NewMailbo
     NewMailbox {
         account,
         name: MailboxName::new(name),
+        remote_name: MailboxName::new(name),
         role: MailboxRole::guess_from_name(name),
         uid_validity: Some(1),
         uid_next: Some(1),

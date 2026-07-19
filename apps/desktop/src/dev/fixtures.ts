@@ -17,11 +17,13 @@ export const fixtureAccounts: AccountSummary[] = [
     email: "fixture@example.org",
     authMechanism: "password",
     mailboxes: [
-      { id: 1, name: "Inbox", role: "inbox", unreadCount: 2 },
-      { id: 2, name: "Drafts", role: "drafts", unreadCount: 0 },
-      { id: 3, name: "Sent", role: "sent", unreadCount: 0 },
-      { id: 4, name: "Archive", role: "archive", unreadCount: 0 },
-      { id: 5, name: "Trash", role: "trash", unreadCount: 0 },
+      { id: 1, name: "INBOX", role: "inbox", unreadCount: 2, totalCount: 12, parentId: null, delimiter: "/", subscribed: true, orphaned: false },
+      { id: 6, name: "INBOX/Projects", role: "custom", unreadCount: 1, totalCount: 4, parentId: 1, delimiter: "/", subscribed: true, orphaned: false },
+      { id: 7, name: "INBOX/Projects/2026", role: "custom", unreadCount: 0, totalCount: 2, parentId: 6, delimiter: "/", subscribed: true, orphaned: false },
+      { id: 2, name: "Drafts", role: "drafts", unreadCount: 0, totalCount: 1, parentId: null, delimiter: "/", subscribed: true, orphaned: false },
+      { id: 3, name: "Sent", role: "sent", unreadCount: 0, totalCount: 30, parentId: null, delimiter: "/", subscribed: true, orphaned: false },
+      { id: 4, name: "Archive", role: "archive", unreadCount: 0, totalCount: 88, parentId: null, delimiter: "/", subscribed: true, orphaned: false },
+      { id: 5, name: "Trash", role: "trash", unreadCount: 0, totalCount: 3, parentId: null, delimiter: "/", subscribed: true, orphaned: false },
     ],
   },
 ];

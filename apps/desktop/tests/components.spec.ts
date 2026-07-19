@@ -22,10 +22,10 @@ describe("SidebarPane", () => {
     const wrapper = mount(SidebarPane, {
       props: { accounts: fixtureAccounts, selectedMailboxId: null },
     });
-    expect(wrapper.text()).toContain("Inbox");
+    expect(wrapper.text()).toContain("INBOX");
     expect(wrapper.text()).toContain("2");
 
-    await wrapper.get("button.mailbox").trigger("click");
+    await wrapper.get("button.folder-button").trigger("click");
     expect(wrapper.emitted("selectMailbox")?.[0]).toEqual([1]);
   });
 });

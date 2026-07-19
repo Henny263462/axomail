@@ -34,6 +34,7 @@ pub(crate) async fn discover(
         .map(|name| RemoteMailbox {
             name: MailboxName::new(utf7::decode(name.name())),
             role: role_from_attributes(name.attributes()),
+            delimiter: name.delimiter().map(str::to_owned),
         })
         .collect();
 

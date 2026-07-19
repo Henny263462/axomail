@@ -50,7 +50,7 @@ pub use drafts::{DraftId, DraftRecord, DraftRepo, NewDraft};
 pub use identities::{Identity, IdentityFields, IdentityId, IdentityRepo, NewIdentity};
 pub use identity_prefs::{ArchiveGranularity, ForwardMode, ReplyPosition, SignaturePlacement};
 pub use ingest::{IngestRepo, IngestSummary};
-pub use mailboxes::{MailboxRepo, NewMailbox};
+pub use mailboxes::{DiscoveredMailbox, MailboxCounts, MailboxRepo, NewMailbox, ReconcileSummary};
 pub use messages::{MessageRepo, NewMessage};
 pub use offline::{DownloadCandidate, DownloadPlan, OfflineMode, OfflinePolicy, OfflinePolicyRepo};
 pub use outbox::{NewOutbox, OutboxId, OutboxRecord, OutboxRepo, OutboxState};

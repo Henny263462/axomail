@@ -10,13 +10,13 @@ use axomail_core::{
     Account, AccountId, FlagDelta, IncomingMailProvider, MailError, MailboxId, MailboxName,
     RawMessage, RemoteMailboxState, RemoteMessageId, SyncOutcome, SyncRequest,
 };
-use axomail_desktop_lib::commands::accounts::create_account_impl;
+use axomail_desktop_lib::commands::accounts::{create_account_impl, list_accounts_impl};
 use axomail_desktop_lib::commands::jobs::{
     cancel_all_sync_jobs_impl, cancel_sync_job_impl, list_sync_jobs_impl,
 };
 use axomail_storage::{JobKind, JobState, NewSyncJob, Store, SyncJob};
 use axomail_sync::{ProviderFactory, SyncConfig, SyncEngine};
-use common::{secret_stores, valid_input};
+use common::{secret_stores, seed_standard_folders, valid_input};
 
 /// A provider that never connects; the cancel tests never run a job, so its
 /// bodies are only here to satisfy the trait.
@@ -56,6 +56,26 @@ impl IncomingMailProvider for StubProvider {
     async fn delete_message(&mut self, _id: &RemoteMessageId) -> Result<(), MailError> {
         Err(MailError::Cancelled)
     }
+    async fn create_mailbox(&mut self, _path: &MailboxName) -> Result<(), MailError> {
+        Err(MailError::Cancelled)
+    }
+    async fn rename_mailbox(
+        &mut self,
+        _from: &MailboxName,
+        _to: &MailboxName,
+    ) -> Result<(), MailError> {
+        Err(MailError::Cancelled)
+    }
+    async fn delete_mailbox(&mut self, _path: &MailboxName) -> Result<(), MailError> {
+        Err(MailError::Cancelled)
+    }
+    async fn set_mailbox_subscribed(
+        &mut self,
+        _path: &MailboxName,
+        _subscribed: bool,
+    ) -> Result<(), MailError> {
+        Err(MailError::Cancelled)
+    }
     async fn disconnect(&mut self) -> Result<(), MailError> {
         Ok(())
     }
@@ -87,8 +107,17 @@ async fn pending_job(store: &Store, account: i64, mailbox: i64) -> SyncJob {
 async fn list_sync_jobs_resolves_context_and_orders_by_state() {
     let store = Store::open_in_memory().await.unwrap();
     let (_concrete, secrets) = secret_stores();
-    let summary = create_account_impl(&store, &secrets, valid_input())
+    let created = create_account_impl(&store, &secrets, valid_input())
         .await
+        .unwrap();
+    // IMAP seeds only the inbox; add the standard folders this test needs, then
+    // re-fetch so the summary carries all four distinct mailboxes.
+    seed_standard_folders(&store, AccountId::new(created.id)).await;
+    let summary = list_accounts_impl(&store)
+        .await
+        .unwrap()
+        .into_iter()
+        .next()
         .unwrap();
     let account = summary.id;
     // Four distinct mailboxes so no active job de-duplicates another.

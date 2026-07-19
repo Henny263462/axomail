@@ -67,6 +67,7 @@ pub struct FakeWorld {
     fetch_calls: Mutex<usize>,
     sync_calls: Mutex<HashMap<MailboxId, usize>>,
     connect_calls: Mutex<usize>,
+    discovery: Mutex<HashMap<AccountId, RemoteMailboxState>>,
     active: Mutex<HashMap<AccountId, usize>>,
     max_active: Mutex<HashMap<AccountId, usize>>,
     pause_at: Mutex<Option<Option<u32>>>,
@@ -108,6 +109,11 @@ impl FakeWorld {
     #[must_use]
     pub fn fetch_calls(&self) -> usize {
         *lock(&self.fetch_calls)
+    }
+
+    /// Installs the folder structure `discover` reports for an account.
+    pub fn set_discovery(&self, account: AccountId, state: RemoteMailboxState) {
+        lock(&self.discovery).insert(account, state);
     }
 
     /// Arms the mid-pass gate: a pass whose incoming
@@ -245,9 +251,12 @@ impl IncomingMailProvider for FakeProvider {
     }
 
     async fn discover(&mut self) -> Result<RemoteMailboxState, MailError> {
-        Ok(RemoteMailboxState {
-            mailboxes: Vec::new(),
-        })
+        Ok(lock(&self.world.discovery)
+            .get(&self.account)
+            .cloned()
+            .unwrap_or(RemoteMailboxState {
+                mailboxes: Vec::new(),
+            }))
     }
 
     async fn sync(&mut self, request: SyncRequest) -> Result<SyncOutcome, MailError> {
@@ -322,6 +331,30 @@ impl IncomingMailProvider for FakeProvider {
 
     async fn delete_message(&mut self, _id: &RemoteMessageId) -> Result<(), MailError> {
         Err(unsupported("EXPUNGE"))
+    }
+
+    async fn create_mailbox(&mut self, _path: &MailboxName) -> Result<(), MailError> {
+        Ok(())
+    }
+
+    async fn rename_mailbox(
+        &mut self,
+        _from: &MailboxName,
+        _to: &MailboxName,
+    ) -> Result<(), MailError> {
+        Ok(())
+    }
+
+    async fn delete_mailbox(&mut self, _path: &MailboxName) -> Result<(), MailError> {
+        Ok(())
+    }
+
+    async fn set_mailbox_subscribed(
+        &mut self,
+        _path: &MailboxName,
+        _subscribed: bool,
+    ) -> Result<(), MailError> {
+        Ok(())
     }
 
     async fn disconnect(&mut self) -> Result<(), MailError> {
@@ -442,6 +475,7 @@ fn sample_mailbox(account: AccountId, name: &str) -> NewMailbox {
     NewMailbox {
         account,
         name: MailboxName::new(name),
+        remote_name: MailboxName::new(name),
         role: MailboxRole::guess_from_name(name),
         uid_validity: None,
         uid_next: None,

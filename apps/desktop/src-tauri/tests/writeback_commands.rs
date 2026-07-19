@@ -60,6 +60,26 @@ impl IncomingMailProvider for StubProvider {
     async fn delete_message(&mut self, _id: &RemoteMessageId) -> Result<(), MailError> {
         Err(MailError::Cancelled)
     }
+    async fn create_mailbox(&mut self, _path: &MailboxName) -> Result<(), MailError> {
+        Err(MailError::Cancelled)
+    }
+    async fn rename_mailbox(
+        &mut self,
+        _from: &MailboxName,
+        _to: &MailboxName,
+    ) -> Result<(), MailError> {
+        Err(MailError::Cancelled)
+    }
+    async fn delete_mailbox(&mut self, _path: &MailboxName) -> Result<(), MailError> {
+        Err(MailError::Cancelled)
+    }
+    async fn set_mailbox_subscribed(
+        &mut self,
+        _path: &MailboxName,
+        _subscribed: bool,
+    ) -> Result<(), MailError> {
+        Err(MailError::Cancelled)
+    }
     async fn disconnect(&mut self) -> Result<(), MailError> {
         Ok(())
     }

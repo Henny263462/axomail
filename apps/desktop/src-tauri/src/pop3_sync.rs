@@ -101,6 +101,30 @@ impl IncomingMailProvider for Pop3Sync {
         self.provider.delete_message(id).await
     }
 
+    async fn create_mailbox(&mut self, path: &MailboxName) -> Result<(), MailError> {
+        self.provider.create_mailbox(path).await
+    }
+
+    async fn rename_mailbox(
+        &mut self,
+        from: &MailboxName,
+        to: &MailboxName,
+    ) -> Result<(), MailError> {
+        self.provider.rename_mailbox(from, to).await
+    }
+
+    async fn delete_mailbox(&mut self, path: &MailboxName) -> Result<(), MailError> {
+        self.provider.delete_mailbox(path).await
+    }
+
+    async fn set_mailbox_subscribed(
+        &mut self,
+        path: &MailboxName,
+        subscribed: bool,
+    ) -> Result<(), MailError> {
+        self.provider.set_mailbox_subscribed(path, subscribed).await
+    }
+
     async fn disconnect(&mut self) -> Result<(), MailError> {
         self.provider.disconnect().await
     }

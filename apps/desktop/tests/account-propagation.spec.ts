@@ -50,7 +50,7 @@ describe("App account-change propagation", () => {
     await flushPromises();
 
     // Select the account's inbox so there is a live selection to reconcile.
-    await wrapper.get("button.mailbox").trigger("click");
+    await wrapper.get("button.folder-button").trigger("click");
     await flushPromises();
     expect(listMessagesMock).toHaveBeenCalledWith(10, null, 50);
 
@@ -73,7 +73,7 @@ describe("App account-change propagation", () => {
     const wrapper = mount(App);
     await flushPromises();
 
-    await wrapper.get("button.mailbox").trigger("click");
+    await wrapper.get("button.folder-button").trigger("click");
     await flushPromises();
 
     wrapper.findComponent(DialogHost).vm.$emit("accountsChanged");
@@ -84,6 +84,6 @@ describe("App account-change propagation", () => {
     expect(sidebar.text()).not.toContain("Ferber Mail");
     // The mailbox still exists, so the selection is preserved (no reconcile).
     expect(listUnifiedInboxMock).not.toHaveBeenCalled();
-    expect(wrapper.get("button.mailbox").classes()).toContain("selected");
+    expect(wrapper.get("button.folder-button").classes()).toContain("selected");
   });
 });

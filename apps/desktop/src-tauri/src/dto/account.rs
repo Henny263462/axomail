@@ -4,38 +4,61 @@ use axomail_core::{
     Account, AccountAuth, AuthMechanism, ConnectionSecurity, HttpsUrl, IncomingProtocol, MailError,
     Mailbox, MailboxRole, OAuthClientId, OAuthConfig, OAuthProvider, OAuthScopes,
 };
+use axomail_storage::MailboxCounts;
 use serde::{Deserialize, Serialize};
 
 use super::checked_id;
 
-/// A mailbox as shown in the sidebar.
+/// A mailbox as shown in the sidebar folder tree.
+///
+/// `name` is the full folder path; the tree derives a leaf label from it and
+/// `delimiter`, and nests it under `parentId`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct MailboxSummaryDto {
     /// Local identifier.
     pub id: i64,
-    /// Decoded folder name.
+    /// Full decoded folder path.
     pub name: String,
     /// Well-known role (`inbox`, `drafts`, ...).
     pub role: MailboxRole,
-    /// Number of unread messages in the mailbox.
+    /// Containing folder id, or `null` for a top-level folder.
+    pub parent_id: Option<i64>,
+    /// Server hierarchy delimiter for this folder, or `null` when flat.
+    pub delimiter: Option<String>,
+    /// Whether the folder is subscribed.
+    pub subscribed: bool,
+    /// Whether the folder vanished from the server but still holds messages.
+    pub orphaned: bool,
+    /// Number of unread messages in the folder.
     pub unread_count: i64,
+    /// Total number of messages in the folder.
+    pub total_count: i64,
 }
 
 impl MailboxSummaryDto {
-    /// Builds a mailbox summary, validating its id and attaching a
-    /// separately computed unread count.
+    /// Builds a mailbox summary, validating its ids and attaching separately
+    /// computed message counts.
     ///
     /// # Errors
     ///
-    /// Returns [`MailError::Configuration`] if the mailbox id is out of the
-    /// safe integer range.
-    pub fn from_domain(mailbox: &Mailbox, unread_count: i64) -> Result<Self, MailError> {
+    /// Returns [`MailError::Configuration`] if the mailbox (or its parent) id
+    /// is out of the safe integer range.
+    pub fn from_domain(mailbox: &Mailbox, counts: MailboxCounts) -> Result<Self, MailError> {
+        let parent_id = mailbox
+            .parent
+            .map(|parent| checked_id(parent.value()))
+            .transpose()?;
         Ok(Self {
             id: checked_id(mailbox.id.value())?,
             name: mailbox.name.as_str().to_owned(),
             role: mailbox.role,
-            unread_count,
+            parent_id,
+            delimiter: mailbox.delimiter.clone(),
+            subscribed: mailbox.subscribed,
+            orphaned: mailbox.orphaned,
+            unread_count: counts.unread,
+            total_count: counts.total,
         })
     }
 }
