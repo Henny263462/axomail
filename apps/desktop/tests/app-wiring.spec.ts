@@ -26,6 +26,7 @@ const account: AccountSummary = {
   id: 1,
   displayName: "Ferber Mail",
   email: "klaus@theferbers.eu",
+  authMechanism: "password",
   mailboxes: [
     { id: 10, name: "Inbox", role: "inbox", unreadCount: 3 },
     { id: 11, name: "Sent", role: "sent", unreadCount: 0 },

@@ -2,6 +2,7 @@ import { flushPromises, mount, type VueWrapper } from "@vue/test-utils";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { createAccount } from "../src/api/accounts";
+import { oauthAuthorize } from "../src/api/oauth";
 import AccountSetupDialog from "../src/components/setup/AccountSetupDialog.vue";
 import SidebarPane from "../src/components/sidebar/SidebarPane.vue";
 import type { AccountSummary } from "../src/types/mail";
@@ -12,12 +13,19 @@ vi.mock("../src/api/accounts", () => ({
   deleteAccount: vi.fn(),
 }));
 
+vi.mock("../src/api/oauth", () => ({
+  oauthAuthorize: vi.fn(),
+  testAccountConnection: vi.fn(),
+}));
+
 const createAccountMock = vi.mocked(createAccount);
+const oauthAuthorizeMock = vi.mocked(oauthAuthorize);
 
 const createdAccount: AccountSummary = {
   id: 7,
   displayName: "Ferber Mail",
   email: "klaus@theferbers.eu",
+  authMechanism: "password",
   mailboxes: [{ id: 70, name: "Inbox", role: "inbox", unreadCount: 0 }],
 };
 
@@ -103,6 +111,7 @@ describe("AccountSetupDialog", () => {
     expect(createAccountMock).toHaveBeenCalledWith({
       displayName: "Klaus Ferber",
       email: "klaus@theferbers.eu",
+      auth: { mechanism: "password" },
       incoming: {
         protocol: "imap",
         host: "imap.theferbers.eu",
@@ -120,6 +129,59 @@ describe("AccountSetupDialog", () => {
       },
     });
     expect(wrapper.emitted("created")?.[0]).toEqual([createdAccount]);
+  });
+
+  it("runs the OAuth2 flow: creates the account, then signs in", async () => {
+    oauthAuthorizeMock.mockResolvedValue({ status: "authorized" });
+    const wrapper = mount(AccountSetupDialog);
+
+    await wrapper.get("#account-display-name").setValue("Klaus Ferber");
+    await wrapper.get("#account-email").setValue("klaus@gmail.com");
+    await wrapper.get("#auth-mechanism").setValue("oauth2");
+    await wrapper.get("#oauth-client-id").setValue("cid.apps.googleusercontent.com");
+    await wrapper.get("#incoming-host").setValue("imap.gmail.com");
+    await wrapper.get("#incoming-username").setValue("klaus@gmail.com");
+    await wrapper.get("#outgoing-host").setValue("smtp.gmail.com");
+    await wrapper.get("#outgoing-username").setValue("klaus@gmail.com");
+    // No password inputs are rendered in OAuth2 mode.
+    expect(wrapper.find("#incoming-password").exists()).toBe(false);
+
+    await wrapper.get("form").trigger("submit");
+    await flushPromises();
+
+    const payload = createAccountMock.mock.calls[0]?.[0];
+    expect(payload?.auth).toEqual({
+      mechanism: "oauth2",
+      oauth: { provider: "gmail", clientId: "cid.apps.googleusercontent.com" },
+    });
+    expect(payload?.incoming.password).toBe("");
+    expect(oauthAuthorizeMock).toHaveBeenCalledWith(7);
+    expect(wrapper.emitted("created")?.[0]).toEqual([createdAccount]);
+  });
+
+  it("keeps the dialog open and explains a declined OAuth2 sign-in", async () => {
+    oauthAuthorizeMock.mockResolvedValue({ status: "denied" });
+    const wrapper = mount(AccountSetupDialog);
+
+    await wrapper.get("#account-display-name").setValue("Klaus Ferber");
+    await wrapper.get("#account-email").setValue("klaus@gmail.com");
+    await wrapper.get("#auth-mechanism").setValue("oauth2");
+    await wrapper.get("#oauth-client-id").setValue("cid");
+    await wrapper.get("#incoming-host").setValue("imap.gmail.com");
+    await wrapper.get("#incoming-username").setValue("klaus@gmail.com");
+    await wrapper.get("#outgoing-host").setValue("smtp.gmail.com");
+    await wrapper.get("#outgoing-username").setValue("klaus@gmail.com");
+
+    await wrapper.get("form").trigger("submit");
+    await flushPromises();
+
+    expect(wrapper.get('[role="status"]').text()).toContain("declined");
+    expect(wrapper.emitted("created")).toBeUndefined();
+    // A second submit reuses the same created account rather than recreating.
+    await wrapper.get("form").trigger("submit");
+    await flushPromises();
+    expect(createAccountMock).toHaveBeenCalledTimes(1);
+    expect(oauthAuthorizeMock).toHaveBeenCalledTimes(2);
   });
 
   it("shows the backend error string and stays open on failure", async () => {

@@ -34,6 +34,7 @@ mod html;
 mod html_policy;
 mod keyring_store;
 mod memory_store;
+mod oauth_tokens;
 mod redact;
 mod remote_policy;
 mod scam;
@@ -47,6 +48,7 @@ pub use html::{
 };
 pub use keyring_store::KeyringSecretStore;
 pub use memory_store::InMemorySecretStore;
+pub use oauth_tokens::OAuthTokens;
 pub use redact::{redact_email, redact_secretlike};
 pub use remote_policy::RemoteContentPolicy;
 pub use scam::{ScamIndicator, ScamIndicatorKind, detect_scam_indicators};

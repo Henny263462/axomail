@@ -24,7 +24,13 @@ interface TauriGlobals {
 }
 
 const accounts: AccountSummary[] = [
-  { id: 2, displayName: "Legacy POP", email: "work@example.org", mailboxes: [] },
+  {
+    id: 2,
+    displayName: "Legacy POP",
+    email: "work@example.org",
+    authMechanism: "password",
+    mailboxes: [],
+  },
 ];
 
 /** A minimal context so a section can be exercised in isolation. */

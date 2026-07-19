@@ -18,6 +18,7 @@ interface TauriGlobals {
 const input: CreateAccountInput = {
   displayName: "Klaus Ferber",
   email: "klaus@theferbers.eu",
+  auth: { mechanism: "password" },
   incoming: {
     protocol: "imap",
     host: "imap.theferbers.eu",

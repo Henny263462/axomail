@@ -45,6 +45,9 @@ async function onTest(): Promise<void> {
     result.value = await testConnection({
       displayName: props.account.displayName,
       email: props.account.email,
+      // The account-edit flow only manages password accounts; OAuth setup
+      // lives in AccountSetupDialog (Track 1.2).
+      auth: { mechanism: "password" },
       incoming: {
         protocol: props.account.incoming.protocol,
         host: props.incoming.host.trim(),

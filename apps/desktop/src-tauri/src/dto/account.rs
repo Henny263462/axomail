@@ -1,7 +1,8 @@
 //! Account, mailbox, and account-setup DTOs.
 
 use axomail_core::{
-    Account, ConnectionSecurity, IncomingProtocol, MailError, Mailbox, MailboxRole,
+    Account, AccountAuth, AuthMechanism, ConnectionSecurity, HttpsUrl, IncomingProtocol, MailError,
+    Mailbox, MailboxRole, OAuthClientId, OAuthConfig, OAuthProvider, OAuthScopes,
 };
 use serde::{Deserialize, Serialize};
 
@@ -49,6 +50,9 @@ pub struct AccountSummaryDto {
     pub display_name: String,
     /// Primary address.
     pub email: String,
+    /// How the account authenticates (`password` or `oauth2`), so the UI can
+    /// offer "Sign in with browser" for OAuth accounts. Non-secret.
+    pub auth_mechanism: AuthMechanism,
     /// The account's mailboxes.
     pub mailboxes: Vec<MailboxSummaryDto>,
 }
@@ -66,6 +70,7 @@ impl AccountSummaryDto {
             id: checked_id(account.id.value())?,
             display_name: account.display_name.clone(),
             email: account.email.as_str().to_owned(),
+            auth_mechanism: account.auth.mechanism(),
             mailboxes,
         })
     }
@@ -263,8 +268,126 @@ pub struct CreateAccountInput {
     pub display_name: String,
     /// Primary address.
     pub email: String,
+    /// Authentication choice. Absent input defaults to password so existing
+    /// callers keep working.
+    #[serde(default)]
+    pub auth: AuthInput,
     /// Receiving configuration.
     pub incoming: IncomingInput,
     /// Sending configuration.
     pub outgoing: ServerInput,
+}
+
+/// The account's chosen authentication mechanism and, for OAuth2, its
+/// non-secret configuration. No tokens or passwords are carried here.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AuthInput {
+    /// `password` or `oauth2`.
+    pub mechanism: AuthMechanism,
+    /// OAuth2 configuration, required when `mechanism` is `oauth2`.
+    #[serde(default)]
+    pub oauth: Option<OAuthInput>,
+}
+
+impl Default for AuthInput {
+    fn default() -> Self {
+        Self {
+            mechanism: AuthMechanism::Password,
+            oauth: None,
+        }
+    }
+}
+
+impl AuthInput {
+    /// Resolves the input into a validated [`AccountAuth`].
+    ///
+    /// # Errors
+    ///
+    /// Returns [`MailError::Configuration`] when an OAuth2 mechanism is chosen
+    /// without configuration, or when any OAuth field is invalid.
+    pub fn into_account_auth(self) -> Result<AccountAuth, MailError> {
+        match self.mechanism {
+            AuthMechanism::Password => Ok(AccountAuth::Password),
+            AuthMechanism::OAuth2 => {
+                let oauth = self.oauth.ok_or_else(|| MailError::Configuration {
+                    message: "OAuth2 was selected but no provider configuration was supplied"
+                        .to_owned(),
+                })?;
+                Ok(AccountAuth::OAuth2(oauth.into_config()?))
+            }
+        }
+    }
+}
+
+/// OAuth2 configuration from the setup form: a provider preset (or custom),
+/// the user-supplied client id, and optional endpoint/scope overrides.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OAuthInput {
+    /// Preset provider, or `custom`.
+    pub provider: OAuthProvider,
+    /// User-supplied public client id (axomail ships none).
+    pub client_id: String,
+    /// Authorization endpoint; required for `custom`, overrides a preset.
+    #[serde(default)]
+    pub auth_url: Option<String>,
+    /// Token endpoint; required for `custom`, overrides a preset.
+    #[serde(default)]
+    pub token_url: Option<String>,
+    /// Scopes; required for `custom`, override a preset.
+    #[serde(default)]
+    pub scopes: Option<Vec<String>>,
+}
+
+impl OAuthInput {
+    /// Builds a validated [`OAuthConfig`], filling any omitted endpoint or
+    /// scope from the provider preset.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`MailError::Configuration`] for an invalid client id or
+    /// endpoint/scope, or for a `custom` provider missing a required field.
+    pub fn into_config(self) -> Result<OAuthConfig, MailError> {
+        let client_id = OAuthClientId::parse(self.client_id)?;
+        let preset = self.provider.preset();
+        let auth_url = resolve_url(
+            self.auth_url,
+            preset.as_ref().map(|p| &p.auth_url),
+            "auth_url",
+        )?;
+        let token_url = resolve_url(
+            self.token_url,
+            preset.as_ref().map(|p| &p.token_url),
+            "token_url",
+        )?;
+        let scopes = match self.scopes {
+            Some(scopes) => OAuthScopes::new(scopes)?,
+            None => preset
+                .map(|p| p.scopes)
+                .ok_or_else(|| MailError::Configuration {
+                    message: "a custom OAuth provider requires scopes".to_owned(),
+                })?,
+        };
+        Ok(OAuthConfig {
+            client_id,
+            auth_url,
+            token_url,
+            scopes,
+        })
+    }
+}
+
+/// Picks a supplied URL override, else the preset default, validating either.
+fn resolve_url(
+    supplied: Option<String>,
+    preset: Option<&HttpsUrl>,
+    field: &str,
+) -> Result<HttpsUrl, MailError> {
+    match supplied {
+        Some(value) => HttpsUrl::parse(value),
+        None => preset.cloned().ok_or_else(|| MailError::Configuration {
+            message: format!("a custom OAuth provider requires {field}"),
+        }),
+    }
 }

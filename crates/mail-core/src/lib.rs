@@ -14,10 +14,12 @@
 
 mod account;
 mod address;
+mod conn_credential;
 mod error;
 mod id;
 mod mailbox;
 mod message;
+mod oauth;
 mod provider;
 mod provider_types;
 
@@ -26,10 +28,15 @@ pub use account::{
     ServerEndpoint,
 };
 pub use address::{Address, EmailAddress};
+pub use conn_credential::{ConnectionCredential, xoauth2_sasl};
 pub use error::{ErrorClass, MailError};
 pub use id::{AccountId, AttachmentId, CredentialRef, MailboxId, MessageId, RemoteMessageId};
 pub use mailbox::{Mailbox, MailboxName, MailboxRole};
 pub use message::{MessageEnvelope, MessageFlags, ThreadingHeaders, UtcTimestamp};
+pub use oauth::{
+    AccountAuth, AuthMechanism, HttpsUrl, OAuthClientId, OAuthConfig, OAuthPreset, OAuthProvider,
+    OAuthScopes,
+};
 pub use provider::{IncomingMailProvider, OutgoingMailProvider};
 pub use provider_types::{
     MailboxSyncState, OutgoingAttachment, OutgoingMessage, RawMessage, RemoteEnvelope,

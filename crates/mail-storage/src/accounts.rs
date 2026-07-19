@@ -5,8 +5,9 @@
 use std::num::NonZeroU16;
 
 use axomail_core::{
-    Account, AccountId, ConnectionSecurity, CredentialRef, EmailAddress, IncomingProtocol,
-    IncomingServerConfig, MailError, OutgoingServerConfig, ServerEndpoint,
+    Account, AccountAuth, AccountId, ConnectionSecurity, CredentialRef, EmailAddress, HttpsUrl,
+    IncomingProtocol, IncomingServerConfig, MailError, OAuthClientId, OAuthConfig, OAuthScopes,
+    OutgoingServerConfig, ServerEndpoint,
 };
 use serde::{Deserialize, Serialize};
 use sqlx::SqlitePool;
@@ -18,7 +19,8 @@ const ACCOUNT_COLUMNS: &str = "id, display_name, email, \
     incoming_protocol, incoming_host, incoming_port, incoming_security, \
     incoming_username, incoming_credential_ref, \
     outgoing_host, outgoing_port, outgoing_security, \
-    outgoing_username, outgoing_credential_ref";
+    outgoing_username, outgoing_credential_ref, \
+    auth_mechanism, oauth_client_id, oauth_auth_url, oauth_token_url, oauth_scopes";
 
 /// Account data to insert, before an identifier has been assigned.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -27,6 +29,9 @@ pub struct NewAccount {
     pub display_name: String,
     /// Primary address used as the default sender.
     pub email: EmailAddress,
+    /// Authentication mechanism (password or OAuth2); non-secret only.
+    #[serde(default = "AccountAuth::default_password")]
+    pub auth: AccountAuth,
     /// Receiving configuration.
     pub incoming: IncomingServerConfig,
     /// Sending configuration.
@@ -76,14 +81,16 @@ impl<'a> AccountRepo<'a> {
         let incoming_port = i64::from(new.incoming.endpoint.port().get());
         let outgoing_port = i64::from(new.outgoing.endpoint.port().get());
 
+        let auth = AuthColumns::from_auth(&new.auth);
         let id: i64 = sqlx::query_scalar(
             "INSERT INTO accounts (
                 display_name, email,
                 incoming_protocol, incoming_host, incoming_port, incoming_security,
                 incoming_username, incoming_credential_ref,
                 outgoing_host, outgoing_port, outgoing_security,
-                outgoing_username, outgoing_credential_ref
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                outgoing_username, outgoing_credential_ref,
+                auth_mechanism, oauth_client_id, oauth_auth_url, oauth_token_url, oauth_scopes
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             RETURNING id",
         )
         .bind(new.display_name.as_str())
@@ -99,6 +106,11 @@ impl<'a> AccountRepo<'a> {
         .bind(security_str(new.outgoing.security))
         .bind(new.outgoing.username.as_str())
         .bind(new.outgoing.credential.as_str())
+        .bind(auth.mechanism)
+        .bind(auth.client_id)
+        .bind(auth.auth_url)
+        .bind(auth.token_url)
+        .bind(auth.scopes)
         .fetch_one(self.pool)
         .await
         .map_err(|error| map_sqlx("insert_account", error))?;
@@ -107,6 +119,7 @@ impl<'a> AccountRepo<'a> {
             id: AccountId::new(id),
             display_name: new.display_name.clone(),
             email: new.email.clone(),
+            auth: new.auth.clone(),
             incoming: new.incoming.clone(),
             outgoing: new.outgoing.clone(),
         })
@@ -228,11 +241,19 @@ struct AccountRow {
     outgoing_security: String,
     outgoing_username: String,
     outgoing_credential_ref: String,
+    auth_mechanism: String,
+    oauth_client_id: Option<String>,
+    oauth_auth_url: Option<String>,
+    oauth_token_url: Option<String>,
+    oauth_scopes: Option<String>,
 }
 
 impl AccountRow {
     /// Converts a stored row into a validated [`Account`].
     fn into_account(self) -> Result<Account, MailError> {
+        // Parse auth first: it only borrows `self`, so it must run before the
+        // field moves below.
+        let auth = self.parse_auth()?;
         let incoming = IncomingServerConfig {
             protocol: parse_protocol(&self.incoming_protocol)?,
             endpoint: ServerEndpoint::new(self.incoming_host, port(self.incoming_port)?)?,
@@ -250,10 +271,87 @@ impl AccountRow {
             id: AccountId::new(self.id),
             display_name: self.display_name,
             email: EmailAddress::parse(&self.email)?,
+            auth,
             incoming,
             outgoing,
         })
     }
+
+    /// Reconstructs the [`AccountAuth`] from the stored auth columns.
+    fn parse_auth(&self) -> Result<AccountAuth, MailError> {
+        match self.auth_mechanism.as_str() {
+            "password" => Ok(AccountAuth::Password),
+            "oauth2" => {
+                let client_id = OAuthClientId::parse(oauth_field(
+                    self.oauth_client_id.as_deref(),
+                    "oauth_client_id",
+                )?)?;
+                let auth_url = HttpsUrl::parse(oauth_field(
+                    self.oauth_auth_url.as_deref(),
+                    "oauth_auth_url",
+                )?)?;
+                let token_url = HttpsUrl::parse(oauth_field(
+                    self.oauth_token_url.as_deref(),
+                    "oauth_token_url",
+                )?)?;
+                let scopes = OAuthScopes::new(
+                    oauth_field(self.oauth_scopes.as_deref(), "oauth_scopes")?
+                        .split_whitespace()
+                        .map(str::to_owned)
+                        .collect(),
+                )?;
+                Ok(AccountAuth::OAuth2(OAuthConfig {
+                    client_id,
+                    auth_url,
+                    token_url,
+                    scopes,
+                }))
+            }
+            _ => Err(MailError::Database {
+                message: "read_account: unknown auth mechanism".to_owned(),
+            }),
+        }
+    }
+}
+
+/// The five auth columns to bind on insert, derived from an [`AccountAuth`].
+struct AuthColumns {
+    mechanism: &'static str,
+    client_id: Option<String>,
+    auth_url: Option<String>,
+    token_url: Option<String>,
+    scopes: Option<String>,
+}
+
+impl AuthColumns {
+    /// Splits an [`AccountAuth`] into its persisted column values. Password
+    /// accounts leave every OAuth column `NULL`.
+    fn from_auth(auth: &AccountAuth) -> Self {
+        match auth {
+            AccountAuth::Password => Self {
+                mechanism: "password",
+                client_id: None,
+                auth_url: None,
+                token_url: None,
+                scopes: None,
+            },
+            AccountAuth::OAuth2(config) => Self {
+                mechanism: "oauth2",
+                client_id: Some(config.client_id.as_str().to_owned()),
+                auth_url: Some(config.auth_url.as_str().to_owned()),
+                token_url: Some(config.token_url.as_str().to_owned()),
+                scopes: Some(config.scopes.as_space_delimited()),
+            },
+        }
+    }
+}
+
+/// Returns a required OAuth column value, mapping a missing one to a database
+/// integrity error (an `oauth2` row must carry every OAuth field).
+fn oauth_field<'a>(value: Option<&'a str>, column: &str) -> Result<&'a str, MailError> {
+    value.ok_or_else(|| MailError::Database {
+        message: format!("read_account: oauth2 account is missing {column}"),
+    })
 }
 
 /// Serialized form of an incoming protocol.

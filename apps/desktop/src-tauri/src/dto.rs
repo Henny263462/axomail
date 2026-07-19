@@ -23,15 +23,16 @@ mod detail;
 mod identity;
 mod jobs;
 mod message;
+mod oauth;
 mod search;
 mod settings;
 mod sync_event;
 mod unified;
 
 pub use account::{
-    AccountDetailDto, AccountSummaryDto, CreateAccountInput, IncomingInput,
-    IncomingServerDetailDto, MailboxSummaryDto, OutgoingServerDetailDto, ServerEndpointInput,
-    ServerInput, UpdateAccountInput,
+    AccountDetailDto, AccountSummaryDto, AuthInput, CreateAccountInput, IncomingInput,
+    IncomingServerDetailDto, MailboxSummaryDto, OAuthInput, OutgoingServerDetailDto,
+    ServerEndpointInput, ServerInput, UpdateAccountInput,
 };
 pub use compose::{ComposeInput, DraftDto, OutboxItemDto, SendOutcomeDto};
 pub use connection::ConnectionTestResult;
@@ -39,6 +40,7 @@ pub use detail::{AttachmentMetaDto, MessageDetailDto, RecipientDto, ScamFlagDto}
 pub use identity::{IdentityDto, IdentityInput};
 pub use jobs::SyncJobDto;
 pub use message::{MessageListItemDto, MessageListPageDto};
+pub use oauth::{OAuthAuthorizeResult, OAuthAuthorizeStatus};
 pub use search::SearchResultDto;
 pub use settings::{Pop3DeletePolicyDto, SettingsDto, ThemePreference};
 pub use sync_event::SyncEventDto;

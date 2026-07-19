@@ -4,9 +4,12 @@
 
 mod common;
 
-use axomail_core::{MailboxRole, MessageFlags, SyncOutcome, ThreadingHeaders};
+use axomail_core::{AccountAuth, MailboxRole, MessageFlags, SyncOutcome, ThreadingHeaders};
 use axomail_storage::{MessageCursor, MessagePage, Store};
-use common::{pop3_envelope_with_threading, sample_account, sample_mailbox, sample_message};
+use common::{
+    pop3_envelope_with_threading, sample_account, sample_mailbox, sample_message,
+    sample_oauth_account,
+};
 
 /// Opens a fresh temp-file store, returning it and the temp dir to keep
 /// the file alive for the test's duration.
@@ -127,6 +130,33 @@ async fn account_update_rejects_an_unknown_id() {
         .await
         .unwrap_err();
     assert!(matches!(error, MailError::Configuration { .. }));
+}
+
+#[tokio::test]
+async fn oauth_account_round_trips_with_config_columns() {
+    let store = Store::open_in_memory().await.unwrap();
+    let repo = store.accounts();
+
+    let created = repo
+        .insert(&sample_oauth_account("Gmail", "klaus@gmail.com"))
+        .await
+        .unwrap();
+
+    let fetched = repo.get(created.id).await.unwrap().expect("account exists");
+    assert_eq!(fetched, created);
+    // The mechanism and its non-secret config survive the round trip.
+    let AccountAuth::OAuth2(config) = &fetched.auth else {
+        panic!("expected an OAuth2 account");
+    };
+    assert_eq!(config.client_id.as_str(), "123.apps.googleusercontent.com");
+    assert_eq!(
+        config.token_url.as_str(),
+        "https://oauth2.googleapis.com/token"
+    );
+    assert_eq!(
+        config.scopes.as_space_delimited(),
+        "https://mail.google.com/"
+    );
 }
 
 #[tokio::test]

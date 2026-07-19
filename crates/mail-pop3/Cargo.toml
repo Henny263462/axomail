@@ -16,6 +16,8 @@ rustls = { workspace = true }
 webpki-roots = { workspace = true }
 tracing = { workspace = true }
 futures = { workspace = true }
+# XOAUTH2 SASL initial-response encoding for the AUTH command.
+base64 = { workspace = true }
 
 [dev-dependencies]
 axomail-test-support = { workspace = true }

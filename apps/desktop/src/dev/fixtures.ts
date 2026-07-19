@@ -15,6 +15,7 @@ export const fixtureAccounts: AccountSummary[] = [
     id: 1,
     displayName: "Fixture account",
     email: "fixture@example.org",
+    authMechanism: "password",
     mailboxes: [
       { id: 1, name: "Inbox", role: "inbox", unreadCount: 2 },
       { id: 2, name: "Drafts", role: "drafts", unreadCount: 0 },

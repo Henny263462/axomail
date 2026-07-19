@@ -4,8 +4,8 @@
 mod common;
 
 use axomail_core::{
-    AccountId, ConnectionSecurity, IncomingProtocol, MailError, MailboxId, MailboxRole,
-    MessageEnvelope, MessageFlags, MessageId, ThreadingHeaders,
+    AccountAuth, AccountId, AuthMechanism, ConnectionSecurity, IncomingProtocol, MailError,
+    MailboxId, MailboxRole, MessageEnvelope, MessageFlags, MessageId, ThreadingHeaders,
 };
 use axomail_desktop_lib::commands::accounts::{
     create_account_impl, delete_account_impl, list_account_details_impl, list_accounts_impl,
@@ -16,7 +16,7 @@ use axomail_desktop_lib::dto::{
 };
 use axomail_security::{Direction, SecretStore, credential_ref_for_account};
 use axomail_storage::Store;
-use common::{sample_message, secret_stores, valid_input};
+use common::{oauth_account_input, sample_message, secret_stores, valid_input};
 
 #[tokio::test]
 async fn create_account_stores_secret_reference_and_seeds_mailboxes() {
@@ -83,6 +83,75 @@ async fn create_account_stores_secret_reference_and_seeds_mailboxes() {
 
     // The mailboxes are real rows, not fixtures.
     assert_eq!(store.mailboxes().list(account_id).await.unwrap().len(), 5);
+}
+
+#[tokio::test]
+async fn create_oauth_account_stores_config_but_no_secret() {
+    let store = Store::open_in_memory().await.unwrap();
+    let (secrets_concrete, secrets) = secret_stores();
+
+    let summary = create_account_impl(&store, &secrets, oauth_account_input())
+        .await
+        .unwrap();
+    assert_eq!(summary.auth_mechanism, AuthMechanism::OAuth2);
+
+    let account_id = AccountId::new(summary.id);
+    let account = store
+        .accounts()
+        .get(account_id)
+        .await
+        .unwrap()
+        .expect("account row exists");
+
+    // The Gmail preset was resolved into concrete endpoints.
+    let AccountAuth::OAuth2(config) = &account.auth else {
+        panic!("expected an OAuth2 account");
+    };
+    assert_eq!(config.client_id.as_str(), "123.apps.googleusercontent.com");
+    assert_eq!(
+        config.token_url.as_str(),
+        "https://oauth2.googleapis.com/token"
+    );
+
+    // Crucially, no secret is stored at creation: the tokens come from the
+    // separate browser sign-in.
+    let incoming_ref = credential_ref_for_account(account_id, Direction::Incoming);
+    let outgoing_ref = credential_ref_for_account(account_id, Direction::Outgoing);
+    assert!(
+        secrets_concrete
+            .get_secret(&incoming_ref)
+            .unwrap()
+            .is_none()
+    );
+    assert!(
+        secrets_concrete
+            .get_secret(&outgoing_ref)
+            .unwrap()
+            .is_none()
+    );
+
+    // The account nonetheless shows up in the list with its OAuth mechanism.
+    let listed = list_accounts_impl(&store).await.unwrap();
+    assert_eq!(listed.len(), 1);
+    assert_eq!(listed[0].auth_mechanism, AuthMechanism::OAuth2);
+}
+
+#[tokio::test]
+async fn create_oauth_account_without_config_is_rejected() {
+    let store = Store::open_in_memory().await.unwrap();
+    let (_concrete, secrets) = secret_stores();
+    let mut input = oauth_account_input();
+    // Select OAuth2 but drop the configuration.
+    input.auth = axomail_desktop_lib::dto::AuthInput {
+        mechanism: AuthMechanism::OAuth2,
+        oauth: None,
+    };
+
+    let error = create_account_impl(&store, &secrets, input)
+        .await
+        .unwrap_err();
+    assert!(matches!(error, MailError::Configuration { .. }));
+    assert!(store.accounts().list().await.unwrap().is_empty());
 }
 
 #[tokio::test]

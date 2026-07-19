@@ -71,18 +71,23 @@ futures = "0.3"
 # Test-only: self-signed certificates for the local TLS test servers.
 rcgen = "0.14.8"
 
-# OAuth2 / autoconfig prerequisites (Wave 1 Stage 0, ADR-0009). Versions
-# verified against crates.io on 2026-07-19.
+# OAuth2 / autoconfig prerequisites (Wave 1 Stage 0 + Track 1.2, ADR-0009).
+# Versions verified against crates.io on 2026-07-19.
 # HTTPS client for the OAuth2 token exchange (Track 1.2) and later ISPDB
 # autoconfig (5.3). `rustls-no-provider` selects rustls without bundling a
 # crypto provider, so the process installs `ring` as the default
 # `CryptoProvider` and reqwest reuses the workspace rustls 0.23 / ring stack —
 # no aws-lc-rs, no native-tls. It shares the same rustls-platform-verifier
 # already pulled by mail-send (SMTP). reqwest 0.13.4 also matches the version
-# tauri already resolves, so no duplicate reqwest enters the lock.
-reqwest = { version = "0.13.4", default-features = false, features = ["rustls-no-provider", "json"] }
-# XOAUTH2 SASL string construction for IMAP/SMTP (Track 1.2).
+# tauri already resolves, so no duplicate reqwest enters the lock. `form` adds
+# the `application/x-www-form-urlencoded` token-exchange request bodies.
+reqwest = { version = "0.13.4", default-features = false, features = ["rustls-no-provider", "json", "form"] }
+# XOAUTH2 SASL string construction for IMAP/SMTP and the PKCE base64 lines (Track 1.2).
 base64 = "0.22.1"
+# ring supplies the CSPRNG (PKCE verifier + CSRF state) and SHA-256 (the PKCE
+# S256 challenge). It is already the rustls crypto provider in the tree, so
+# this adds no new graph dependency. Version pinned to the resolved one.
+ring = "0.17.14"
 # Opens the OAuth2 consent URL in the system browser (RFC 8252 external agent).
 tauri-plugin-opener = "2.5.4"
 

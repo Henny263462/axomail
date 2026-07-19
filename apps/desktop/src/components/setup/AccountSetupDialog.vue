@@ -1,48 +1,45 @@
 <script setup lang="ts">
-import { onMounted, ref } from "vue";
+import { computed, onMounted, ref } from "vue";
 
-import { createAccount } from "../../api/accounts";
-import { testConnection } from "../../api/connection";
-import type {
-  AccountSummary,
-  ConnectionTestResult,
-  CreateAccountInput,
-} from "../../types/mail";
+import type { AccountSummary } from "../../types/mail";
+import AuthMethodFields from "./AuthMethodFields.vue";
 import ConnectionTestPanel from "./ConnectionTestPanel.vue";
-import type { ServerDraft } from "./draft";
 import ServerConfigFields from "./ServerConfigFields.vue";
+import { useAccountSetup } from "./useAccountSetup";
 
 const emit = defineEmits<{
   close: [];
   created: [account: AccountSummary];
 }>();
 
-const displayName = ref("");
-const email = ref("");
+const {
+  displayName,
+  email,
+  mechanism,
+  provider,
+  clientId,
+  customAuthUrl,
+  customTokenUrl,
+  customScopes,
+  incoming,
+  outgoing,
+  pending,
+  errorMessage,
+  testing,
+  testResult,
+  testMessage,
+  isOAuth,
+  onTest,
+  onSubmit,
+} = useAccountSetup({ onCreated: (account) => emit("created", account) });
 
-const incoming = ref<ServerDraft>({
-  protocol: "imap",
-  host: "",
-  port: 993,
-  security: "tls",
-  username: "",
-  password: "",
-});
-const outgoing = ref<ServerDraft>({
-  host: "",
-  port: 465,
-  security: "tls",
-  username: "",
-  password: "",
-});
-
-const pending = ref(false);
-const errorMessage = ref("");
-const testing = ref(false);
-const testResult = ref<ConnectionTestResult | null>(null);
-const testMessage = ref("");
 const root = ref<HTMLElement | null>(null);
 const firstField = ref<HTMLInputElement | null>(null);
+
+const submitLabel = computed(() => {
+  if (pending.value) return isOAuth() ? "Signing in…" : "Adding…";
+  return isOAuth() ? "Add account & sign in" : "Add account";
+});
 
 onMounted(() => firstField.value?.focus());
 
@@ -76,108 +73,6 @@ function onKeydown(event: KeyboardEvent): void {
   } else if (!event.shiftKey && document.activeElement === last) {
     event.preventDefault();
     first?.focus();
-  }
-}
-
-function validate(): string | null {
-  if (displayName.value.trim() === "") return "Enter a display name.";
-  const trimmedEmail = email.value.trim();
-  if (trimmedEmail === "" || !trimmedEmail.includes("@")) {
-    return "Enter a valid email address.";
-  }
-  if (incoming.value.host.trim() === "") {
-    return "Enter the incoming server address.";
-  }
-  if (incoming.value.username.trim() === "") {
-    return "Enter the incoming username.";
-  }
-  if (incoming.value.password === "") return "Enter the incoming password.";
-  if (outgoing.value.host.trim() === "") {
-    return "Enter the outgoing server address.";
-  }
-  if (outgoing.value.username.trim() === "") {
-    return "Enter the outgoing username.";
-  }
-  if (outgoing.value.password === "") return "Enter the outgoing password.";
-  return null;
-}
-
-function buildInput(): CreateAccountInput {
-  return {
-    displayName: displayName.value.trim(),
-    email: email.value.trim(),
-    incoming: {
-      protocol: incoming.value.protocol ?? "imap",
-      host: incoming.value.host.trim(),
-      port: incoming.value.port,
-      security: incoming.value.security,
-      username: incoming.value.username.trim(),
-      password: incoming.value.password,
-    },
-    outgoing: {
-      host: outgoing.value.host.trim(),
-      port: outgoing.value.port,
-      security: outgoing.value.security,
-      username: outgoing.value.username.trim(),
-      password: outgoing.value.password,
-    },
-  };
-}
-
-function messageFrom(error: unknown): string {
-  if (typeof error === "string") return error;
-  if (error instanceof Error) return error.message;
-  return "Could not create the account.";
-}
-
-/**
- * Runs a live connection test for both servers and shows each result
- * independently. Nothing is persisted; the entered secrets go only to the
- * live login attempt (see {@link testConnection}).
- */
-async function onTest(): Promise<void> {
-  if (testing.value) return;
-  testResult.value = null;
-  testMessage.value = "";
-  if (incoming.value.host.trim() === "" || outgoing.value.host.trim() === "") {
-    testMessage.value = "Enter both server addresses before testing.";
-    return;
-  }
-  testing.value = true;
-  try {
-    const result = await testConnection(buildInput());
-    if (result === null) {
-      testMessage.value =
-        "Connection test needs the desktop app; it is unavailable in the browser preview.";
-      return;
-    }
-    testResult.value = result;
-  } finally {
-    testing.value = false;
-  }
-}
-
-async function onSubmit(): Promise<void> {
-  if (pending.value) return;
-  const problem = validate();
-  if (problem !== null) {
-    errorMessage.value = problem;
-    return;
-  }
-  errorMessage.value = "";
-  pending.value = true;
-  try {
-    const account = await createAccount(buildInput());
-    if (account === null) {
-      errorMessage.value =
-        "Account setup needs the desktop app; it is unavailable in the browser preview.";
-      return;
-    }
-    emit("created", account);
-  } catch (error) {
-    errorMessage.value = messageFrom(error);
-  } finally {
-    pending.value = false;
   }
 }
 </script>
@@ -225,17 +120,28 @@ async function onSubmit(): Promise<void> {
           >
         </div>
 
+        <AuthMethodFields
+          v-model:mechanism="mechanism"
+          v-model:provider="provider"
+          v-model:client-id="clientId"
+          v-model:auth-url="customAuthUrl"
+          v-model:token-url="customTokenUrl"
+          v-model:scopes="customScopes"
+        />
+
         <ServerConfigFields
           v-model="incoming"
           kind="incoming"
           id-prefix="incoming"
           legend="Incoming mail"
+          :hide-password="isOAuth()"
         />
         <ServerConfigFields
           v-model="outgoing"
           kind="outgoing"
           id-prefix="outgoing"
           legend="Outgoing mail (SMTP)"
+          :hide-password="isOAuth()"
         />
 
         <p
@@ -266,7 +172,7 @@ async function onSubmit(): Promise<void> {
             class="button primary"
             :disabled="pending"
           >
-            {{ pending ? "Adding…" : "Add account" }}
+            {{ submitLabel }}
           </button>
         </div>
       </form>

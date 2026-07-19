@@ -9,6 +9,7 @@ pub mod commands;
 pub mod composition;
 pub mod dto;
 pub mod notifications;
+pub mod oauth;
 pub mod pop3_sync;
 pub mod scheduler;
 pub mod settings;
@@ -43,6 +44,10 @@ const SYNC_EVENT: &str = "axomail://sync";
 /// without presenting a window: the client is useless without its local
 /// database.
 pub fn run() {
+    // reqwest is built with rustls-no-provider (ADR-0009); install the ring
+    // crypto provider once, before any TLS client is constructed. Idempotent
+    // and order-independent.
+    oauth::install_crypto_provider();
     let outcome = tauri::Builder::default()
         .plugin(tauri_plugin_notification::init())
         // Opens the OAuth2 consent URL in the system browser (ADR-0009). The
@@ -87,6 +92,8 @@ pub fn run() {
             commands::accounts::update_account,
             commands::accounts::delete_account,
             commands::connection::test_connection,
+            commands::connection::test_account_connection,
+            commands::oauth::oauth_authorize,
             commands::messages::list_messages,
             commands::messages::mark_message_seen,
             commands::detail::get_message_detail,

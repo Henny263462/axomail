@@ -4,8 +4,8 @@ use std::num::NonZeroU16;
 use std::sync::Arc;
 
 use axomail_core::{
-    Account, AccountId, CredentialRef, EmailAddress, IncomingServerConfig, MailError, Mailbox,
-    MailboxName, MailboxRole, OutgoingServerConfig, ServerEndpoint,
+    Account, AccountAuth, AccountId, CredentialRef, EmailAddress, IncomingServerConfig, MailError,
+    Mailbox, MailboxName, MailboxRole, OutgoingServerConfig, ServerEndpoint,
 };
 use axomail_security::{Direction, credential_ref_for_account};
 use axomail_storage::{
@@ -69,10 +69,11 @@ pub async fn list_accounts_impl(store: &Store) -> Result<Vec<AccountSummaryDto>,
 pub async fn create_account_impl(
     store: &Store,
     secrets: &SharedSecretStore,
-    input: CreateAccountInput,
+    mut input: CreateAccountInput,
 ) -> Result<AccountSummaryDto, MailError> {
     // 1. Validate every field into a core value type before touching secrets.
     let email = EmailAddress::parse(&input.email)?;
+    let account_auth = std::mem::take(&mut input.auth).into_account_auth()?;
     let incoming_endpoint =
         ServerEndpoint::new(input.incoming.host, nonzero_port(input.incoming.port)?)?;
     let outgoing_endpoint =
@@ -84,17 +85,24 @@ pub async fn create_account_impl(
     let incoming_ref = credential_ref_for_account(account_id, Direction::Incoming);
     let outgoing_ref = credential_ref_for_account(account_id, Direction::Outgoing);
 
-    // 3. Store both secrets first.
-    set_secret(secrets, incoming_ref.clone(), input.incoming.password).await?;
-    if let Err(error) = set_secret(secrets, outgoing_ref.clone(), input.outgoing.password).await {
-        delete_secret_best_effort(secrets, &incoming_ref).await;
-        return Err(error);
+    // 3. Store passwords now for password accounts. OAuth2 accounts have no
+    //    secret yet — tokens are stored later by the browser sign-in flow
+    //    under these same references.
+    let stored_secrets = matches!(account_auth, AccountAuth::Password);
+    if stored_secrets {
+        set_secret(secrets, incoming_ref.clone(), input.incoming.password).await?;
+        if let Err(error) = set_secret(secrets, outgoing_ref.clone(), input.outgoing.password).await
+        {
+            delete_secret_best_effort(secrets, &incoming_ref).await;
+            return Err(error);
+        }
     }
 
     // 4. Insert the account row referencing the stored secrets.
     let new_account = NewAccount {
         display_name: input.display_name,
         email,
+        auth: account_auth,
         incoming: IncomingServerConfig {
             protocol: input.incoming.protocol,
             endpoint: incoming_endpoint,
@@ -112,8 +120,10 @@ pub async fn create_account_impl(
     let account = match store.accounts().insert(&new_account).await {
         Ok(account) => account,
         Err(error) => {
-            delete_secret_best_effort(secrets, &incoming_ref).await;
-            delete_secret_best_effort(secrets, &outgoing_ref).await;
+            if stored_secrets {
+                delete_secret_best_effort(secrets, &incoming_ref).await;
+                delete_secret_best_effort(secrets, &outgoing_ref).await;
+            }
             return Err(error);
         }
     };
@@ -123,8 +133,10 @@ pub async fn create_account_impl(
         Ok(summary) => Ok(summary),
         Err(error) => {
             let _ = store.accounts().delete(account.id).await;
-            delete_secret_best_effort(secrets, &incoming_ref).await;
-            delete_secret_best_effort(secrets, &outgoing_ref).await;
+            if stored_secrets {
+                delete_secret_best_effort(secrets, &incoming_ref).await;
+                delete_secret_best_effort(secrets, &outgoing_ref).await;
+            }
             Err(error)
         }
     }

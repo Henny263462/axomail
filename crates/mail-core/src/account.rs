@@ -11,6 +11,7 @@ use serde::{Deserialize, Serialize};
 use crate::address::EmailAddress;
 use crate::error::MailError;
 use crate::id::{AccountId, CredentialRef};
+use crate::oauth::AccountAuth;
 
 /// Protocol used to receive mail for an account.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -169,6 +170,10 @@ pub struct Account {
     pub display_name: String,
     /// Primary address used as the default sender.
     pub email: EmailAddress,
+    /// How the account authenticates (password or OAuth2). The secret itself
+    /// is never held here — only the non-secret mechanism and OAuth endpoints.
+    #[serde(default = "AccountAuth::default_password")]
+    pub auth: AccountAuth,
     /// Receiving configuration.
     pub incoming: IncomingServerConfig,
     /// Sending configuration.
@@ -224,6 +229,7 @@ mod tests {
             id: AccountId::new(1),
             display_name: "Work".into(),
             email: EmailAddress::parse("k@example.org").unwrap(),
+            auth: AccountAuth::Password,
             incoming: IncomingServerConfig {
                 protocol: IncomingProtocol::Imap,
                 endpoint: ServerEndpoint::new("imap.example.org", NonZeroU16::new(993).unwrap())
@@ -242,6 +248,10 @@ mod tests {
         };
         let json = serde_json::to_string(&account).unwrap();
         assert!(json.contains("axomail/account/1/incoming"));
-        assert!(!json.to_lowercase().contains("password"));
+        // The mechanism token "password" is expected; what must never appear
+        // is secret material. Only non-secret references are serialized.
+        assert_eq!(account.auth.mechanism(), crate::AuthMechanism::Password);
+        assert!(json.contains("\"auth\":\"password\""));
+        assert!(!json.contains("hunter2"));
     }
 }

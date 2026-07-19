@@ -27,6 +27,7 @@ const account: AccountSummary = {
   id: 1,
   displayName: "Ferber Mail",
   email: "klaus@theferbers.eu",
+  authMechanism: "password",
   mailboxes: [],
 };
 const accounts: AccountSummary[] = [account];

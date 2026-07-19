@@ -19,7 +19,7 @@ use axomail_storage::{
 };
 
 use crate::commands::map_command_error;
-use crate::composition::resolve_secret;
+use crate::composition::resolve_credential;
 use crate::dto::{ComposeInput, OutboxItemDto, SendOutcomeDto};
 use crate::state::{AppState, SharedSecretStore};
 
@@ -231,12 +231,12 @@ async fn build_provider(
     extra_roots: &[Vec<u8>],
     account: &Account,
 ) -> Result<SmtpProvider, MailError> {
-    let password = resolve_secret(secrets, &account.outgoing.credential).await?;
-    let mut config = SmtpConfig::new(
+    let credential = resolve_credential(secrets, account, &account.outgoing.credential).await?;
+    let mut config = SmtpConfig::with_credential(
         account.outgoing.endpoint.clone(),
         account.outgoing.security,
         account.outgoing.username.clone(),
-        password,
+        credential,
     );
     config.extra_root_certs_der = extra_roots.to_vec();
     SmtpProvider::new(config)

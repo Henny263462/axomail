@@ -14,6 +14,7 @@ pub mod identities;
 pub mod jobs;
 pub mod messages;
 pub mod meta;
+pub mod oauth;
 pub mod outbox_schedule;
 pub mod remote_content;
 pub mod search;

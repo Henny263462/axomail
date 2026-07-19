@@ -33,10 +33,14 @@ tokio = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 tracing = { workspace = true }
-# OAuth2 prerequisites (ADR-0009). Consumed by the Track 1.2 OAuth2 flow;
-# declared here so they enter Cargo.lock and are vetted by cargo-deny.
+# OAuth2 / XOAUTH2 prerequisites (ADR-0009). Consumed by the Track 1.2 OAuth2
+# flow: the HTTP token exchange (reqwest), PKCE + XOAUTH2 base64, and the
+# process-wide rustls/ring crypto provider installed at startup. Declared here
+# so they enter Cargo.lock and are vetted by cargo-deny.
 reqwest = { workspace = true }
 base64 = { workspace = true }
+ring = { workspace = true }
+rustls = { workspace = true }
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["test-util"] }

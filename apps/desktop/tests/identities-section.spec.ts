@@ -25,7 +25,13 @@ const deleteIdentityMock = vi.mocked(deleteIdentity);
 const setDefaultIdentityMock = vi.mocked(setDefaultIdentity);
 
 const accounts: AccountSummary[] = [
-  { id: 1, displayName: "Work", email: "klaus@theferbers.eu", mailboxes: [] },
+  {
+    id: 1,
+    displayName: "Work",
+    email: "klaus@theferbers.eu",
+    authMechanism: "password",
+    mailboxes: [],
+  },
 ];
 
 // IdentitiesSection is a registry section: it reads the account list from the

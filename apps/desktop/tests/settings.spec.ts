@@ -24,8 +24,20 @@ interface TauriGlobals {
 }
 
 const accounts: AccountSummary[] = [
-  { id: 1, displayName: "Ferber Mail", email: "klaus@theferbers.eu", mailboxes: [] },
-  { id: 2, displayName: "Legacy POP", email: "work@example.org", mailboxes: [] },
+  {
+    id: 1,
+    displayName: "Ferber Mail",
+    email: "klaus@theferbers.eu",
+    authMechanism: "password",
+    mailboxes: [],
+  },
+  {
+    id: 2,
+    displayName: "Legacy POP",
+    email: "work@example.org",
+    authMechanism: "password",
+    mailboxes: [],
+  },
 ];
 
 const settings: SettingsDto = {
@@ -173,7 +185,10 @@ describe("SettingsDialog", () => {
     await wrapper.get("form").trigger("submit");
     await flushPromises();
 
-    expect(wrapper.get('[role="alert"]').text()).toContain(
+    // The dialog's own shared alert region (a direct child of the settings
+    // form) carries the save failure; registered sections have their own
+    // alert regions, so target the dialog's specifically.
+    expect(wrapper.get('.form > [role="alert"]').text()).toContain(
       "Interval too large.",
     );
     expect(wrapper.emitted("close")).toBeUndefined();

@@ -7,9 +7,10 @@
 use std::collections::HashSet;
 use std::sync::Arc;
 
+use async_imap::Authenticator;
 use async_imap::Client;
 use async_imap::types::{Capabilities, Capability};
-use axomail_core::{ConnectionSecurity, MailError};
+use axomail_core::{ConnectionCredential, ConnectionSecurity, MailError, xoauth2_sasl};
 use rustls::ClientConfig;
 use tokio::net::TcpStream;
 
@@ -152,11 +153,32 @@ where
     .await
 }
 
-/// Sends `LOGIN` and records the resulting capability set.
+/// Authenticates according to the configured credential and records the
+/// resulting capability set.
+///
+/// Password accounts use `LOGIN` (which can piggyback the post-login
+/// capabilities); OAuth2 accounts use `AUTHENTICATE XOAUTH2` and then issue an
+/// explicit `CAPABILITY`, since the SASL exchange returns no capability list.
+/// `STARTTLS` has already completed before this runs, so credentials are never
+/// sent in the clear.
 async fn login(config: &ImapConfig, client: Client<ImapTlsStream>) -> Result<Connected, MailError> {
+    match &config.credential {
+        ConnectionCredential::Password(password) => login_password(config, client, password).await,
+        ConnectionCredential::XOauth2 { access_token } => {
+            login_xoauth2(config, client, access_token).await
+        }
+    }
+}
+
+/// Password login via `LOGIN`, capturing any capabilities the server returns.
+async fn login_password(
+    config: &ImapConfig,
+    client: Client<ImapTlsStream>,
+    password: &str,
+) -> Result<Connected, MailError> {
     let (mut session, caps) = with_deadline(config.timeout, async {
         client
-            .login_with_capabilities(&config.username, &config.password)
+            .login_with_capabilities(&config.username, password)
             .await
             .map_err(|(err, _client)| map_login_error(&err))
     })
@@ -164,22 +186,78 @@ async fn login(config: &ImapConfig, client: Client<ImapTlsStream>) -> Result<Con
 
     let capabilities = match caps {
         Some(caps) => capability_set(&caps),
-        None => {
-            let caps = with_deadline(config.timeout, async {
-                session
-                    .capabilities()
-                    .await
-                    .map_err(|err| map_imap_error(&err))
-            })
-            .await?;
-            capability_set(&caps)
-        }
+        None => fetch_capabilities(config, &mut session).await?,
     };
 
     Ok(Connected {
         session,
         capabilities,
     })
+}
+
+/// OAuth2 login via `AUTHENTICATE XOAUTH2`, then an explicit `CAPABILITY`.
+async fn login_xoauth2(
+    config: &ImapConfig,
+    client: Client<ImapTlsStream>,
+    access_token: &str,
+) -> Result<Connected, MailError> {
+    let authenticator = XOauth2Authenticator::new(&config.username, access_token);
+    let mut session = with_deadline(config.timeout, async {
+        client
+            .authenticate("XOAUTH2", authenticator)
+            .await
+            .map_err(|(err, _client)| map_login_error(&err))
+    })
+    .await?;
+    let capabilities = fetch_capabilities(config, &mut session).await?;
+    Ok(Connected {
+        session,
+        capabilities,
+    })
+}
+
+/// Issues `CAPABILITY` on an authenticated session and collects the atoms.
+async fn fetch_capabilities(
+    config: &ImapConfig,
+    session: &mut ImapSession,
+) -> Result<HashSet<String>, MailError> {
+    let caps = with_deadline(config.timeout, async {
+        session
+            .capabilities()
+            .await
+            .map_err(|err| map_imap_error(&err))
+    })
+    .await?;
+    Ok(capability_set(&caps))
+}
+
+/// SASL `XOAUTH2` authenticator: emits the initial client response to the
+/// first (empty) server challenge and nothing thereafter, so a provider's
+/// base64 error challenge does not get answered with the credential again.
+struct XOauth2Authenticator {
+    response: Vec<u8>,
+    sent: bool,
+}
+
+impl XOauth2Authenticator {
+    fn new(username: &str, access_token: &str) -> Self {
+        Self {
+            response: xoauth2_sasl(username, access_token).into_bytes(),
+            sent: false,
+        }
+    }
+}
+
+impl Authenticator for XOauth2Authenticator {
+    type Response = Vec<u8>;
+
+    fn process(&mut self, _challenge: &[u8]) -> Self::Response {
+        if self.sent {
+            return Vec::new();
+        }
+        self.sent = true;
+        self.response.clone()
+    }
 }
 
 /// Converts async-imap capabilities into an upper-cased string set.

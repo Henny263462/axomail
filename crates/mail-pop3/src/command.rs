@@ -11,7 +11,9 @@
 
 use std::time::Duration;
 
-use axomail_core::MailError;
+use axomail_core::{MailError, xoauth2_sasl};
+use base64::Engine;
+use base64::engine::general_purpose::STANDARD as BASE64;
 use tokio::io::{AsyncRead, AsyncWrite};
 
 use crate::error::with_deadline;
@@ -85,6 +87,47 @@ where
             return Err(MailError::Authentication);
         }
         Ok(())
+    })
+    .await
+}
+
+/// Authenticates with the SASL `XOAUTH2` mechanism (RFC 5034 + Google/
+/// Microsoft XOAUTH2) using the initial-response form
+/// `AUTH XOAUTH2 <base64>`.
+///
+/// A `+OK` reply means success. Any other reply — including the
+/// `+ <base64 error>` SASL continuation providers send on failure — is treated
+/// as an authentication failure; when a continuation arrives the exchange is
+/// finished with an empty line so the server can emit its final `-ERR` before
+/// the session is torn down. No server-supplied text is ever retained.
+pub(crate) async fn authenticate_xoauth2<S>(
+    wire: &mut Wire<S>,
+    username: &str,
+    access_token: &str,
+    timeout: Duration,
+) -> Result<(), MailError>
+where
+    S: AsyncRead + AsyncWrite + Unpin + Send,
+{
+    with_deadline(timeout, async {
+        let encoded = BASE64.encode(xoauth2_sasl(username, access_token).as_bytes());
+        wire.write_line(&format!("AUTH XOAUTH2 {encoded}")).await?;
+        let line = wire.read_line().await?;
+        let text = String::from_utf8_lossy(&line);
+        let trimmed = text.trim_start();
+        if trimmed
+            .get(..3)
+            .is_some_and(|p| p.eq_ignore_ascii_case("+OK"))
+        {
+            return Ok(());
+        }
+        // A SASL continuation (`+ ...`, but not `+OK`) needs an empty line to
+        // let the server finish and report its terminal `-ERR`.
+        if trimmed.starts_with('+') {
+            wire.write_line("").await?;
+            let _ = wire.read_line().await;
+        }
+        Err(MailError::Authentication)
     })
     .await
 }
