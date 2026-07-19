@@ -54,6 +54,12 @@ pub fn run() {
         // capability scopes this to `https://*` only — no path opening or
         // reveal-in-dir.
         .plugin(tauri_plugin_opener::init())
+        // Attachment open/save-file pickers (ADR-0010). Only the dialog
+        // capability is granted to the webview; the fs plugin is registered so
+        // its command surface exists but is granted no scope — attachment IO is
+        // done in Rust std::fs against a dialog-chosen path.
+        .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_fs::init())
         .setup(|app| {
             let data_dir = match app.path().app_data_dir() {
                 Ok(dir) => dir,

@@ -1,7 +1,7 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Minimal capability set for the main window. Grants core Tauri primitives, notification:default (one aggregate 'N new messages' OS notification after a background/manual sync; counts only, never subjects or senders), and a single scoped opener permission: opener:allow-open-url restricted to `https://*`, used to launch the OAuth2 consent screen in the system browser (RFC 8252 external agent). No path opening (open_path), no reveal-in-dir, no mailto/tel/http scheme, and no shell, filesystem, or arbitrary-network permissions.",
+  "description": "Minimal capability set for the main window. Grants core Tauri primitives, notification:default (one aggregate 'N new messages' OS notification after a background/manual sync; counts only, never subjects or senders), a single scoped opener permission (opener:allow-open-url restricted to `https://*`, used to launch the OAuth2 consent screen in the system browser, RFC 8252 external agent), and the attachment file-dialog permissions dialog:allow-open + dialog:allow-save (native open/save-file pickers for attachments and save-as). File contents are read/written by Rust std::fs commands against the dialog-chosen path (ADR-0010): tauri-plugin-fs is registered but granted NO scope here, so the webview has no standing filesystem access. No path opening (open_path), no reveal-in-dir, no mailto/tel/http scheme, no message/ask/confirm dialogs, and no shell or arbitrary-network permissions.",
   "windows": ["main"],
   "permissions": [
     "core:default",
@@ -9,6 +9,8 @@
     {
       "identifier": "opener:allow-open-url",
       "allow": [{ "url": "https://*" }]
-    }
+    },
+    "dialog:allow-open",
+    "dialog:allow-save"
   ]
 }

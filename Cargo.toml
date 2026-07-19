@@ -91,6 +91,17 @@ ring = "0.17.14"
 # Opens the OAuth2 consent URL in the system browser (RFC 8252 external agent).
 tauri-plugin-opener = "2.5.4"
 
+# Attachment file dialogs + disk IO (Wave 3 Stage 0, ADR-0010). Versions
+# verified against crates.io on 2026-07-19; both are from the tauri-apps
+# plugins-workspace (like tauri-plugin-opener) and resolve against tauri
+# 2.11.5 without bumping it. `dialog` supplies the native open/save-file
+# pickers; `fs` is registered so its (default-denied) command surface exists,
+# but the default capability grants it **no** scope — attachment reads/writes
+# run in Rust `std::fs` commands against a dialog-chosen path, never through the
+# webview fs API (see ADR-0010). No extra features are enabled.
+tauri-plugin-dialog = "2.7.2"
+tauri-plugin-fs = "2.5.1"
+
 # Internal crates. Directory names follow the architecture layout; package
 # names carry the `axomail-` prefix to avoid clashes with public crates
 # (e.g. the external `mail-parser` crate). See ADR-0002.

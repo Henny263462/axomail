@@ -219,6 +219,93 @@ exists — no migration expected.
 `commands/compose.rs` below the gate; define the shared list selection
 contract (multi-id selection over stable row identity, thread-aware).
 
+### Wave 3 Stage 0 delivered
+
+Delivered (main). The Stage-A/B tracks code against exactly this.
+
+**Attachment OS capability** (ADR-0010) — `tauri-plugin-dialog` 2.7.2 and
+`tauri-plugin-fs` 2.5.1 (verified 2026-07-19, compatible with tauri 2.11.5) are
+pinned in `[workspace.dependencies]`, consumed by `apps/desktop/src-tauri`, and
+both registered in `lib.rs`. `capabilities/default.json` grants the webview only
+two new permissions:
+
+- `dialog:allow-open` — the open-file picker (attach files).
+- `dialog:allow-save` — the save-file picker (save attachment / save-as-`.eml`).
+
+**The rule tracks follow: dialog picks the path, Rust does the IO.** No `fs:*`
+permission is granted — the webview has no standing filesystem scope. A track's
+save/open flow: the frontend calls the dialog plugin for a user-chosen path,
+passes it to a `#[tauri::command]` whose `*_impl` does the `std::fs` read/write
+(applying `sanitize_attachment_filename`, sourcing bytes from the store). No CSP
+change; the ADR-0007 sandboxed-iframe render is untouched. A track that truly
+needs webview-side fs must add its own scoped `fs:*` capability entry + ADR.
+
+**Composer pre-split** — `ComposerDialog.vue` (was 392) is now a shell (state:
+identities, signature, submit/save, focus trap) delegating its UI to child
+components in `components/compose/`:
+
+- `ComposeFields.vue` — To/Cc/Bcc/Subject (`v-model:to|cc|bcc|subject`); exposes
+  `focus()` (initial focus target).
+- `ComposeBody.vue` — the plain-text `<textarea>` body (`v-model`). **This is
+  the seam for track 3.5**: swap/wrap it for the contenteditable rich editor and
+  an attachments strip as new files, leaving the shell's send path (which
+  serializes the plain-text model) untouched.
+- `ComposerActions.vue` — error/status live regions + Cancel/Save-draft +
+  `SendLaterControl`; emits `cancel` / `saveDraft` / `schedule`.
+
+Reply/forward (3.1) prefills through the existing `draft`/`accountId` props and
+opens via `dialogs.open("composer", …)`; quoting/recipient derivation is built
+Rust-side + a prefill API, not by growing the shell. Attachments (3.5) add new
+files alongside `ComposeBody.vue`.
+
+**`commands/compose.rs` pre-split** (was 397) — now a thin module root
+re-exporting the public fns; logic split under `commands/compose/`:
+
+- `send.rs` — `send_message` / `send_message_impl` + identity resolution.
+- `outbox.rs` — `retry_outbox` / `retry_outbox_impl`, `list_outbox` /
+  `list_outbox_impl`.
+- `shared.rs` — `submit_record` (the SMTP submission pipeline both entry points
+  funnel through) + helpers (`load_account`, `parse_addresses`, provider/message
+  builders, `file_sent_copy`). **Attachments-on-send (3.5)** land in
+  `build_message`/`submit_record` in `shared.rs`; **In-Reply-To/References + the
+  answered/$Forwarded op-queue writes (3.1)** extend `send.rs` + `shared.rs`.
+  `commands::compose::<name>` still resolves (re-exports), so `generate_handler!`
+  and the integration tests are unchanged.
+
+**`App.vue` pre-split** (was 399) — the compose/drafts/outbox orchestration is
+extracted to `composables/useComposeWorkflow.ts` (the `drafts`/`outbox` lists,
+`selectedDraftId`, the Drafts/Outbox view entries, `openCompose`/`openDraft`,
+and the composer/outbox event handlers). App wires it with
+`useComposeWorkflow({ activeView, accounts, selectedMailboxId,
+selectedMessageId, dialogs, showList })`. **Reply-entry (3.1) and list-action
+(3.2) wiring adds here**, not in the shell.
+
+**Shared list selection** — `composables/useMessageSelection.ts` +
+`types/selection.ts`. Tracks 3.2 (bulk actions) and 3.4 (threaded/virtualized
+list) both build on this one selection model.
+
+- `useMessageSelection<Id extends RowId = number>(orderedIds: Ref<readonly
+  Id[]>): MessageSelection<Id>`. `orderedIds` is the list's current row ids in
+  visible order (a `computed` from the rendered list) — the single source for
+  range resolution **and** reconciliation.
+- `MessageSelection<Id>`: `selectedIds: ComputedRef<Id[]>` (in list order),
+  `count`, `isEmpty`, `anchorId: Ref<Id|null>`, `isSelected(id)`,
+  `select(id, gesture?)`, `selectOnly(id)`, `toggle(id)`, `clear()`.
+- Gestures (`SelectionGesture { toggle?, range? }`): plain → select only + set
+  anchor; `toggle` (Ctrl/Cmd) → flip membership + re-anchor; `range` (Shift) →
+  contiguous run anchor→target, anchor preserved (degrades to plain with no
+  anchor).
+- **Reconciliation**: when `orderedIds` changes, selected ids and an anchor that
+  vanished drop out; rows still present keep their state across a same-list
+  reload.
+- **Row identity**: `RowId = number | string`. The flat list uses the numeric
+  message id (`Id = number`). Track 3.4 keeps thread and message rows collision-
+  free by widening to tagged strings via `messageRowId(id)` / `threadRowId(id)`
+  (`"m:1"` vs `"t:1"`); the algorithm treats ids as opaque, so no composable
+  change is needed.
+- Wired into `App.vue` behaviour-preservingly: `onSelectMessage` calls
+  `selection.selectOnly(id)` (single-select); no UI exposes multi-select yet.
+
 **Stage A (parallel):**
 
 | Track | Cluster | Scope |

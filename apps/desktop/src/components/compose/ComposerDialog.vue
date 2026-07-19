@@ -11,8 +11,10 @@ import type {
   DraftDto,
   IdentityDto,
 } from "../../types/mail";
+import ComposeBody from "./ComposeBody.vue";
+import ComposeFields from "./ComposeFields.vue";
+import ComposerActions from "./ComposerActions.vue";
 import FromPicker from "./FromPicker.vue";
-import SendLaterControl from "./SendLaterControl.vue";
 
 const props = defineProps<{
   /** Account to compose from when not editing an existing draft. */
@@ -51,7 +53,7 @@ const savingDraft = ref(false);
 const errorMessage = ref("");
 const statusMessage = ref("");
 
-const firstField = ref<HTMLInputElement | null>(null);
+const fields = ref<InstanceType<typeof ComposeFields> | null>(null);
 const root = ref<HTMLElement | null>(null);
 const { onKeydown } = useFocusTrap(root, close);
 
@@ -71,7 +73,7 @@ onMounted(async () => {
     identities.value = loaded;
     preselectIdentity();
   }
-  firstField.value?.focus();
+  fields.value?.focus();
 });
 
 /** Picks the default identity for the current account and seeds its signature
@@ -227,90 +229,23 @@ async function onSaveDraft(): Promise<void> {
           :accounts="accounts"
           @update:model-value="onIdentityChange"
         />
-        <div class="field">
-          <label for="compose-to">To</label>
-          <input
-            id="compose-to"
-            ref="firstField"
-            v-model="to"
-            type="text"
-            autocomplete="off"
-            placeholder="Comma-separated addresses"
-          >
-        </div>
-        <div class="field">
-          <label for="compose-cc">Cc</label>
-          <input
-            id="compose-cc"
-            v-model="cc"
-            type="text"
-            autocomplete="off"
-          >
-        </div>
-        <div class="field">
-          <label for="compose-bcc">Bcc</label>
-          <input
-            id="compose-bcc"
-            v-model="bcc"
-            type="text"
-            autocomplete="off"
-          >
-        </div>
-        <div class="field">
-          <label for="compose-subject">Subject</label>
-          <input
-            id="compose-subject"
-            v-model="subject"
-            type="text"
-            autocomplete="off"
-          >
-        </div>
-        <div class="field">
-          <label for="compose-body">Message</label>
-          <textarea
-            id="compose-body"
-            v-model="body"
-            rows="10"
-          />
-        </div>
-
-        <p
-          class="error"
-          role="alert"
-          aria-live="assertive"
-        >
-          {{ errorMessage }}
-        </p>
-        <p
-          class="status"
-          role="status"
-          aria-live="polite"
-        >
-          {{ statusMessage }}
-        </p>
-
-        <div class="actions">
-          <button
-            type="button"
-            class="button"
-            @click="close"
-          >
-            Cancel
-          </button>
-          <button
-            type="button"
-            class="button"
-            :disabled="savingDraft || sending"
-            @click="onSaveDraft"
-          >
-            {{ savingDraft ? "Saving…" : "Save draft" }}
-          </button>
-          <SendLaterControl
-            :busy="sending"
-            :disabled="savingDraft"
-            @schedule="onSchedule"
-          />
-        </div>
+        <ComposeFields
+          ref="fields"
+          v-model:to="to"
+          v-model:cc="cc"
+          v-model:bcc="bcc"
+          v-model:subject="subject"
+        />
+        <ComposeBody v-model="body" />
+        <ComposerActions
+          :saving-draft="savingDraft"
+          :sending="sending"
+          :error-message="errorMessage"
+          :status-message="statusMessage"
+          @cancel="close"
+          @save-draft="onSaveDraft"
+          @schedule="onSchedule"
+        />
       </form>
     </div>
   </div>
@@ -349,83 +284,5 @@ async function onSaveDraft(): Promise<void> {
   display: flex;
   flex-direction: column;
   gap: var(--space-3);
-}
-
-.field {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-1);
-}
-
-.field label {
-  font-size: var(--text-xs);
-  font-weight: var(--weight-medium);
-  color: var(--color-text-secondary);
-}
-
-.field input,
-.field textarea {
-  font: inherit;
-  font-size: var(--text-sm);
-  color: var(--color-text);
-  background: var(--color-bg);
-  border: 1px solid var(--color-border-strong);
-  border-radius: var(--radius-sm);
-  padding: var(--space-1) var(--space-2);
-}
-
-.field textarea {
-  resize: vertical;
-  min-height: 8rem;
-}
-
-.field input:focus-visible,
-.field textarea:focus-visible {
-  border-color: var(--color-accent);
-}
-
-.error {
-  font-size: var(--text-sm);
-  color: var(--color-danger);
-}
-
-.error:empty {
-  display: none;
-}
-
-.status {
-  font-size: var(--text-sm);
-  color: var(--color-text-secondary);
-}
-
-.status:empty {
-  display: none;
-}
-
-.actions {
-  display: flex;
-  justify-content: flex-end;
-  align-items: flex-start;
-  gap: var(--space-2);
-}
-
-.button {
-  font-size: var(--text-sm);
-  font-weight: var(--weight-medium);
-  padding: var(--space-2) var(--space-4);
-  border-radius: var(--radius-md);
-  border: 1px solid var(--color-border-strong);
-  color: var(--color-text);
-  background: var(--color-bg);
-  transition: background var(--transition-fast);
-}
-
-.button:hover {
-  background: var(--color-bg-hover);
-}
-
-.button:disabled {
-  opacity: 0.6;
-  cursor: default;
 }
 </style>

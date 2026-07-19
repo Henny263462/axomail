@@ -2,14 +2,6 @@
 import { computed, onMounted, ref } from "vue";
 
 import { listAccounts } from "./api/accounts";
-import {
-  cancelScheduledSend,
-  deleteDraft,
-  listDrafts,
-  listOutbox,
-  retryOutbox,
-  sendOutboxNow,
-} from "./api/compose";
 import { cancelAllSyncJobs } from "./api/jobs";
 import { listMessages } from "./api/messages";
 import { getSettings } from "./api/settings";
@@ -27,15 +19,15 @@ import OutboxListPane from "./components/list/OutboxListPane.vue";
 import MessageViewPane from "./components/message/MessageViewPane.vue";
 import SidebarPane from "./components/sidebar/SidebarPane.vue";
 import type { SidebarView } from "./components/sidebar/view";
+import { useComposeWorkflow } from "./composables/useComposeWorkflow";
 import { useDialogs } from "./composables/useDialogs";
 import { useMessageActions } from "./composables/useMessageActions";
+import { useMessageSelection } from "./composables/useMessageSelection";
 import { useSyncStatus } from "./composables/useSyncStatus";
 import { reconcileTheme } from "./composables/useTheme";
 import type {
   AccountSummary,
-  DraftDto,
   MessageListItem,
-  OutboxItemDto,
   SyncEventDto,
   UnifiedItemDto,
 } from "./types/mail";
@@ -47,17 +39,36 @@ const accounts = ref<AccountSummary[]>([]);
 // reloads from the backend rather than caching every mailbox client-side.
 const messages = ref<MessageListItem[]>([]);
 const unifiedItems = ref<UnifiedItemDto[]>([]);
-const drafts = ref<DraftDto[]>([]);
-const outbox = ref<OutboxItemDto[]>([]);
 const selectedMailboxId = ref<number | null>(null);
 const selectedMessageId = ref<number | null>(null);
-const selectedDraftId = ref<number | null>(null);
 const selectedTagId = ref<number | null>(null);
 const activeView = ref<SidebarView>("mailbox");
 const tagsRefreshKey = ref(0); // Bumped to reload the sidebar Tags group.
 
 // Open-state + payload for every app-level dialog; DialogHost mounts them.
 const dialogs = useDialogs<AppDialogMap>();
+
+// Composing, drafts, and the outbox (lists + view entries + composer handlers).
+const compose = useComposeWorkflow({
+  activeView,
+  accounts,
+  selectedMailboxId,
+  selectedMessageId,
+  dialogs,
+  showList: () => shell.value?.showPane("list"),
+});
+const { drafts, outbox, selectedDraftId } = compose;
+
+// Shared multi-row selection for Wave 3 tracks 3.2/3.4, fed by the active
+// message-backed list's ids in order. Single-select stays the default; a track
+// wires the modifier clicks that expose multi-select in the rows.
+const listRowIds = computed<number[]>(() => {
+  if (activeView.value === "unified") return unifiedItems.value.map((m) => m.id);
+  if (activeView.value === "mailbox" || activeView.value === "tag")
+    return messages.value.map((m) => m.id);
+  return [];
+});
+const selection = useMessageSelection(listRowIds);
 
 // Optimistic star / auto-read / mark-all-read, operating on the lists above.
 const messageActions = useMessageActions({
@@ -85,14 +96,6 @@ const syncingAccountIds = computed(() =>
     )
     .map((account) => account.id),
 );
-
-/** Account a new message is composed from: the selected one, else the first. */
-const composeAccountId = computed<number | null>(() => {
-  const owning = accounts.value.find((account) =>
-    account.mailboxes.some((mailbox) => mailbox.id === selectedMailboxId.value),
-  );
-  return owning?.id ?? accounts.value[0]?.id ?? null;
-});
 
 /** True for the message-backed views (a mailbox, the unified inbox, or a tag). */
 const messageView = computed(
@@ -200,14 +203,6 @@ async function loadUnified(): Promise<void> {
   unifiedItems.value = page?.items ?? [];
 }
 
-async function loadDrafts(): Promise<void> {
-  drafts.value = (await listDrafts()) ?? [];
-}
-
-async function loadOutbox(): Promise<void> {
-  outbox.value = (await listOutbox()) ?? [];
-}
-
 async function selectMailbox(mailboxId: number): Promise<void> {
   activeView.value = "mailbox";
   selectedMailboxId.value = mailboxId;
@@ -222,20 +217,6 @@ async function selectUnified(): Promise<void> {
   selectedMessageId.value = null;
   shell.value?.showPane("list");
   await loadUnified();
-}
-
-async function selectDrafts(): Promise<void> {
-  activeView.value = "drafts";
-  selectedMessageId.value = null;
-  shell.value?.showPane("list");
-  await loadDrafts();
-}
-
-async function selectOutbox(): Promise<void> {
-  activeView.value = "outbox";
-  selectedMessageId.value = null;
-  shell.value?.showPane("list");
-  await loadOutbox();
 }
 
 /** Filters the message list to a single tag (snapshot; not live-synced). */
@@ -253,6 +234,9 @@ async function selectTag(tagId: number): Promise<void> {
 
 function onSelectMessage(messageId: number): void {
   selectedMessageId.value = messageId;
+  // Keep the shared selection set in step (single-select gesture); multi-select
+  // stays dormant until a track wires modifier clicks into the list rows.
+  selection.selectOnly(messageId);
   shell.value?.showPane("message");
   // Auto-mark-read (immediate or after the configured delay) is owned by the
   // message-actions composable; it no-ops for a search hit not in the lists.
@@ -277,48 +261,6 @@ async function onAccountCreated(account: AccountSummary): Promise<void> {
   const inbox =
     account.mailboxes.find((m) => m.role === "inbox") ?? account.mailboxes[0];
   if (inbox !== undefined) await selectMailbox(inbox.id);
-}
-
-function openCompose(): void {
-  const id = composeAccountId.value;
-  if (id === null) return;
-  dialogs.open("composer", { accountId: id, draft: null });
-}
-
-function openDraft(draftId: number): void {
-  const draft = drafts.value.find((d) => d.id === draftId);
-  if (draft === undefined) return;
-  selectedDraftId.value = draftId;
-  dialogs.open("composer", { accountId: draft.accountId, draft });
-}
-
-async function onComposerSent(payload: { draftId: number | null }): Promise<void> {
-  dialogs.close("composer");
-  // A draft that was sent is removed client-side (send then delete).
-  if (payload.draftId !== null) await deleteDraft(payload.draftId);
-  if (activeView.value === "drafts") await loadDrafts();
-  if (activeView.value === "outbox") await loadOutbox();
-}
-
-async function onComposerSaved(): Promise<void> {
-  if (activeView.value === "drafts") await loadDrafts();
-}
-
-async function onRetryOutbox(outboxId: number): Promise<void> {
-  await retryOutbox(outboxId);
-  await loadOutbox();
-}
-
-async function onSendOutboxNow(outboxId: number): Promise<void> {
-  await sendOutboxNow(outboxId);
-  await loadOutbox();
-}
-
-async function onCancelSchedule(outboxId: number): Promise<void> {
-  await cancelScheduledSend(outboxId);
-  // The message becomes a draft, so both lists may have changed.
-  await loadOutbox();
-  if (activeView.value === "drafts") await loadDrafts();
 }
 
 /** Reacts to sync events after {@link useSyncStatus} updates its own state. */
@@ -364,10 +306,10 @@ function onSyncEvent(event: SyncEventDto): void {
         @select-mailbox="selectMailbox"
         @select-unified="selectUnified"
         @add-account="dialogs.open('setup')"
-        @compose="openCompose"
+        @compose="compose.openCompose"
         @sync-account="syncAccount"
-        @select-drafts="selectDrafts"
-        @select-outbox="selectOutbox"
+        @select-drafts="compose.selectDrafts"
+        @select-outbox="compose.selectOutbox"
         @select-tag="selectTag"
         @folders-changed="onAccountsChanged"
       />
@@ -377,14 +319,14 @@ function onSyncEvent(event: SyncEventDto): void {
         v-if="activeView === 'drafts'"
         :drafts="drafts"
         :selected-draft-id="selectedDraftId"
-        @select="openDraft"
+        @select="compose.openDraft"
       />
       <OutboxListPane
         v-else-if="activeView === 'outbox'"
         :items="outbox"
-        @retry="onRetryOutbox"
-        @send-now="onSendOutboxNow"
-        @cancel-schedule="onCancelSchedule"
+        @retry="compose.onRetryOutbox"
+        @send-now="compose.onSendOutboxNow"
+        @cancel-schedule="compose.onCancelSchedule"
       />
       <MessageListPane
         v-else-if="activeView === 'tag'"
@@ -429,8 +371,8 @@ function onSyncEvent(event: SyncEventDto): void {
     :dialogs="dialogs"
     :accounts="accounts"
     @account-created="onAccountCreated"
-    @composer-sent="onComposerSent"
-    @composer-saved="onComposerSaved"
+    @composer-sent="compose.onComposerSent"
+    @composer-saved="compose.onComposerSaved"
     @accounts-changed="onAccountsChanged"
     @tags-changed="tagsRefreshKey += 1"
     @settings-saved="syncTheme"
