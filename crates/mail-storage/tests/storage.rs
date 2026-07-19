@@ -4,8 +4,10 @@
 
 mod common;
 
-use axomail_core::{AccountAuth, MailboxRole, MessageFlags, SyncOutcome, ThreadingHeaders};
-use axomail_storage::{MessageCursor, MessagePage, Store};
+use axomail_core::{
+    AccountAuth, MailboxRole, MessageFlags, RemoteMessageId, SyncOutcome, ThreadingHeaders,
+};
+use axomail_storage::{MessageCursor, MessagePage, NewPendingOp, PendingOpKind, Store};
 use common::{
     pop3_envelope_with_threading, sample_account, sample_mailbox, sample_message,
     sample_oauth_account,
@@ -479,6 +481,105 @@ async fn threading_identity_round_trips_through_ingest() {
         ]
     );
     assert_eq!(stored.parent_id(), Some("mid-1@example.org"));
+}
+
+/// A sync pass must not overwrite a message's local flags while a write-back op
+/// for them is still queued: the optimistic change (here a star) would be reset
+/// to the server's stale value and, if the op were later parked, lost for good.
+#[tokio::test]
+async fn ingest_does_not_clobber_flags_with_a_pending_writeback_op() {
+    let store = Store::open_in_memory().await.unwrap();
+    let account = store
+        .accounts()
+        .insert(&sample_account("Work", "klaus@theferbers.eu"))
+        .await
+        .unwrap();
+    let mailbox = store
+        .mailboxes()
+        .upsert(&sample_mailbox(account.id, "INBOX"))
+        .await
+        .unwrap();
+
+    // A synced message the user has just starred locally (optimistic change).
+    let remote_id = RemoteMessageId::Imap {
+        uid: 1,
+        uid_validity: 42,
+    };
+    let mut message = sample_message(mailbox.id, "starred", Some(1));
+    message.remote_id = Some(remote_id.clone());
+    message.flags = MessageFlags {
+        flagged: true,
+        ..MessageFlags::default()
+    };
+    let message_id = store.messages().insert(&message).await.unwrap().id;
+
+    // The star's write-back is queued but has NOT replayed to the server yet.
+    let op = store
+        .pending_ops()
+        .enqueue(&NewPendingOp {
+            account_id: account.id,
+            message_id,
+            kind: PendingOpKind::AddFlags,
+            payload_json: "{}".to_owned(),
+        })
+        .await
+        .unwrap();
+
+    // A sync pass reports the server's (stale) state: the star is absent.
+    let server_unflagged = SyncOutcome {
+        uid_validity: None,
+        highest_uid: None,
+        highest_modseq: None,
+        has_more: false,
+        new_envelopes: Vec::new(),
+        flag_updates: vec![(remote_id.clone(), MessageFlags::default())],
+        removed: Vec::new(),
+        present_remote_ids: None,
+    };
+    let summary = store
+        .ingest()
+        .apply(mailbox.id, &server_unflagged)
+        .await
+        .unwrap();
+    assert_eq!(
+        summary.flags_updated, 0,
+        "the guarded flag write is skipped"
+    );
+    assert!(
+        store
+            .messages()
+            .get(message_id)
+            .await
+            .unwrap()
+            .unwrap()
+            .flags
+            .flagged,
+        "the un-replayed star survives the sync overwrite"
+    );
+
+    // Once the op has replayed and been removed, the guard lifts and the
+    // server's state applies normally on the next pass.
+    assert!(store.pending_ops().complete(op.id).await.unwrap());
+    let summary = store
+        .ingest()
+        .apply(mailbox.id, &server_unflagged)
+        .await
+        .unwrap();
+    assert_eq!(
+        summary.flags_updated, 1,
+        "no guard: server state now applies"
+    );
+    assert!(
+        !store
+            .messages()
+            .get(message_id)
+            .await
+            .unwrap()
+            .unwrap()
+            .flags
+            .flagged,
+        "with no pending op, the server's unflagged state is applied"
+    );
 }
 
 #[tokio::test]

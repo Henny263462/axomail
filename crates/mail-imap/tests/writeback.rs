@@ -145,3 +145,70 @@ async fn move_falls_back_to_copy_delete_expunge_without_move() {
         "commands: {commands:?}"
     );
 }
+
+#[tokio::test]
+async fn fallback_without_uidplus_does_not_purge_unrelated_deleted() {
+    // No MOVE and no UIDPLUS: a bare `EXPUNGE` would remove EVERY \Deleted
+    // message in the mailbox, including an unrelated one the user flagged. The
+    // fallback must copy + mark \Deleted but never issue that mailbox-wide purge.
+    let mut spec = Spec::base(TlsMode::Implicit);
+    spec.capabilities = "IMAP4rev1 SPECIAL-USE".to_owned();
+    spec.messages = vec![Message::new(1), Message::new(2)];
+    let server = common::start(spec).await;
+    let mut provider = ImapProvider::new(config_for(&server, ConnectionSecurity::Tls));
+
+    provider.connect().await.expect("connect");
+    provider
+        .select_mailbox(&MailboxName::new("INBOX"))
+        .await
+        .expect("select");
+    provider
+        .move_message(&imap_id(1), &MailboxName::new("Archive"))
+        .await
+        .expect("move via fallback");
+
+    let commands = server.commands();
+    assert!(server.saw_command("UID COPY 1"), "commands: {commands:?}");
+    assert!(
+        server.saw_command("UID STORE 1 +FLAGS (\\Deleted)"),
+        "commands: {commands:?}"
+    );
+    // Neither a scoped nor a blanket expunge is issued without UIDPLUS.
+    assert!(
+        !server.saw_command("EXPUNGE"),
+        "no expunge may run without UIDPLUS: {commands:?}"
+    );
+}
+
+#[tokio::test]
+async fn fallback_does_not_recopy_a_message_already_moved() {
+    // Retry after a completed move: the source no longer holds the UID, so the
+    // fallback must detect that and NOT re-`COPY`, which would duplicate the
+    // message in the target.
+    let mut spec = Spec::base(TlsMode::Implicit);
+    spec.capabilities = "IMAP4rev1 UIDPLUS SPECIAL-USE".to_owned();
+    // The source reports only uid 2; uid 1 was already moved away.
+    spec.messages = vec![Message::new(2)];
+    let server = common::start(spec).await;
+    let mut provider = ImapProvider::new(config_for(&server, ConnectionSecurity::Tls));
+
+    provider.connect().await.expect("connect");
+    provider
+        .select_mailbox(&MailboxName::new("INBOX"))
+        .await
+        .expect("select");
+    provider
+        .move_message(&imap_id(1), &MailboxName::new("Archive"))
+        .await
+        .expect("idempotent move is a silent success");
+
+    let commands = server.commands();
+    assert!(
+        server.saw_command("UID SEARCH"),
+        "the fallback checks the source first: {commands:?}"
+    );
+    assert!(
+        !server.saw_command("UID COPY"),
+        "an already-moved message is not re-copied: {commands:?}"
+    );
+}

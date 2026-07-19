@@ -193,6 +193,65 @@ impl<'a> PendingOpsRepo<'a> {
         Ok(result.rows_affected())
     }
 
+    /// Returns the ids of accounts that currently have at least one *claimable*
+    /// pending op.
+    ///
+    /// "Claimable" mirrors [`Self::claim_next_batch`]'s eligibility exactly: a
+    /// `pending` op that is the head of its message (no earlier op in any state).
+    /// An account whose only remaining ops are parked (`failed`) — or `pending`
+    /// but blocked behind a parked head — is **excluded**, so a caller can
+    /// enqueue a drain without spinning on work no drain can make progress on.
+    ///
+    /// Used by the engine's startup recovery to drain ops a crash left behind
+    /// with no live replay job.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`MailError::Database`] on any query failure.
+    pub async fn accounts_with_claimable_ops(&self) -> Result<Vec<AccountId>, MailError> {
+        let ids = sqlx::query_scalar::<_, i64>(
+            "SELECT DISTINCT head.account_id FROM pending_ops head
+              WHERE head.state = 'pending'
+                AND NOT EXISTS (
+                    SELECT 1 FROM pending_ops earlier
+                    WHERE earlier.message_id = head.message_id
+                      AND earlier.id < head.id
+                )",
+        )
+        .fetch_all(self.pool)
+        .await
+        .map_err(|error| map_sqlx("accounts_with_claimable_ops", error))?;
+        Ok(ids.into_iter().map(AccountId::new).collect())
+    }
+
+    /// Whether `account` has at least one *claimable* pending op (same
+    /// eligibility as [`Self::accounts_with_claimable_ops`]).
+    ///
+    /// Used to decide, after a replay drain ends, whether a fresh drain is worth
+    /// enqueuing — without looping forever on ops blocked behind a parked head.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`MailError::Database`] on any query failure.
+    pub async fn account_has_claimable_ops(&self, account: AccountId) -> Result<bool, MailError> {
+        let exists = sqlx::query_scalar::<_, i64>(
+            "SELECT EXISTS(
+                 SELECT 1 FROM pending_ops head
+                  WHERE head.account_id = ? AND head.state = 'pending'
+                    AND NOT EXISTS (
+                        SELECT 1 FROM pending_ops earlier
+                        WHERE earlier.message_id = head.message_id
+                          AND earlier.id < head.id
+                    )
+             )",
+        )
+        .bind(account.value())
+        .fetch_one(self.pool)
+        .await
+        .map_err(|error| map_sqlx("account_has_claimable_ops", error))?;
+        Ok(exists != 0)
+    }
+
     /// Lists an account's parked (`failed`) ops in id order.
     ///
     /// # Errors

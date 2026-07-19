@@ -215,6 +215,32 @@ describe("FolderTree", () => {
     expect(refreshFoldersMock).toHaveBeenCalledWith(1);
   });
 
+  it("closes the context menu on Escape and returns focus to the trigger", async () => {
+    const wrapper = mount(FolderTree, {
+      props: { account, selectedMailboxId: null, activeView: "mailbox" as const },
+      attachTo: document.body,
+    });
+    const row = wrapper
+      .findAll(".folder-row")
+      .find((candidate) => candidate.find(".folder-name").text() === "Work");
+    if (row === undefined) throw new Error("no folder row for Work");
+    const trigger = row.get(".folder-menu");
+    // The ⋯ button is focused before it opens the menu (as a real click does).
+    (trigger.element as HTMLElement).focus();
+    await trigger.trigger("click");
+    await flushPromises();
+
+    // Focus moved into the menu (role=menu semantics).
+    const menu = wrapper.get(".menu");
+    expect(menu.element.contains(document.activeElement)).toBe(true);
+
+    // Escape closes the menu and returns focus to the ⋯ trigger.
+    await menu.trigger("keydown", { key: "Escape" });
+    expect(wrapper.find(".menu").exists()).toBe(false);
+    expect(document.activeElement).toBe(trigger.element);
+    wrapper.unmount();
+  });
+
   it("opens the offline properties dialog from the menu", async () => {
     const wrapper = mountTree();
     await openMenuFor(wrapper, "Work");

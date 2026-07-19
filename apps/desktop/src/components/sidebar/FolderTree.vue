@@ -8,7 +8,7 @@
  * the IPC boundary) and, on success, emit `changed` so the parent reloads
  * account summaries. Selection bubbles up as `selectMailbox`.
  */
-import { computed, reactive, ref } from "vue";
+import { computed, nextTick, reactive, ref } from "vue";
 
 import {
   createFolder,
@@ -40,6 +40,9 @@ const collapsedIds = reactive(new Set<number>());
 const tree = computed(() => buildFolderTree(props.account.mailboxes));
 
 const menu = ref<{ folderId: number; x: number; y: number } | null>(null);
+const menuEl = ref<HTMLElement | null>(null);
+// The control that opened the menu; focus returns to it on close (role=menu).
+let menuTrigger: HTMLElement | null = null;
 const menuFolder = computed<MailboxSummary | null>(() => {
   if (menu.value === null) return null;
   return (
@@ -64,10 +67,38 @@ function toggle(id: number): void {
 }
 
 function openMenu(payload: { folderId: number; x: number; y: number }): void {
+  // Remember the opener (the ⋯ button, or the focused row on right-click) so
+  // focus can return to it when the menu closes.
+  menuTrigger = (document.activeElement as HTMLElement | null) ?? null;
   menu.value = payload;
+  void nextTick(() => {
+    menuEl.value?.querySelector<HTMLElement>('[role="menuitem"]')?.focus();
+  });
 }
 function closeMenu(): void {
   menu.value = null;
+  const trigger = menuTrigger;
+  menuTrigger = null;
+  trigger?.focus();
+}
+
+/** role=menu keyboard handling: Escape closes; Up/Down cycle the items. */
+function onMenuKeydown(event: KeyboardEvent): void {
+  if (event.key === "Escape") {
+    event.preventDefault();
+    closeMenu();
+    return;
+  }
+  if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
+  event.preventDefault();
+  const items = Array.from(
+    menuEl.value?.querySelectorAll<HTMLElement>('[role="menuitem"]') ?? [],
+  );
+  if (items.length === 0) return;
+  const current = items.indexOf(document.activeElement as HTMLElement);
+  const delta = event.key === "ArrowDown" ? 1 : -1;
+  const next = (current + delta + items.length) % items.length;
+  items[next]?.focus();
 }
 
 function openDialog(state: DialogState): void {
@@ -217,10 +248,12 @@ async function run(op: () => Promise<unknown>, fromDialog = false): Promise<void
         @contextmenu.prevent="closeMenu"
       />
       <div
+        ref="menuEl"
         class="menu"
         role="menu"
         :aria-label="`Actions for ${leafName(menuFolder)}`"
         :style="{ left: `${menu.x}px`, top: `${menu.y}px` }"
+        @keydown="onMenuKeydown"
       >
         <button
           type="button"

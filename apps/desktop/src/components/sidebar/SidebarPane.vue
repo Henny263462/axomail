@@ -17,8 +17,15 @@ const props = withDefaults(
     syncingAccountIds?: number[];
     /** Active tag filter, for highlighting the Tags group. */
     activeTagId?: number | null;
+    /** Bumped to make the Tags group reload after a tag/sync change. */
+    tagsRefreshKey?: number;
   }>(),
-  { activeView: "mailbox", syncingAccountIds: () => [], activeTagId: null },
+  {
+    activeView: "mailbox",
+    syncingAccountIds: () => [],
+    activeTagId: null,
+    tagsRefreshKey: 0,
+  },
 );
 
 const emit = defineEmits<{
@@ -120,6 +127,7 @@ function isSyncing(accountId: number): boolean {
          component so it does not collide with the folder-tree rewrite. -->
     <SidebarTagsPane
       :active-tag-id="activeTagId"
+      :refresh-key="tagsRefreshKey"
       @select-tag="(tagId, name) => emit('selectTag', tagId, name)"
     />
 

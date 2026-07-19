@@ -114,6 +114,11 @@ watch(
       title="Message unavailable"
       detail="This message could not be loaded. It may require the desktop app."
     />
+    <EmptyState
+      v-else-if="detail.offlineUnavailable"
+      title="Not available offline"
+      detail="This message has not been downloaded for offline reading. Reconnect to load it."
+    />
     <MessageDetail
       v-else
       :detail="detail"

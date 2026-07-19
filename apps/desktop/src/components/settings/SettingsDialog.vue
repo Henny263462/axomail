@@ -22,6 +22,10 @@ const emit = defineEmits<{
   close: [];
   /** An account section edited or deleted an account; the shell must refresh. */
   accountsChanged: [];
+  /** The tag set changed; the shell must refresh the sidebar Tags group. */
+  tagsChanged: [];
+  /** Settings were saved; the shell re-reads them (e.g. auto-read preference). */
+  settingsSaved: [];
 }>();
 
 type LoadState = "loading" | "ready" | "unavailable";
@@ -102,6 +106,9 @@ const context: SettingsSectionContext = {
   },
   notifyAccountsChanged() {
     emit("accountsChanged");
+  },
+  notifyTagsChanged() {
+    emit("tagsChanged");
   },
 };
 
@@ -186,6 +193,9 @@ async function onSave(): Promise<void> {
     // The previewed theme is now persisted; make it the revert baseline so
     // close() does not undo it.
     savedTheme.value = form.theme;
+    // Let the shell re-read the persisted settings so a mid-session change
+    // (e.g. the auto-mark-read preference) takes effect immediately.
+    emit("settingsSaved");
     close();
   } catch (error) {
     errorMessage.value = messageFrom(error);

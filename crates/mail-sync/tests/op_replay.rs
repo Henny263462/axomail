@@ -4,6 +4,8 @@
 
 mod support;
 
+use std::time::Duration;
+
 use axomail_core::{
     AccountId, Address, EmailAddress, Keyword, MailboxId, MailboxName, MessageFlags, MessageId,
     RemoteMessageId,
@@ -14,6 +16,20 @@ use support::{
     FailKind, FakeFactory, FakeProvider, FakeWorld, drain_until_terminal, store_with_mailbox,
     test_config,
 };
+
+/// Polls until `account`'s queue has no `pending`/`inflight` ops, or panics
+/// after a generous timeout. Used to observe drains that recovery or the
+/// drain-window successor trigger without an explicit command to await.
+async fn wait_until_drained(store: &Store, account: AccountId) {
+    for _ in 0..300 {
+        let counts = store.pending_ops().counts(account).await.unwrap();
+        if counts.pending + counts.inflight == 0 {
+            return;
+        }
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
+    panic!("pending ops were not drained within the timeout");
+}
 
 const UV: u32 = 100;
 
@@ -242,6 +258,73 @@ async fn a_transient_op_is_returned_to_pending_for_a_later_run() {
     // attempt count bumped, ready for the next replay run.
     let counts = store.pending_ops().counts(account).await.unwrap();
     assert_eq!((counts.pending, counts.inflight, counts.failed), (1, 0, 0));
+}
+
+#[tokio::test]
+async fn recovery_drains_pending_ops_without_a_command() {
+    // A pending op is in the store, but nothing has enqueued an OpReplay job
+    // (e.g. it was written just before a crash). Merely starting the engine must
+    // drain it, via startup recovery — no interactive command required.
+    let world = FakeWorld::new();
+    let (store, account, mailbox) = store_with_mailbox().await;
+    let message = insert_remote(&store, mailbox, 1).await;
+    enqueue(&store, account, message, seen_op(true)).await;
+
+    let engine = SyncEngine::start(
+        store.clone(),
+        FakeFactory::new(world.clone()),
+        test_config(),
+    );
+    wait_until_drained(&store, account).await;
+
+    // The recovered op reached the server and was completed — no command ran.
+    assert_eq!(world.flag_calls().len(), 1, "the recovered op replayed");
+    let counts = store.pending_ops().counts(account).await.unwrap();
+    assert_eq!((counts.pending, counts.inflight, counts.failed), (0, 0, 0));
+    drop(engine);
+}
+
+#[tokio::test]
+async fn a_drain_window_op_is_not_stranded() {
+    // An op that arrives in the drain-completion window — after the running
+    // replay's final empty claim but before it transitions terminal — would be
+    // deduped away by the command path (an OpReplay is still "running"). The
+    // finishing job must enqueue a successor so the op is not stranded.
+    let world = FakeWorld::new();
+    let (store, account, mailbox) = store_with_mailbox().await;
+    let m1 = insert_remote(&store, mailbox, 1).await;
+    let m2 = insert_remote(&store, mailbox, 2).await;
+    enqueue(&store, account, m1, seen_op(true)).await;
+
+    // The window op: enqueued when the first drain disconnects (after its final
+    // empty claim). Without the successor mechanism it stays pending forever.
+    world.inject_op_on_disconnect(
+        store.clone(),
+        NewPendingOp {
+            account_id: account,
+            message_id: m2,
+            kind: PendingOpKind::AddFlags,
+            payload_json: seen_op(true).1,
+        },
+    );
+
+    // Recovery kicks off the first drain (m1); its disconnect injects m2's op;
+    // the drain-window fix enqueues a successor that drains it.
+    let engine = SyncEngine::start(
+        store.clone(),
+        FakeFactory::new(world.clone()),
+        test_config(),
+    );
+    wait_until_drained(&store, account).await;
+
+    assert_eq!(
+        world.flag_calls().len(),
+        2,
+        "both the original and the drain-window op replayed"
+    );
+    let counts = store.pending_ops().counts(account).await.unwrap();
+    assert_eq!((counts.pending, counts.inflight, counts.failed), (0, 0, 0));
+    drop(engine);
 }
 
 #[tokio::test]

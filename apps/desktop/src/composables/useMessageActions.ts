@@ -2,6 +2,7 @@ import { onUnmounted, ref, type Ref } from "vue";
 
 import {
   markMailboxRead,
+  markMessagesRead,
   markMessageSeen,
   setMessageFlagged,
 } from "../api/messages";
@@ -16,7 +17,7 @@ import type {
  * reactive refs `App.vue` already owns (props-down/events-up; no store).
  */
 interface Deps {
-  /** Current single-mailbox list (mutated optimistically). */
+  /** Current single-mailbox / tag-filter list (mutated optimistically). */
   messages: Ref<MessageListItem[]>;
   /** Current unified-inbox list (mutated optimistically). */
   unifiedItems: Ref<UnifiedItemDto[]>;
@@ -29,19 +30,24 @@ interface Deps {
 /**
  * Owns the message write-back UX: optimistic star toggling (reverted on a
  * backend error), auto-mark-read-on-display with a configurable delay, and
- * mark-all-read for a mailbox. Every change is applied to the list locally
- * first (the single source of truth the UI reads back) and pushed to the
- * backend, which enqueues the durable server op.
+ * mark-all-read for a mailbox or a message set. Every change is applied to the
+ * list locally first (the single source of truth the UI reads back) and pushed
+ * to the backend, which enqueues the durable server op.
  */
 export function useMessageActions(deps: Deps) {
   const autoReadEnabled = ref(true);
   const autoReadDelayMs = ref(0);
+  // Auto-read stays inert until the persisted setting has been applied at
+  // least once, so a message opened during the initial settings load is never
+  // marked read against a persisted preference that disables it.
+  const autoReadConfigured = ref(false);
   let timer: ReturnType<typeof setTimeout> | null = null;
 
-  /** Applies the persisted auto-mark-read preference. */
+  /** Applies the persisted auto-mark-read preference (idempotent, reactive). */
   function configureAutoRead(enabled: boolean, delayMs: number): void {
     autoReadEnabled.value = enabled;
     autoReadDelayMs.value = Math.max(0, delayMs);
+    autoReadConfigured.value = true;
   }
 
   function cancelTimer(): void {
@@ -51,7 +57,7 @@ export function useMessageActions(deps: Deps) {
     }
   }
 
-  /** Finds a list item by id across the mailbox and unified lists. */
+  /** Finds a list item by id across the mailbox/tag and unified lists. */
   function findMessage(
     messageId: number,
   ): MessageListItem | UnifiedItemDto | undefined {
@@ -73,20 +79,27 @@ export function useMessageActions(deps: Deps) {
   }
 
   /**
-   * Schedules the displayed message to be marked read. With auto-read off
-   * nothing happens; with a zero delay it marks immediately; otherwise it
-   * marks after the delay, and only if the message is still the open one.
-   * A newer selection replaces any pending timer.
+   * Schedules the displayed message to be marked read. With auto-read off (or
+   * not yet configured) nothing happens; with a zero delay it marks
+   * immediately; otherwise it marks after the delay, and only if the message
+   * is still the open one. A newer selection replaces any pending timer.
    */
   function scheduleAutoRead(messageId: number): void {
     cancelTimer();
+    if (!autoReadConfigured.value || !autoReadEnabled.value) return;
     const message = findMessage(messageId);
-    if (message === undefined || message.seen || !autoReadEnabled.value) return;
+    if (message === undefined || message.seen) return;
 
+    // Re-resolve the row at fire time: the list may have been reloaded (a new
+    // page of objects) during the delay, so the captured object could be
+    // detached. Marking must target the still-current row for the still-open
+    // message, never a stale one.
     const mark = (): void => {
-      if (deps.selectedMessageId.value !== messageId || message.seen) return;
-      message.seen = true;
-      decrementUnread(message.mailboxId);
+      if (deps.selectedMessageId.value !== messageId) return;
+      const current = findMessage(messageId);
+      if (current === undefined || current.seen) return;
+      current.seen = true;
+      decrementUnread(current.mailboxId);
       // Browser preview resolves null with nothing to persist; that is fine.
       void markMessageSeen(messageId, true);
     };
@@ -126,16 +139,79 @@ export function useMessageActions(deps: Deps) {
     if (message !== undefined) message.flagged = flagged;
   }
 
-  /** Marks every unread message in `mailboxId` read, optimistically. */
+  /**
+   * Marks every unread message in `mailboxId` read, optimistically, reverting
+   * the whole batch if the command fails (a `null` result — which
+   * {@link markMailboxRead} returns on failure — or a throw).
+   */
   async function markAllRead(mailboxId: number): Promise<void> {
-    for (const message of deps.messages.value) {
-      if (!message.seen) message.seen = true;
-    }
+    const flipped = flipUnreadRows();
+    let badge: { mailbox: AccountSummary["mailboxes"][number]; previous: number } | null =
+      null;
     for (const account of deps.accounts.value) {
       const mailbox = account.mailboxes.find((m) => m.id === mailboxId);
-      if (mailbox !== undefined) mailbox.unreadCount = 0;
+      if (mailbox !== undefined) {
+        badge = { mailbox, previous: mailbox.unreadCount };
+        mailbox.unreadCount = 0;
+        break;
+      }
     }
-    await markMailboxRead(mailboxId);
+    // `markMailboxRead` returns the marked count on success and `null` on
+    // failure (safeInvoke swallows the error), so a `null` means undo.
+    const result = await markMailboxRead(mailboxId);
+    if (result === null) {
+      revertUnreadRows(flipped);
+      if (badge !== null) badge.mailbox.unreadCount = badge.previous;
+    }
+  }
+
+  /**
+   * Marks every unread message in the current list read (the tag-filter view,
+   * whose messages can span mailboxes). Optimistic, with the same batch revert
+   * on failure as {@link markAllRead}.
+   */
+  async function markListRead(): Promise<void> {
+    const flipped = flipUnreadRows();
+    if (flipped.length === 0) return;
+    for (const message of flipped) decrementUnread(message.mailboxId);
+    try {
+      await markMessagesRead(
+        flipped.map((message) => message.id),
+        true,
+      );
+    } catch {
+      // A real backend failure: undo the whole optimistic batch.
+      revertUnreadRows(flipped);
+      for (const message of flipped) incrementUnread(message.mailboxId);
+    }
+  }
+
+  /** Flips every unread row in the current list to seen, returning them. */
+  function flipUnreadRows(): MessageListItem[] {
+    const flipped: MessageListItem[] = [];
+    for (const message of deps.messages.value) {
+      if (!message.seen) {
+        message.seen = true;
+        flipped.push(message);
+      }
+    }
+    return flipped;
+  }
+
+  /** Restores rows flipped by {@link flipUnreadRows} to unread. */
+  function revertUnreadRows(rows: MessageListItem[]): void {
+    for (const message of rows) message.seen = false;
+  }
+
+  /** Restores an optimistic unread-badge decrement. */
+  function incrementUnread(mailboxId: number): void {
+    for (const account of deps.accounts.value) {
+      const mailbox = account.mailboxes.find((m) => m.id === mailboxId);
+      if (mailbox !== undefined) {
+        mailbox.unreadCount += 1;
+        return;
+      }
+    }
   }
 
   onUnmounted(cancelTimer);
@@ -146,5 +222,6 @@ export function useMessageActions(deps: Deps) {
     toggleStar,
     syncStar,
     markAllRead,
+    markListRead,
   };
 }

@@ -1,5 +1,15 @@
 # axomail — Current-State Architecture Synthesis (2026-07-19)
 
+> **Snapshot notice:** this document is the PRE-Wave-1 baseline used to plan
+> phase 5+. Waves 1 and 2 have since landed (threading identity, OAuth2, dark
+> mode, activity manager, identities/send-later, remote-content control,
+> account management; generalized job engine + pending-op write-back, folder
+> hierarchy/discovery/CRUD, offline body store + Work Offline, tags/IMAP
+> keywords, CONDSTORE/QRESYNC incremental sync). The feature matrix below is
+> historical; [plan-phase-5-plus.md](plan-phase-5-plus.md) (status table +
+> "Stage 0 delivered API") is authoritative for what exists now. §2's
+> conventions/extension recipes remain valid and binding.
+
 Consolidated from parallel subsystem reads of the whole workspace. This is the
 baseline map for planning the push toward Thunderbird-level feature completeness.
 It records **what exists today**, **how to extend each layer**, and **what is

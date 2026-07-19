@@ -28,6 +28,7 @@ const context = {
   reportError: vi.fn(),
   reportStatus: vi.fn(),
   notifyAccountsChanged: vi.fn(),
+  notifyTagsChanged: vi.fn(),
 } satisfies SettingsSectionContext;
 
 vi.mock("../src/api/accounts", () => ({

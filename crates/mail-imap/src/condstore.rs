@@ -64,7 +64,7 @@ pub(crate) async fn select(
     qresync: bool,
     timeout: Duration,
 ) -> Result<Mailbox, MailError> {
-    if qresync && !connected.qresync_enabled {
+    if qresync && !connected.qresync_attempted {
         maybe_enable_qresync(connected, timeout).await?;
     }
     with_deadline(timeout, async {
@@ -78,9 +78,14 @@ pub(crate) async fn select(
     .await
 }
 
-/// Issues `ENABLE QRESYNC` best-effort: a connection-level failure propagates
-/// (so the pass retries), while a server rejection is logged and the connection
-/// stays on the CONDSTORE-only path.
+/// Issues `ENABLE QRESYNC` best-effort, at most once per connection.
+///
+/// A connection-level (temporary) failure propagates so the pass retries and
+/// leaves the attempt un-recorded — a fresh connection may try again. A
+/// definitive outcome (enabled, or a server rejection) marks the attempt so the
+/// sync path never re-issues `ENABLE` on a later, already-selected pass (RFC
+/// 3501 forbids `ENABLE` outside authenticated-not-selected). A rejection
+/// simply degrades the connection to CONDSTORE-only.
 async fn maybe_enable_qresync(
     connected: &mut Connected,
     timeout: Duration,
@@ -96,11 +101,17 @@ async fn maybe_enable_qresync(
     match result {
         Ok(()) => {
             connected.qresync_enabled = true;
+            connected.qresync_attempted = true;
             Ok(())
         }
+        // Temporary failure: do not record the attempt, so a reconnected pass
+        // can retry `ENABLE` from the authenticated-not-selected state.
         Err(error) if error.class() == ErrorClass::Temporary => Err(error),
         Err(error) => {
+            // Server rejection: record the attempt and stay CONDSTORE-only for
+            // the rest of this connection rather than re-issuing ENABLE selected.
             tracing::warn!(error = %error, "ENABLE QRESYNC rejected; using CONDSTORE-only sync");
+            connected.qresync_attempted = true;
             Ok(())
         }
     }

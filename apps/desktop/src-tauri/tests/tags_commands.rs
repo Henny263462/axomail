@@ -6,6 +6,8 @@
 
 mod common;
 
+use std::time::Duration;
+
 use axomail_core::{
     AccountId, Address, EmailAddress, MailboxId, MessageFlags, RemoteMessageId, UtcTimestamp,
 };
@@ -15,6 +17,8 @@ use axomail_desktop_lib::commands::tags::{
     message_tag_options_impl, set_message_tag_impl, update_tag_impl,
 };
 use axomail_storage::{NewMessage, Store};
+use axomail_sync::SyncEvent;
+use common::provider::stub_engine;
 use common::{secret_stores, valid_input};
 
 /// Creates an account (seeding mailboxes + starter tags) and returns the store,
@@ -122,8 +126,9 @@ async fn tagging_an_imap_message_links_locally_and_enqueues_write_back() {
     let (store, account, inbox) = setup().await;
     let message = insert_imap_message(&store, inbox, 1).await;
     let tag = list_tags_impl(&store, account).await.unwrap()[0].id;
+    let engine = stub_engine(&store);
 
-    set_message_tag_impl(&store, message, tag, true)
+    set_message_tag_impl(&store, &engine, message, tag, true)
         .await
         .unwrap();
 
@@ -147,7 +152,7 @@ async fn tagging_an_imap_message_links_locally_and_enqueues_write_back() {
     assert_eq!(counts.pending, 1);
 
     // Untagging enqueues a second (remove) op and clears the local link.
-    set_message_tag_impl(&store, message, tag, false)
+    set_message_tag_impl(&store, &engine, message, tag, false)
         .await
         .unwrap();
     let counts = store
@@ -183,8 +188,9 @@ async fn tagging_a_local_message_does_not_enqueue_write_back() {
         .id
         .value();
     let tag = list_tags_impl(&store, account).await.unwrap()[0].id;
+    let engine = stub_engine(&store);
 
-    set_message_tag_impl(&store, message, tag, true)
+    set_message_tag_impl(&store, &engine, message, tag, true)
         .await
         .unwrap();
 
@@ -218,12 +224,42 @@ async fn tagging_rejects_a_cross_account_tag() {
 
     let message = insert_imap_message(&store, inbox_a, 1).await;
     let foreign_tag = list_tags_impl(&store, account_b.id).await.unwrap()[0].id;
+    let engine = stub_engine(&store);
 
-    let result = set_message_tag_impl(&store, message, foreign_tag, true).await;
+    let result = set_message_tag_impl(&store, &engine, message, foreign_tag, true).await;
     assert!(
         result.is_err(),
         "a tag from another account must be rejected"
     );
     // Sanity: account_a still owns its own tags.
     assert!(!list_tags_impl(&store, account_a).await.unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn tagging_an_imap_message_triggers_an_op_replay() {
+    let (store, account, inbox) = setup().await;
+    let message = insert_imap_message(&store, inbox, 1).await;
+    let tag = list_tags_impl(&store, account).await.unwrap()[0].id;
+    let engine = stub_engine(&store);
+    // Subscribe before the command so the engine's announcement is observed.
+    let mut events = engine.subscribe();
+
+    set_message_tag_impl(&store, &engine, message, tag, true)
+        .await
+        .unwrap();
+
+    // The command handed an `OpReplay` work request to the engine, which the
+    // dispatcher turns into a queued job it announces. Without the trigger the
+    // op would sit in `pending_ops` forever and this would time out.
+    let queued = tokio::time::timeout(Duration::from_secs(5), async {
+        loop {
+            match events.recv().await.unwrap() {
+                SyncEvent::JobQueued { account_id, .. } => return account_id,
+                _ => continue,
+            }
+        }
+    })
+    .await
+    .expect("engine announced a queued op-replay job");
+    assert_eq!(queued, AccountId::new(account));
 }

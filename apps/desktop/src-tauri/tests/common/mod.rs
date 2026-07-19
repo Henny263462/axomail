@@ -2,6 +2,7 @@
 #![allow(dead_code, clippy::unwrap_used, clippy::expect_used)]
 
 pub mod pop3_server;
+pub mod provider;
 
 use std::sync::Arc;
 

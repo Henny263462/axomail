@@ -17,7 +17,7 @@ mod op_replay;
 use std::sync::Arc;
 
 use axomail_core::{AccountId, IncomingMailProvider, MailError};
-use axomail_storage::{JobKind, JobState, SyncJob};
+use axomail_storage::{JobKind, JobState, NewSyncJob, SyncJob};
 use tokio_util::sync::CancellationToken;
 
 use crate::event::{SyncEvent, SyncJobSummary};
@@ -93,8 +93,57 @@ where
         dispatch(&shared, &job, account_id, &token).await
     };
 
+    let succeeded = result.is_ok();
     finalize(&shared, &job, result).await;
+    // Close the drain-completion window: an op enqueued after this OpReplay's
+    // final empty claim but before its terminal transition was deduped away (an
+    // OpReplay was still `running`, so the command path's enqueue was a no-op).
+    // Now that the job is terminal, a fresh OpReplay can drain it. Only on
+    // success — a failed drain is retried by the scheduler backstop, never
+    // re-spawned in a tight loop.
+    if succeeded && job.kind == JobKind::OpReplay {
+        redrain_pending_ops(&shared, account_id).await;
+    }
     shared.take_cancel(job.id);
+}
+
+/// After an `OpReplay` job finishes, enqueues a successor when the account still
+/// has claimable pending ops (see [`run_job`]). The successor is created with
+/// `create_if_absent` (deduped against any op-replay already queued or running)
+/// and the dispatcher is woken via `resume` to spawn it. Claimability excludes
+/// ops blocked behind a parked head, so this never spins.
+async fn redrain_pending_ops<P, F>(shared: &Arc<Shared<P, F>>, account_id: AccountId)
+where
+    P: IncomingMailProvider + 'static,
+    F: ProviderFactory<P>,
+{
+    match shared
+        .store
+        .pending_ops()
+        .account_has_claimable_ops(account_id)
+        .await
+    {
+        Ok(true) => {
+            let new = NewSyncJob {
+                kind: JobKind::OpReplay,
+                account_id: Some(account_id),
+                mailbox_id: None,
+            };
+            match shared.store.sync_jobs().create_if_absent(&new).await {
+                // A fresh op-replay row: wake the dispatcher to spawn it.
+                Ok(Some(_)) => shared.resume.notify_one(),
+                // An op-replay is already queued/running; it will cover them.
+                Ok(None) => {}
+                Err(error) => {
+                    tracing::error!(error = %error, "failed to enqueue successor op-replay");
+                }
+            }
+        }
+        Ok(false) => {}
+        Err(error) => {
+            tracing::error!(error = %error, "failed to re-check pending ops after replay");
+        }
+    }
 }
 
 /// Routes a claimed job to its per-kind executor.

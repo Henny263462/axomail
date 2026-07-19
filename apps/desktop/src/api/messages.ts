@@ -57,6 +57,22 @@ export function markMailboxRead(mailboxId: number): Promise<number | null> {
 }
 
 /**
+ * Sets the read state of a specific set of messages (the tag-filter view's
+ * "Mark all read", whose messages can span mailboxes).
+ *
+ * The command returns nothing, so success and failure cannot be told apart by
+ * a `null` result; {@link invokeOrThrow} is used so a real backend failure
+ * rejects (the caller reverts its optimistic update on rejection). The browser
+ * preview still resolves `null`, leaving the optimistic update to stand.
+ */
+export function markMessagesRead(
+  messageIds: number[],
+  seen: boolean,
+): Promise<null> {
+  return invokeOrThrow<null>("mark_messages_read", { messageIds, seen });
+}
+
+/**
  * Loads the full detail of one message, including the sanitized viewing
  * payload. Resolves to `null` in the browser preview or on backend failure.
  *

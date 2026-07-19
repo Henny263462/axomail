@@ -1,12 +1,13 @@
-//! Tag commands: per-account tag CRUD, the per-message picker options and
-//! tag/untag mutation (which also enqueues the server keyword write), and the
-//! tag-filter message listing.
+//! Tag commands: per-account tag CRUD, the per-message picker options, the
+//! tag/untag mutation (enqueues + replays the keyword write), and tag filter.
 
 use std::collections::HashSet;
 
-use axomail_core::{AccountId, Keyword, MailError, MessageId, RemoteMessageId};
+use axomail_core::{
+    AccountId, IncomingMailProvider, Keyword, MailError, MessageId, RemoteMessageId,
+};
 use axomail_storage::{NewPendingOp, NewTag, Store, TagColor, TagId, TagUpdate};
-use axomail_sync::keyword_op;
+use axomail_sync::{ProviderFactory, SyncEngine, WorkRequest, keyword_op};
 
 use crate::commands::map_command_error;
 use crate::dto::{MessageListPageDto, MessageTagOptionDto, MessageTagOptionsDto, TagDto};
@@ -161,20 +162,25 @@ pub async fn message_tag_options_impl(
     })
 }
 
-/// Applies or removes a tag on a message: updates the local association and,
-/// for an IMAP message, enqueues an additive keyword write for the server.
+/// Applies or removes a tag on a message: updates the local link and, for an
+/// IMAP message, enqueues a keyword write and triggers an `OpReplay` so it
+/// reaches the server. Local-only and POP3 messages keep the tag locally.
 ///
 /// # Errors
 ///
-/// Returns [`MailError::Configuration`] for an unknown message or tag, or a tag
-/// that belongs to a different account than the message, and
-/// [`MailError::Database`] on any query failure.
-pub async fn set_message_tag_impl(
+/// Returns [`MailError::Configuration`] (unknown/cross-account tag or message),
+/// [`MailError::Database`] on a query failure, or [`MailError::Cancelled`].
+pub async fn set_message_tag_impl<P, F>(
     store: &Store,
+    engine: &SyncEngine<P, F>,
     message_id: i64,
     tag_id: i64,
     tagged: bool,
-) -> Result<(), MailError> {
+) -> Result<(), MailError>
+where
+    P: IncomingMailProvider + 'static,
+    F: ProviderFactory<P>,
+{
     let msg_id = MessageId::new(message_id);
     let tag_id = TagId::new(tag_id);
     let envelope = store
@@ -210,10 +216,7 @@ pub async fn set_message_tag_impl(
         store.tags().remove_message_tag(msg_id, tag_id).await?;
     }
 
-    // Keywords are an IMAP concept: only enqueue a server write for an IMAP
-    // message. Local-only and POP3 messages keep the tag locally. The op is
-    // built by the single shared `op_payload` builder so the enqueue and the
-    // write-back executor share one payload format.
+    // Only IMAP messages enqueue a server write and trigger a per-account replay.
     if matches!(envelope.remote_id, Some(RemoteMessageId::Imap { .. })) {
         let (kind, payload_json) = keyword_op(tag.keyword.clone(), tagged);
         store
@@ -223,6 +226,11 @@ pub async fn set_message_tag_impl(
                 message_id: msg_id,
                 kind,
                 payload_json,
+            })
+            .await?;
+        engine
+            .enqueue_work(WorkRequest::OpReplay {
+                account_id: mailbox.account,
             })
             .await?;
     }
@@ -401,7 +409,7 @@ pub async fn set_message_tag(
     tag_id: i64,
     tagged: bool,
 ) -> Result<(), String> {
-    set_message_tag_impl(state.store(), message_id, tag_id, tagged)
+    set_message_tag_impl(state.store(), state.engine(), message_id, tag_id, tagged)
         .await
         .map_err(map_command_error)
 }

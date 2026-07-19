@@ -21,6 +21,8 @@ const emit = defineEmits<{
   composerSent: [payload: { draftId: number | null }];
   composerSaved: [];
   accountsChanged: [];
+  tagsChanged: [];
+  settingsSaved: [];
 }>();
 
 // The composer is only mounted while open; the fallback keeps the prop types
@@ -50,6 +52,8 @@ const composer = computed(
     :accounts="accounts"
     @close="dialogs.close('settings')"
     @accounts-changed="emit('accountsChanged')"
+    @tags-changed="emit('tagsChanged')"
+    @settings-saved="emit('settingsSaved')"
   />
   <ActivityDialog
     v-if="dialogs.isOpen('activity')"

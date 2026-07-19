@@ -72,6 +72,8 @@ async function saveRow(row: EditRow): Promise<void> {
     await updateTag(row.id, row.displayName.trim(), row.color);
     props.context.reportError("");
     props.context.reportStatus(`Saved “${row.displayName.trim()}”.`);
+    // Name/color changed: refresh the sidebar Tags group.
+    props.context.notifyTagsChanged();
   } catch (error) {
     props.context.reportError(messageFrom(error));
   }
@@ -94,6 +96,7 @@ async function removeRow(row: EditRow): Promise<void> {
     rows.value = rows.value.filter((candidate) => candidate.id !== row.id);
     props.context.reportError("");
     props.context.reportStatus(`Deleted “${row.displayName}”.`);
+    props.context.notifyTagsChanged();
   } catch (error) {
     props.context.reportError(messageFrom(error));
   }
@@ -113,6 +116,7 @@ async function addTag(): Promise<void> {
     newName.value = "";
     props.context.reportError("");
     props.context.reportStatus(`Created “${name}”.`);
+    props.context.notifyTagsChanged();
   } catch (error) {
     props.context.reportError(messageFrom(error));
   }

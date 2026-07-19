@@ -129,6 +129,18 @@ describe("TagPicker", () => {
     await wrapper.get('[role="group"]').trigger("keydown", { key: "Escape" });
     expect(wrapper.emitted("close")).toBeTruthy();
   });
+
+  it("keeps the tag checkboxes enabled while a mutation is in flight", () => {
+    const wrapper = mount(TagPicker, { props: { options, busy: true } });
+    const boxes = wrapper.findAll('input[type="checkbox"]');
+    // Disabling the focused checkbox blurs it, which fires the host's focus-out
+    // and snaps the picker shut, so toggles stay enabled even while busy.
+    expect((boxes[0]!.element as HTMLInputElement).disabled).toBe(false);
+    // The create field still guards against a double submit while busy.
+    expect(
+      (wrapper.get('input[type="text"]').element as HTMLInputElement).disabled,
+    ).toBe(true);
+  });
 });
 
 describe("MessageTagArea", () => {
@@ -175,6 +187,34 @@ describe("MessageTagArea", () => {
     expect(createTagMock).toHaveBeenCalledWith(1, "Urgent", null);
     expect(setMessageTagMock).toHaveBeenCalledWith(10, 9, true);
   });
+
+  it("does not tag a newly selected message when a create started on another resolves", async () => {
+    messageTagOptionsMock.mockResolvedValue(structuredClone(options));
+    setMessageTagMock.mockResolvedValue(null);
+    let resolveCreate!: (tag: TagDto | null) => void;
+    createTagMock.mockReturnValue(
+      new Promise<TagDto | null>((resolve) => {
+        resolveCreate = resolve;
+      }),
+    );
+    const wrapper = mount(MessageTagArea, { props: { messageId: 10 } });
+    await flushPromises();
+
+    await wrapper.get('button[aria-haspopup="true"]').trigger("click");
+    const picker = wrapper.findComponent(TagPicker);
+    await picker.get('input[type="text"]').setValue("Urgent");
+    await picker.get("form").trigger("submit");
+
+    // Switch to message B before the create for A resolves.
+    await wrapper.setProps({ messageId: 20 });
+    await flushPromises();
+    resolveCreate(tag(9, "Urgent", null));
+    await flushPromises();
+
+    // The tag created for A is never applied to the now-selected message B.
+    expect(setMessageTagMock).not.toHaveBeenCalledWith(20, 9, true);
+    wrapper.unmount();
+  });
 });
 
 describe("SidebarTagsPane", () => {
@@ -197,6 +237,24 @@ describe("SidebarTagsPane", () => {
     const wrapper = mount(SidebarTagsPane);
     await flushPromises();
     expect(wrapper.find(".tags-group").exists()).toBe(false);
+  });
+
+  it("reloads its tags when the refresh key changes", async () => {
+    listAllTagsMock.mockResolvedValueOnce([tag(1, "Work", "#e08a3c")]);
+    const wrapper = mount(SidebarTagsPane, { props: { refreshKey: 0 } });
+    await flushPromises();
+    expect(wrapper.findAll(".tag")).toHaveLength(1);
+
+    // A tag was created/deleted in settings: the host bumps the key and the
+    // sidebar reloads rather than staying stale until restart.
+    listAllTagsMock.mockResolvedValueOnce([
+      tag(1, "Work", "#e08a3c"),
+      tag(2, "Later", null),
+    ]);
+    await wrapper.setProps({ refreshKey: 1 });
+    await flushPromises();
+    expect(wrapper.findAll(".tag")).toHaveLength(2);
+    wrapper.unmount();
   });
 });
 
@@ -225,6 +283,7 @@ describe("TagsSection", () => {
       reportError: vi.fn(),
       reportStatus: vi.fn(),
       notifyAccountsChanged: vi.fn(),
+      notifyTagsChanged: vi.fn(),
     };
   }
 
@@ -261,5 +320,7 @@ describe("TagsSection", () => {
 
     expect(createTagMock).toHaveBeenCalledWith(1, "Project", expect.any(String));
     expect(context.reportStatus).toHaveBeenCalledWith(expect.stringContaining("Project"));
+    // The shell is signalled so the sidebar Tags group refreshes.
+    expect(context.notifyTagsChanged).toHaveBeenCalled();
   });
 });

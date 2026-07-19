@@ -92,8 +92,20 @@ pub(crate) async fn store_flags(
 
 /// Moves a message to `encoded_target` (already modified UTF-7 encoded).
 ///
-/// Uses `UID MOVE` when the server advertises `MOVE`; otherwise falls back
-/// to `UID COPY` + mark `\Deleted` + expunge.
+/// Uses the atomic `UID MOVE` when the server advertises `MOVE`; otherwise
+/// falls back to the RFC 3501 `UID COPY` + mark `\Deleted` + expunge sequence.
+///
+/// The fallback is made safe on two counts. **Idempotency**: it first checks
+/// the message is still in the source mailbox, so a retry after a completed
+/// move (the source UID already gone) does not re-`COPY` it and duplicate it in
+/// the target. **No collateral loss**: the expunge is scoped to this UID via
+/// UIDPLUS, and without UIDPLUS it is skipped entirely rather than issuing a
+/// mailbox-wide `EXPUNGE` (see [`expunge_scoped`]).
+///
+/// One residual window remains at-least-once: if a prior attempt sent the
+/// `COPY` but died before the `\Deleted` store, the source still holds the UID
+/// and a retry re-copies it. Callers tolerating exactly-once must prefer a
+/// `MOVE`-capable server.
 pub(crate) async fn move_to(
     connected: &mut Connected,
     uid: u32,
@@ -111,6 +123,11 @@ pub(crate) async fn move_to(
         .await;
     }
 
+    // Idempotency: a message absent from the source was already moved by an
+    // earlier attempt. Re-copying would duplicate it in the target.
+    if !uid_present(connected, uid, timeout).await? {
+        return Ok(());
+    }
     with_deadline(timeout, async {
         connected
             .session
@@ -120,17 +137,37 @@ pub(crate) async fn move_to(
     })
     .await?;
     run_store(connected, uid, "+FLAGS (\\Deleted)", timeout).await?;
-    expunge(connected, uid, timeout).await
+    expunge_scoped(connected, uid, timeout).await
 }
 
-/// Marks a message `\Deleted` and expunges it.
+/// Marks a message `\Deleted` and expunges it, scoped so a server without
+/// UIDPLUS never triggers a mailbox-wide purge (see [`expunge_scoped`]).
 pub(crate) async fn delete(
     connected: &mut Connected,
     uid: u32,
     timeout: Duration,
 ) -> Result<(), MailError> {
     run_store(connected, uid, "+FLAGS (\\Deleted)", timeout).await?;
-    expunge(connected, uid, timeout).await
+    expunge_scoped(connected, uid, timeout).await
+}
+
+/// Whether the currently selected mailbox still holds `uid`
+/// (`UID SEARCH UID <uid>`). Used by the COPY fallback to avoid re-copying a
+/// message a prior attempt already moved.
+async fn uid_present(
+    connected: &mut Connected,
+    uid: u32,
+    timeout: Duration,
+) -> Result<bool, MailError> {
+    let found = with_deadline(timeout, async {
+        connected
+            .session
+            .uid_search(format!("UID {uid}"))
+            .await
+            .map_err(|err| map_imap_error(&err))
+    })
+    .await?;
+    Ok(found.contains(&uid))
 }
 
 /// Runs a `UID STORE` with the given flag query, draining the response.
@@ -155,39 +192,35 @@ async fn run_store(
     .await
 }
 
-/// Expunges one message: `UID EXPUNGE` under `UIDPLUS`, else `EXPUNGE`.
+/// Expunges exactly one message when it is safe to do so.
 ///
-/// The `EXPUNGE` fallback removes every `\Deleted` message in the mailbox,
-/// not only this UID; this is the documented cost of a server without
-/// `UIDPLUS`.
-async fn expunge(connected: &mut Connected, uid: u32, timeout: Duration) -> Result<(), MailError> {
-    if connected.has_capability("UIDPLUS") {
-        with_deadline(timeout, async {
-            let stream = connected
-                .session
-                .uid_expunge(uid.to_string())
-                .await
-                .map_err(|err| map_imap_error(&err))?;
-            stream
-                .try_collect::<Vec<_>>()
-                .await
-                .map_err(|err| map_imap_error(&err))?;
-            Ok(())
-        })
-        .await
-    } else {
-        with_deadline(timeout, async {
-            let stream = connected
-                .session
-                .expunge()
-                .await
-                .map_err(|err| map_imap_error(&err))?;
-            stream
-                .try_collect::<Vec<_>>()
-                .await
-                .map_err(|err| map_imap_error(&err))?;
-            Ok(())
-        })
-        .await
+/// Under `UIDPLUS`, `UID EXPUNGE <uid>` removes precisely this UID. Without
+/// `UIDPLUS`, a plain `EXPUNGE` would remove **every** `\Deleted` message in
+/// the mailbox — permanently deleting unrelated messages the user (or another
+/// op) flagged `\Deleted` — so it is deliberately **not** issued. The message
+/// stays flagged `\Deleted` in the source and is reclaimed by a later
+/// expunge/compaction (e.g. an eventual `MOVE`-capable pass or a mailbox
+/// close): leaving a tombstone is safe, silently deleting unrelated mail is not.
+async fn expunge_scoped(
+    connected: &mut Connected,
+    uid: u32,
+    timeout: Duration,
+) -> Result<(), MailError> {
+    if !connected.has_capability("UIDPLUS") {
+        // No scoped expunge available: skip rather than purge the whole mailbox.
+        return Ok(());
     }
+    with_deadline(timeout, async {
+        let stream = connected
+            .session
+            .uid_expunge(uid.to_string())
+            .await
+            .map_err(|err| map_imap_error(&err))?;
+        stream
+            .try_collect::<Vec<_>>()
+            .await
+            .map_err(|err| map_imap_error(&err))?;
+        Ok(())
+    })
+    .await
 }

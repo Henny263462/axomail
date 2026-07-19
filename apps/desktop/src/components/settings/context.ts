@@ -55,6 +55,13 @@ export interface SettingsSectionContext {
    * mutate accounts simply do not call it.
    */
   notifyAccountsChanged(): void;
+  /**
+   * Signals that the tag set changed (created, deleted, or edited) so the app
+   * shell can refresh the sidebar Tags group, which otherwise loads once on
+   * mount and goes stale. Bubbles the same way as
+   * {@link SettingsSectionContext.notifyAccountsChanged}.
+   */
+  notifyTagsChanged(): void;
 }
 
 /** Normalizes an unknown thrown value into a user-facing settings error. */

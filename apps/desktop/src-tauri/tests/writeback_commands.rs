@@ -13,7 +13,8 @@ use axomail_core::{
 };
 use axomail_desktop_lib::commands::accounts::create_account_impl;
 use axomail_desktop_lib::commands::writeback::{
-    mark_mailbox_read_impl, mark_message_seen_impl, set_message_flagged_impl,
+    mark_mailbox_read_impl, mark_message_seen_impl, mark_messages_read_impl,
+    set_message_flagged_impl,
 };
 use axomail_storage::{NewMessage, PendingOpKind, Store};
 use axomail_sync::{ProviderFactory, SyncConfig, SyncEngine};
@@ -312,4 +313,44 @@ async fn mark_mailbox_read_bulk_marks_and_queues_per_message() {
         .await
         .unwrap();
     assert_eq!(counts.pending, 2, "one op per newly-read message");
+}
+
+#[tokio::test]
+async fn mark_messages_read_marks_a_selection_and_queues_per_message() {
+    let store = Store::open_in_memory().await.unwrap();
+    let (_c, secrets) = secret_stores();
+    let account = create_account_impl(&store, &secrets, valid_input())
+        .await
+        .unwrap();
+    let mailbox = inbox(&store, AccountId::new(account.id)).await;
+    let a = insert(&store, mailbox, Some(imap_id(1))).await;
+    let b = insert(&store, mailbox, Some(imap_id(2))).await;
+    // A third message is left out of the selection: it must stay unread.
+    let untouched = insert(&store, mailbox, Some(imap_id(3))).await;
+    let engine = engine(&store);
+
+    mark_messages_read_impl(&store, &engine, vec![a.value(), b.value()], true)
+        .await
+        .unwrap();
+
+    for id in [a, b] {
+        assert!(store.messages().get(id).await.unwrap().unwrap().flags.seen);
+    }
+    assert!(
+        !store
+            .messages()
+            .get(untouched)
+            .await
+            .unwrap()
+            .unwrap()
+            .flags
+            .seen,
+        "a message outside the selection is left unread"
+    );
+    let counts = store
+        .pending_ops()
+        .counts(AccountId::new(account.id))
+        .await
+        .unwrap();
+    assert_eq!(counts.pending, 2, "one op per message in the selection");
 }

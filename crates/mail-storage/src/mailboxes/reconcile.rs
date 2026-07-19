@@ -5,9 +5,17 @@
 //!
 //! * folders keyed by their full server path are **upserted** in place, so a
 //!   folder that survives keeps its id (and its messages);
-//! * a single unambiguous leaf **rename** (one vanished folder, one new folder
-//!   under the same parent path) updates the existing row in place, preserving
-//!   its id and messages;
+//! * a **moved subtree** — exactly one vanished folder and one new folder that
+//!   share the same *leaf* name — is treated as the same folder relocated: the
+//!   existing row's id (and messages) is preserved and its path updated. Only a
+//!   preserved leaf positively confirms identity from names alone. A folder
+//!   whose *leaf* changed cannot be told apart from an unrelated delete + create
+//!   (e.g. deleting `Archive2024` and creating `Projects` under one parent), so
+//!   it is **never** merged — merging would reassign the deleted folder's id,
+//!   messages, and stale sync state to the unrelated new folder, and the next
+//!   sync's `UIDVALIDITY` mismatch would then wipe the mis-attached cache. When
+//!   identity cannot be positively confirmed, the safe path is taken (orphan the
+//!   vanished folder, create the new one);
 //! * a previously-discovered folder that vanished is an **orphan**: if it still
 //!   holds local messages it is *flagged* (`is_orphaned`), never dropped
 //!   (data-loss priority); only an empty orphan is deleted. A folder that was
@@ -106,12 +114,16 @@ impl MailboxRepo<'_> {
             .filter(|folder| !existing_names.contains(folder.remote_name.as_str()))
             .collect();
 
-        // Unambiguous leaf rename: exactly one vanished folder and one new
-        // folder sharing a parent path. Preserve the id (and messages).
+        // Moved subtree: exactly one vanished folder and one new folder sharing
+        // the same *leaf* name. A relocated folder keeps its leaf, so an equal
+        // leaf positively identifies the pair as the same folder; preserve its
+        // id (and messages). A leaf *change* is indistinguishable from an
+        // unrelated delete + create, so it is deliberately not matched here and
+        // falls through to the safe orphan/create path below.
         let mut renamed_remotes: HashSet<String> = HashSet::new();
         if let (Some(orphan), Some(new_folder)) = (single(&orphans), single(&new_folders))
-            && parent_path(&orphan.remote_name, orphan.delimiter.as_deref())
-                == parent_path(
+            && leaf_name(&orphan.remote_name, orphan.delimiter.as_deref())
+                == leaf_name(
                     new_folder.remote_name.as_str(),
                     new_folder.delimiter.as_deref(),
                 )
@@ -176,6 +188,17 @@ fn segment_count(remote: &str, delimiter: Option<&str>) -> usize {
     match delimiter {
         Some(d) if !d.is_empty() => remote.split(d).count(),
         _ => 1,
+    }
+}
+
+/// The final path segment (leaf) of a folder path — the part after the last
+/// delimiter, or the whole path when flat/top-level. The complement of
+/// [`parent_path`]; used to positively identify a moved subtree by its
+/// preserved leaf name.
+fn leaf_name<'a>(remote: &'a str, delimiter: Option<&str>) -> &'a str {
+    match delimiter {
+        Some(d) if !d.is_empty() => remote.rsplit(d).next().unwrap_or(remote),
+        _ => remote,
     }
 }
 

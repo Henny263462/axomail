@@ -6,14 +6,17 @@
  * with its own data load, mounted at a marked point in {@link SidebarPane}, so
  * it never collides with the folder-tree rewrite that owns that file.
  */
-import { onMounted, ref } from "vue";
+import { onMounted, ref, watch } from "vue";
 
 import { listAllTags } from "../../api/tags";
 import type { TagDto } from "../../types/mail";
 
-defineProps<{
+const props = defineProps<{
   /** Currently active tag filter, for highlighting. */
   activeTagId?: number | null;
+  /** Reload trigger: any change reloads the list (tag settings edits, syncs
+   *  that may auto-create tags). Otherwise this loads once and goes stale. */
+  refreshKey?: number;
 }>();
 
 const emit = defineEmits<{
@@ -22,9 +25,19 @@ const emit = defineEmits<{
 
 const tags = ref<TagDto[]>([]);
 
-onMounted(async () => {
+async function load(): Promise<void> {
   tags.value = (await listAllTags()) ?? [];
-});
+}
+
+onMounted(load);
+
+// Reload when the host signals a tag change (create/delete/edit or a sync).
+watch(
+  () => props.refreshKey,
+  () => {
+    void load();
+  },
+);
 
 function dotStyle(color: string | null): Record<string, string> {
   return color === null

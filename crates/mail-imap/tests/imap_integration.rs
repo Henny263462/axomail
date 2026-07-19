@@ -737,6 +737,62 @@ async fn qresync_vanished_earlier_reports_exact_removals() {
 }
 
 #[tokio::test]
+async fn rejected_enable_qresync_is_asked_once_and_degrades_to_condstore() {
+    // A server that advertises QRESYNC but declines ENABLE QRESYNC must be asked
+    // exactly once: re-issuing ENABLE on a later, already-selected pass violates
+    // RFC 3501. The connection degrades to CONDSTORE-only and keeps syncing.
+    let mut spec = condstore_spec("CONDSTORE QRESYNC", Some(20));
+    spec.fail_command = Some("ENABLE".to_owned());
+    let mut m2 = Message::new(2);
+    m2.modseq = 15;
+    spec.messages = vec![Message::new(1), m2];
+    let server = common::start(spec).await;
+    let mut provider = ImapProvider::new(config_for(&server, ConnectionSecurity::Tls, "pass"));
+
+    provider.connect().await.expect("connect");
+
+    // Two consecutive incremental passes on the same (persistent) connection.
+    let first = provider
+        .sync(sync_request(condstore_state(2, 10), 100))
+        .await
+        .expect("first pass succeeds via CONDSTORE");
+    let second = provider
+        .sync(sync_request(
+            condstore_state(2, first.highest_modseq.unwrap_or(20)),
+            100,
+        ))
+        .await
+        .expect("second pass succeeds via CONDSTORE");
+
+    // Both passes fall back to the present-set diff (VANISHED is untrusted while
+    // QRESYNC is not enabled), so they still reconcile removals correctly.
+    assert!(
+        first.present_remote_ids.is_some(),
+        "CONDSTORE-only reports a present set"
+    );
+    assert!(second.present_remote_ids.is_some());
+
+    // ENABLE QRESYNC was issued exactly once, not on every pass.
+    let enable_count = server
+        .commands()
+        .iter()
+        .filter(|line| line.contains("ENABLE QRESYNC"))
+        .count();
+    assert_eq!(
+        enable_count,
+        1,
+        "ENABLE must be asked once, commands: {:?}",
+        server.commands()
+    );
+    // VANISHED is never requested because QRESYNC never enabled.
+    assert!(
+        !server.saw_command("VANISHED"),
+        "commands: {:?}",
+        server.commands()
+    );
+}
+
+#[tokio::test]
 async fn qresync_ambiguous_vanished_falls_back_to_present_set() {
     let mut spec = condstore_spec("CONDSTORE QRESYNC", Some(20));
     spec.messages = vec![

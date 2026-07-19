@@ -126,12 +126,21 @@ async fn busy_engine_polls_are_deduplicated() {
         tokio::task::yield_now().await;
     }
 
-    // Despite the first poll plus five re-polls, exactly one job was ever
-    // queued: the busy engine de-duplicated every repeat.
+    // Despite the first poll plus five re-polls, each kind of scheduled job was
+    // queued exactly once: the busy engine de-duplicated every repeat. Each poll
+    // enqueues a mailbox sync and an op-replay backstop; both collapse to one
+    // (the op-replay stays pending behind the parked account lock, so its
+    // re-enqueues dedup too).
+    let queued = collect_available(&mut all_events);
     assert_eq!(
-        count_queued(&collect_available(&mut all_events)),
+        count_queued(&queued, true),
         1,
-        "repeated polls against a busy engine collapse to a single job"
+        "repeated polls against a busy engine collapse to a single mailbox job"
+    );
+    assert_eq!(
+        count_queued(&queued, false),
+        1,
+        "the periodic op-replay backstop also de-duplicates"
     );
 
     engine.cancel_all();
@@ -174,9 +183,18 @@ fn collect_available(events: &mut Receiver<SyncEvent>) -> Vec<SyncEvent> {
     }
 }
 
-fn count_queued(events: &[SyncEvent]) -> usize {
+/// Counts `JobQueued` events, selecting mailbox-scoped (mailbox sync) jobs when
+/// `mailbox_scoped` is `true`, else account-scoped ones (the op-replay backstop
+/// carries no mailbox).
+fn count_queued(events: &[SyncEvent], mailbox_scoped: bool) -> usize {
     events
         .iter()
-        .filter(|event| matches!(event, SyncEvent::JobQueued { .. }))
+        .filter(|event| {
+            matches!(
+                event,
+                SyncEvent::JobQueued { mailbox_id, .. }
+                    if mailbox_id.is_some() == mailbox_scoped
+            )
+        })
         .count()
 }

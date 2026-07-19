@@ -60,6 +60,7 @@ struct Enqueued {
 struct FakeSink {
     events: broadcast::Sender<SyncEvent>,
     calls: Mutex<Vec<Enqueued>>,
+    op_replay_calls: Mutex<Vec<AccountId>>,
     signal: Notify,
     next_id: AtomicI64,
 }
@@ -70,6 +71,7 @@ impl FakeSink {
         Arc::new(Self {
             events,
             calls: Mutex::new(Vec::new()),
+            op_replay_calls: Mutex::new(Vec::new()),
             signal: Notify::new(),
             next_id: AtomicI64::new(1),
         })
@@ -78,6 +80,18 @@ impl FakeSink {
     /// Number of enqueue calls observed so far.
     fn call_count(&self) -> usize {
         self.calls.lock().unwrap().len()
+    }
+
+    /// Number of op-replay enqueue calls observed so far.
+    fn op_replay_count(&self) -> usize {
+        self.op_replay_calls.lock().unwrap().len()
+    }
+
+    /// Parks until at least `count` op-replay enqueues have been observed.
+    async fn wait_for_op_replay(&self, count: usize) {
+        while self.op_replay_count() < count {
+            self.signal.notified().await;
+        }
     }
 
     /// The nth (0-based) observed enqueue.
@@ -139,9 +153,39 @@ impl JobSink for FakeSink {
         Ok(())
     }
 
+    async fn enqueue_op_replay(&self, account: AccountId) -> Result<(), MailError> {
+        self.op_replay_calls.lock().unwrap().push(account);
+        self.signal.notify_one();
+        Ok(())
+    }
+
     fn subscribe(&self) -> broadcast::Receiver<SyncEvent> {
         self.events.subscribe()
     }
+}
+
+#[tokio::test(start_paused = true)]
+async fn each_poll_also_enqueues_an_op_replay_backstop() {
+    // Every scheduled poll of an account also enqueues a write-back op replay,
+    // so queued offline ops drain periodically even absent an interactive
+    // command or crash recovery.
+    let sink = FakeSink::new();
+    let scheduler = BackgroundScheduler::start_with_sink(
+        Arc::clone(&sink),
+        config(),
+        [target(account(), mailbox())],
+    );
+
+    sink.wait_for_op_replay(1).await;
+    assert_eq!(
+        sink.op_replay_calls.lock().unwrap()[0],
+        account(),
+        "the op-replay backstop targets the polled account"
+    );
+    // It accompanies the mailbox poll, not replaces it.
+    assert!(sink.call_count() >= 1, "the mailbox is still polled");
+
+    drop(scheduler);
 }
 
 #[tokio::test(start_paused = true)]

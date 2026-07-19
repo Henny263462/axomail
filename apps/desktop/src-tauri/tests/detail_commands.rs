@@ -6,13 +6,20 @@ mod common;
 
 use std::fs;
 
-use axomail_core::{AccountId, MailError, MailboxId};
+use axomail_core::{
+    AccountId, Address, EmailAddress, MailError, MailboxId, MessageFlags, RemoteMessageId,
+    UtcTimestamp,
+};
 use axomail_desktop_lib::commands::accounts::create_account_impl;
 use axomail_desktop_lib::commands::detail::get_message_detail_impl;
+use axomail_desktop_lib::commands::offline::{
+    cleanup_offline_cache_impl, set_mailbox_offline_policy_impl,
+};
 use axomail_desktop_lib::commands::remote_content::set_remote_content_allowed_impl;
 use axomail_desktop_lib::composition::AppProviderFactory;
-use axomail_storage::Store;
+use axomail_storage::{NewMessage, OfflineMode, Store};
 use axomail_test_support::fixtures;
+use common::provider::CannedFactory;
 use common::{sample_message, secret_stores, valid_input};
 
 /// An HTML message from a known sender carrying a remote tracking image and a
@@ -65,9 +72,10 @@ async fn detail_parses_and_sanitizes_a_cached_message() {
     let message_id = envelope.id.value();
     cache_raw(raw_root.path(), message_id, fixtures::ALTERNATIVE);
 
-    let detail = get_message_detail_impl(&store, &factory, raw_root.path(), message_id, None)
-        .await
-        .unwrap();
+    let detail =
+        get_message_detail_impl(&store, &factory, raw_root.path(), message_id, None, false)
+            .await
+            .unwrap();
 
     assert_eq!(detail.id, message_id);
     assert_eq!(detail.subject.as_deref(), Some("Release notes"));
@@ -131,9 +139,10 @@ async fn detail_exposes_threading_and_backfills_the_columns_on_open() {
     assert!(envelope.threading.is_empty(), "starts without threading");
     cache_raw(raw_root.path(), message_id, THREADED_REPLY);
 
-    let detail = get_message_detail_impl(&store, &factory, raw_root.path(), message_id, None)
-        .await
-        .unwrap();
+    let detail =
+        get_message_detail_impl(&store, &factory, raw_root.path(), message_id, None, false)
+            .await
+            .unwrap();
 
     // The DTO exposes the parsed identity (angle brackets stripped).
     assert_eq!(detail.message_id.as_deref(), Some("reply-77@example.com"));
@@ -187,10 +196,16 @@ async fn detail_without_a_content_source_is_a_configuration_error() {
         .await
         .unwrap();
 
-    let error =
-        get_message_detail_impl(&store, &factory, raw_root.path(), envelope.id.value(), None)
-            .await
-            .expect_err("a message with no content source must error");
+    let error = get_message_detail_impl(
+        &store,
+        &factory,
+        raw_root.path(),
+        envelope.id.value(),
+        None,
+        false,
+    )
+    .await
+    .expect_err("a message with no content source must error");
     assert!(matches!(error, MailError::Configuration { .. }));
 }
 
@@ -201,7 +216,7 @@ async fn detail_rejects_an_unknown_message() {
     let factory = AppProviderFactory::new(secrets.clone(), store.clone());
     let raw_root = tempfile::tempdir().unwrap();
 
-    let error = get_message_detail_impl(&store, &factory, raw_root.path(), 987_654, None)
+    let error = get_message_detail_impl(&store, &factory, raw_root.path(), 987_654, None, false)
         .await
         .expect_err("unknown message id must error");
     assert!(matches!(error, MailError::Configuration { .. }));
@@ -232,9 +247,10 @@ async fn remote_images_are_blocked_by_default_and_scam_flags_are_surfaced() {
     let raw_root = tempfile::tempdir().unwrap();
     let message_id = seed_remote_and_scam(&store, raw_root.path()).await;
 
-    let detail = get_message_detail_impl(&store, &factory, raw_root.path(), message_id, None)
-        .await
-        .unwrap();
+    let detail =
+        get_message_detail_impl(&store, &factory, raw_root.path(), message_id, None, false)
+            .await
+            .unwrap();
 
     // Default policy: the remote image is blocked and counted, not loaded.
     assert_eq!(detail.remote_blocked_count, 1);
@@ -260,9 +276,16 @@ async fn allow_once_override_shows_remote_images_without_persisting() {
     let raw_root = tempfile::tempdir().unwrap();
     let message_id = seed_remote_and_scam(&store, raw_root.path()).await;
 
-    let detail = get_message_detail_impl(&store, &factory, raw_root.path(), message_id, Some(true))
-        .await
-        .unwrap();
+    let detail = get_message_detail_impl(
+        &store,
+        &factory,
+        raw_root.path(),
+        message_id,
+        Some(true),
+        false,
+    )
+    .await
+    .unwrap();
 
     assert!(detail.remote_allowed);
     assert_eq!(
@@ -294,9 +317,10 @@ async fn allowed_sender_is_consulted_and_override_false_still_wins() {
     set_remote_content_allowed_impl(&store, SCAM_SENDER, true)
         .await
         .unwrap();
-    let allowed = get_message_detail_impl(&store, &factory, raw_root.path(), message_id, None)
-        .await
-        .unwrap();
+    let allowed =
+        get_message_detail_impl(&store, &factory, raw_root.path(), message_id, None, false)
+            .await
+            .unwrap();
     assert!(
         allowed.remote_allowed,
         "an allowed sender loads remote images"
@@ -304,10 +328,16 @@ async fn allowed_sender_is_consulted_and_override_false_still_wins() {
     assert_eq!(allowed.remote_blocked_count, 0);
 
     // An explicit block override wins over the stored allow decision.
-    let forced_block =
-        get_message_detail_impl(&store, &factory, raw_root.path(), message_id, Some(false))
-            .await
-            .unwrap();
+    let forced_block = get_message_detail_impl(
+        &store,
+        &factory,
+        raw_root.path(),
+        message_id,
+        Some(false),
+        false,
+    )
+    .await
+    .unwrap();
     assert!(!forced_block.remote_allowed);
     assert_eq!(forced_block.remote_blocked_count, 1);
 
@@ -315,9 +345,118 @@ async fn allowed_sender_is_consulted_and_override_false_still_wins() {
     set_remote_content_allowed_impl(&store, SCAM_SENDER, false)
         .await
         .unwrap();
-    let blocked = get_message_detail_impl(&store, &factory, raw_root.path(), message_id, None)
-        .await
-        .unwrap();
+    let blocked =
+        get_message_detail_impl(&store, &factory, raw_root.path(), message_id, None, false)
+            .await
+            .unwrap();
     assert!(!blocked.remote_allowed);
     assert_eq!(blocked.remote_blocked_count, 1);
+}
+
+/// Inserts a remote-backed (IMAP) message with no cached body, so opening it
+/// exercises the reading pane's on-demand fetch path.
+async fn insert_remote_message(store: &Store, mailbox: MailboxId) -> i64 {
+    let message = NewMessage {
+        mailbox,
+        remote_id: Some(RemoteMessageId::Imap {
+            uid: 1,
+            uid_validity: 1,
+        }),
+        subject: Some("row-subject".to_owned()),
+        from: vec![Address::from_email(
+            EmailAddress::parse("ada@example.org").unwrap(),
+        )],
+        to: vec![],
+        cc: vec![],
+        bcc: vec![],
+        date: Some(UtcTimestamp::from_unix_seconds(1)),
+        flags: MessageFlags::default(),
+        size_bytes: Some(10),
+        preview: None,
+        has_raw: false,
+    };
+    store.messages().insert(&message).await.unwrap().id.value()
+}
+
+#[tokio::test]
+async fn lazy_fetch_caches_body_sets_has_raw_and_cleanup_purges_it() {
+    let store = Store::open_in_memory().await.unwrap();
+    let (_concrete, secrets) = secret_stores();
+    let raw_root = tempfile::tempdir().unwrap();
+    let factory = CannedFactory {
+        bytes: fixtures::ALTERNATIVE.as_bytes().to_vec(),
+    };
+
+    let summary = create_account_impl(&store, &secrets, valid_input())
+        .await
+        .unwrap();
+    let mailbox = MailboxId::new(summary.mailboxes[0].id);
+    let message_id = insert_remote_message(&store, mailbox).await;
+
+    // Online + uncached: opening the message fetches and caches its body.
+    let detail =
+        get_message_detail_impl(&store, &factory, raw_root.path(), message_id, None, false)
+            .await
+            .unwrap();
+    assert!(!detail.offline_unavailable);
+    assert_eq!(detail.subject.as_deref(), Some("Release notes"));
+
+    // The lazy fetch flipped `has_raw`, so with a `none` offline policy the
+    // cached body is outside the window: cleanup enumerates and purges exactly
+    // it. Without the fix `has_raw` stays 0 and cleanup would find nothing.
+    set_mailbox_offline_policy_impl(&store, mailbox.value(), OfflineMode::None, 30)
+        .await
+        .unwrap();
+    let purged = cleanup_offline_cache_impl(&store, raw_root.path(), mailbox.value())
+        .await
+        .unwrap();
+    assert_eq!(
+        purged, 1,
+        "the lazily-fetched body was tracked as cached and purged"
+    );
+}
+
+#[tokio::test]
+async fn offline_uncached_message_returns_placeholder_without_fetching() {
+    let store = Store::open_in_memory().await.unwrap();
+    let (_concrete, secrets) = secret_stores();
+    let raw_root = tempfile::tempdir().unwrap();
+    // A provider that WOULD serve a body; the offline gate must short-circuit
+    // before any fetch happens.
+    let factory = CannedFactory {
+        bytes: fixtures::ALTERNATIVE.as_bytes().to_vec(),
+    };
+
+    let summary = create_account_impl(&store, &secrets, valid_input())
+        .await
+        .unwrap();
+    let mailbox = MailboxId::new(summary.mailboxes[0].id);
+    let message_id = insert_remote_message(&store, mailbox).await;
+
+    // Offline + uncached: an honest placeholder, built from the stored
+    // envelope, with no body and nothing fetched or cached.
+    let detail = get_message_detail_impl(&store, &factory, raw_root.path(), message_id, None, true)
+        .await
+        .unwrap();
+    assert!(
+        detail.offline_unavailable,
+        "an uncached body is unavailable while offline"
+    );
+    assert!(detail.text_body.is_none());
+    assert!(detail.sanitized_html.is_none());
+    assert_eq!(detail.from_address, "ada@example.org", "header still shown");
+
+    // Nothing was written to the raw cache and `has_raw` stayed 0.
+    let cached = raw_root
+        .path()
+        .join("raw")
+        .join(format!("{message_id}.eml"));
+    assert!(!cached.exists(), "offline must not fetch or cache the body");
+    set_mailbox_offline_policy_impl(&store, mailbox.value(), OfflineMode::None, 30)
+        .await
+        .unwrap();
+    let purged = cleanup_offline_cache_impl(&store, raw_root.path(), mailbox.value())
+        .await
+        .unwrap();
+    assert_eq!(purged, 0, "no cached body exists to purge");
 }

@@ -54,6 +54,7 @@ const selectedMessageId = ref<number | null>(null);
 const selectedDraftId = ref<number | null>(null);
 const selectedTagId = ref<number | null>(null);
 const activeView = ref<SidebarView>("mailbox");
+const tagsRefreshKey = ref(0); // Bumped to reload the sidebar Tags group.
 
 // Open-state + payload for every app-level dialog; DialogHost mounts them.
 const dialogs = useDialogs<AppDialogMap>();
@@ -336,6 +337,7 @@ function onSyncEvent(event: SyncEventDto): void {
   }
   if (event.kind === "jobFinished") {
     void refreshAccounts();
+    tagsRefreshKey.value += 1; // A sync may have auto-created tags.
   }
 }
 </script>
@@ -358,6 +360,7 @@ function onSyncEvent(event: SyncEventDto): void {
         :active-view="activeView"
         :syncing-account-ids="syncingAccountIds"
         :active-tag-id="activeView === 'tag' ? selectedTagId : null"
+        :tags-refresh-key="tagsRefreshKey"
         @select-mailbox="selectMailbox"
         @select-unified="selectUnified"
         @add-account="dialogs.open('setup')"
@@ -388,6 +391,8 @@ function onSyncEvent(event: SyncEventDto): void {
         :messages="messages"
         :selected-message-id="selectedMessageId"
         @select="onSelectMessage"
+        @toggle-flag="messageActions.toggleStar"
+        @mark-all-read="messageActions.markListRead"
       />
       <MailListRegion
         v-else
@@ -427,5 +432,7 @@ function onSyncEvent(event: SyncEventDto): void {
     @composer-sent="onComposerSent"
     @composer-saved="onComposerSaved"
     @accounts-changed="onAccountsChanged"
+    @tags-changed="tagsRefreshKey += 1"
+    @settings-saved="syncTheme"
   />
 </template>

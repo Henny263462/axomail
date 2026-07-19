@@ -62,6 +62,7 @@ function stubContext(
     reportError: vi.fn(),
     reportStatus: vi.fn(),
     notifyAccountsChanged: vi.fn(),
+    notifyTagsChanged: vi.fn(),
     ...overrides,
   };
 }

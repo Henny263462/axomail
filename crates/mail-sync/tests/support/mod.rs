@@ -19,7 +19,7 @@ use axomail_core::{
     MailboxName, MailboxRole, MessageFlags, OutgoingServerConfig, RawMessage, RemoteEnvelope,
     RemoteMailboxState, RemoteMessageId, ServerEndpoint, SyncOutcome, SyncRequest, UtcTimestamp,
 };
-use axomail_storage::{NewAccount, NewMailbox, Store};
+use axomail_storage::{NewAccount, NewMailbox, NewPendingOp, Store};
 use axomail_sync::{ProviderFactory, SyncConfig, SyncEvent, SyncJobId};
 use tokio::sync::Notify;
 use tokio::sync::broadcast::error::RecvError;
@@ -83,6 +83,11 @@ pub struct FakeWorld {
     flag_calls: Mutex<Vec<(RemoteMessageId, FlagDelta)>>,
     move_calls: Mutex<Vec<(RemoteMessageId, MailboxName)>>,
     poison: Mutex<HashMap<u32, FailKind>>,
+    // A one-shot op enqueued when the next `disconnect` runs. Models an op that
+    // arrives in the drain-completion window: after the replay's final empty
+    // claim but before its terminal transition (a command's OpReplay enqueue
+    // would be deduped away here). Consumed on first use.
+    inject_on_disconnect: Mutex<Option<(Store, NewPendingOp)>>,
 }
 
 impl FakeWorld {
@@ -169,6 +174,13 @@ impl FakeWorld {
     /// simulating a poison message the write-back drain must not wedge behind.
     pub fn poison_uid(&self, uid: u32, kind: FailKind) {
         lock(&self.poison).insert(uid, kind);
+    }
+
+    /// Arms a one-shot: the next `disconnect` enqueues `op` into `store`. Used
+    /// to inject an op in the drain-completion window and prove the successor
+    /// OpReplay drains it rather than stranding it.
+    pub fn inject_op_on_disconnect(&self, store: Store, op: NewPendingOp) {
+        *lock(&self.inject_on_disconnect) = Some((store, op));
     }
 
     /// The mailbox names the write-back executor selected, in call order.
@@ -377,6 +389,12 @@ impl IncomingMailProvider for FakeProvider {
     }
 
     async fn disconnect(&mut self) -> Result<(), MailError> {
+        // Fire the one-shot injection (if armed) before returning, modelling an
+        // op that lands in the drain-completion window.
+        let injection = lock(&self.world.inject_on_disconnect).take();
+        if let Some((store, op)) = injection {
+            store.pending_ops().enqueue(&op).await?;
+        }
         Ok(())
     }
 }

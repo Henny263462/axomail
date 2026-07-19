@@ -36,8 +36,19 @@ const appliedChips = computed<TagChip[]>(() =>
     })),
 );
 
+// Monotonic guard: every async op captures the message id it started on, so a
+// result that resolves after the user switched messages is ignored rather than
+// applied to (or overwriting) the newly selected message. `loadSeq` also drops
+// a slow earlier load whose response arrives after a newer one for the same
+// message.
+let loadSeq = 0;
+
 async function load(): Promise<void> {
-  const result = await messageTagOptions(props.messageId);
+  const messageId = props.messageId;
+  const seq = ++loadSeq;
+  const result = await messageTagOptions(messageId);
+  // Ignore a stale load: the selection moved on, or a newer load superseded it.
+  if (messageId !== props.messageId || seq !== loadSeq) return;
   if (result === null) {
     options.value = [];
     accountId.value = null;
@@ -52,40 +63,50 @@ watch(
   () => {
     open.value = false;
     error.value = "";
+    busy.value = false;
     void load();
   },
   { immediate: true },
 );
 
 async function onToggle(tagId: number, applied: boolean): Promise<void> {
+  const messageId = props.messageId;
   const option = options.value.find((candidate) => candidate.id === tagId);
   if (option === undefined) return;
   busy.value = true;
   error.value = "";
   try {
-    await setMessageTag(props.messageId, tagId, applied);
+    await setMessageTag(messageId, tagId, applied);
+    // Do not touch another message's options if the selection changed.
+    if (messageId !== props.messageId) return;
     option.applied = applied;
   } catch (thrown) {
-    error.value = messageFrom(thrown);
+    if (messageId === props.messageId) error.value = messageFrom(thrown);
   } finally {
-    busy.value = false;
+    if (messageId === props.messageId) busy.value = false;
   }
 }
 
 async function onCreate(name: string): Promise<void> {
-  if (accountId.value === null) return;
+  const messageId = props.messageId;
+  const account = accountId.value;
+  if (account === null) return;
   busy.value = true;
   error.value = "";
   try {
-    const tag = await createTag(accountId.value, name, null);
+    const tag = await createTag(account, name, null);
+    // If the user switched messages while the tag was being created, never
+    // apply it to the now-current (different) message.
+    if (messageId !== props.messageId) return;
     if (tag !== null) {
-      await setMessageTag(props.messageId, tag.id, true);
+      await setMessageTag(messageId, tag.id, true);
+      if (messageId !== props.messageId) return;
     }
     await load();
   } catch (thrown) {
-    error.value = messageFrom(thrown);
+    if (messageId === props.messageId) error.value = messageFrom(thrown);
   } finally {
-    busy.value = false;
+    if (messageId === props.messageId) busy.value = false;
   }
 }
 

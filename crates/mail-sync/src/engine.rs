@@ -278,6 +278,27 @@ where
         );
     }
 
+    // Ops enqueued before a crash (or otherwise left with no live replay job)
+    // are drained by enqueuing one `OpReplay` per account that still has
+    // claimable work. Without this, `requeue_stale` alone would leave those ops
+    // sitting `pending` forever, since `OpReplay` was only ever enqueued from
+    // the interactive command path. Created before the pending-job scan so the
+    // same spawn loop starts them; `create_if_absent` dedups against any
+    // op-replay a stale `running` row already contributed.
+    for account_id in shared
+        .store
+        .pending_ops()
+        .accounts_with_claimable_ops()
+        .await?
+    {
+        let new = NewSyncJob {
+            kind: JobKind::OpReplay,
+            account_id: Some(account_id),
+            mailbox_id: None,
+        };
+        shared.store.sync_jobs().create_if_absent(&new).await?;
+    }
+
     let pending = shared
         .store
         .sync_jobs()

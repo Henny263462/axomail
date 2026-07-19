@@ -217,8 +217,10 @@ where
     Ok(marked)
 }
 
-/// Sets the read state of a selection of messages (e.g. a multi-selection or a
-/// thread), enqueuing one op per message and one replay per account.
+/// Sets the read state of a selection of messages (e.g. the messages shown in
+/// the tag-filter view, which span mailboxes and so cannot use
+/// [`mark_mailbox_read_impl`]), enqueuing one op per message and one replay per
+/// account.
 ///
 /// # Errors
 ///
@@ -278,7 +280,8 @@ pub async fn mark_mailbox_read(
         .map_err(map_command_error)
 }
 
-/// Sets the read state of a selection of messages.
+/// Sets the read state of a selection of messages (the tag-filter view's
+/// "Mark all read").
 #[tauri::command]
 pub async fn mark_messages_read(
     state: tauri::State<'_, AppState>,

@@ -305,10 +305,16 @@ where
         } else if upper.starts_with("CAPABILITY") {
             send_capability(stream, tag, spec).await?;
         } else if upper.starts_with("ENABLE") {
-            // QRESYNC/CONDSTORE ENABLE: echo the enabled extensions.
-            let enabled = rest.get("ENABLE".len()..).unwrap_or("").trim();
-            send(stream, &format!("* ENABLED {enabled}\r\n")).await?;
-            send(stream, &format!("{tag} OK ENABLE completed\r\n")).await?;
+            // QRESYNC/CONDSTORE ENABLE: echo the enabled extensions, unless the
+            // spec scripts a rejection (a server that advertises QRESYNC but
+            // declines ENABLE).
+            if fails(spec, &upper) {
+                send(stream, &format!("{tag} NO ENABLE not supported\r\n")).await?;
+            } else {
+                let enabled = rest.get("ENABLE".len()..).unwrap_or("").trim();
+                send(stream, &format!("* ENABLED {enabled}\r\n")).await?;
+                send(stream, &format!("{tag} OK ENABLE completed\r\n")).await?;
+            }
         } else if upper.starts_with("LIST") {
             for entry in &spec.list_lines {
                 send(stream, entry).await?;

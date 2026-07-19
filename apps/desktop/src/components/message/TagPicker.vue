@@ -72,10 +72,12 @@ function dotStyle(color: string | null): Record<string, string> {
         :key="option.id"
       >
         <label class="option">
+          <!-- Never disabled while busy: disabling the focused checkbox blurs
+               it, which fires the host's focus-out and snaps the picker shut.
+               Toggles are idempotent and the host guards stale results. -->
           <input
             type="checkbox"
             :checked="option.applied"
-            :disabled="busy"
             @change="onToggle(option, $event)"
           >
           <span

@@ -30,11 +30,18 @@ pub(crate) struct Connected {
     pub session: ImapSession,
     /// Upper-cased capability atoms (e.g. `MOVE`, `UIDPLUS`, `SPECIAL-USE`).
     pub capabilities: HashSet<String>,
-    /// Whether `ENABLE QRESYNC` has already run on this connection. QRESYNC is
-    /// enabled lazily by the sync path (see [`crate::condstore`]) and never on
-    /// the write-back connection, so per-message `EXPUNGE`s keep their plain
-    /// semantics. `ENABLE` is only issued once per connection.
+    /// Whether `ENABLE QRESYNC` succeeded on this connection. QRESYNC is enabled
+    /// lazily by the sync path (see [`crate::condstore`]) and never on the
+    /// write-back connection, so per-message `EXPUNGE`s keep their plain
+    /// semantics. Only a genuinely enabled connection trusts `VANISHED`
+    /// removals.
     pub qresync_enabled: bool,
+    /// Whether `ENABLE QRESYNC` has already been *attempted* on this connection
+    /// (regardless of outcome). RFC 3501 forbids `ENABLE` outside the
+    /// authenticated-not-selected state, so once a server declines it the sync
+    /// path must not re-issue it on every subsequent (selected) pass; it degrades
+    /// to CONDSTORE-only for the life of the connection.
+    pub qresync_attempted: bool,
 }
 
 impl Connected {
@@ -198,6 +205,7 @@ async fn login_password(
         session,
         capabilities,
         qresync_enabled: false,
+        qresync_attempted: false,
     })
 }
 
@@ -220,6 +228,7 @@ async fn login_xoauth2(
         session,
         capabilities,
         qresync_enabled: false,
+        qresync_attempted: false,
     })
 }
 

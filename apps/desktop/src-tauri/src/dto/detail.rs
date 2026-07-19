@@ -1,6 +1,6 @@
 //! Message-detail DTOs built from a parsed, sanitized message.
 
-use axomail_core::{Address, MailError};
+use axomail_core::{Address, MailError, MessageEnvelope, UtcTimestamp};
 use axomail_parser::{ParsedAttachment, ParsedMessage};
 use axomail_security::{RemoteContentPolicy, ScamIndicator, sanitize_message_html_with_policy};
 use serde::Serialize;
@@ -128,6 +128,11 @@ pub struct MessageDetailDto {
     pub in_reply_to: Vec<String>,
     /// `References` chain, oldest ancestor first.
     pub references: Vec<String>,
+    /// `true` only for the offline placeholder: the body is not cached and
+    /// could not be fetched because the app is working offline. The header
+    /// fields are still populated from the stored envelope; every body field
+    /// is empty. The frontend renders an honest "not available offline" state.
+    pub offline_unavailable: bool,
 }
 
 impl MessageDetailDto {
@@ -186,6 +191,48 @@ impl MessageDetailDto {
             message_id: parsed.message_id.clone(),
             in_reply_to: parsed.in_reply_to.clone(),
             references: parsed.references.clone(),
+            offline_unavailable: false,
+        })
+    }
+
+    /// Builds the offline placeholder for a message whose body is not cached
+    /// and cannot be fetched while working offline. Carries the stored
+    /// envelope header (sender, subject, date, star) so the reading pane still
+    /// shows who/what/when, with `offline_unavailable` set and no body.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`MailError::Configuration`] if the message id is out of the
+    /// safe integer range.
+    pub fn offline_placeholder(
+        message_id: i64,
+        envelope: &MessageEnvelope,
+    ) -> Result<Self, MailError> {
+        let sender = envelope.from.first();
+        Ok(Self {
+            id: checked_id(message_id)?,
+            subject: envelope.subject.clone(),
+            from_name: sender
+                .and_then(|address| address.display_name.clone())
+                .unwrap_or_default(),
+            from_address: sender
+                .map(|address| address.email.as_str().to_owned())
+                .unwrap_or_default(),
+            to: envelope.to.iter().map(RecipientDto::from_address).collect(),
+            cc: Vec::new(),
+            date_unix: envelope.date.map(UtcTimestamp::unix_seconds),
+            flagged: envelope.flags.flagged,
+            text_body: None,
+            sanitized_html: None,
+            remote_blocked_count: 0,
+            remote_allowed: false,
+            scam_flags: Vec::new(),
+            had_active_content: false,
+            attachments: Vec::new(),
+            message_id: None,
+            in_reply_to: Vec::new(),
+            references: Vec::new(),
+            offline_unavailable: true,
         })
     }
 }

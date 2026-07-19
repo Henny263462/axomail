@@ -165,7 +165,10 @@ async fn reconcile_flags_orphan_with_messages_and_deletes_empty_orphan() {
 }
 
 #[tokio::test]
-async fn reconcile_detects_leaf_rename_preserving_id_and_messages() {
+async fn reconcile_detects_moved_subtree_preserving_id_and_messages() {
+    // A moved subtree keeps its *leaf* name (here "Work"), which positively
+    // identifies it as the same folder relocated under a new parent. The id and
+    // messages must be preserved.
     let (store, account, _) = store_with_inbox().await;
     store
         .mailboxes()
@@ -173,26 +176,30 @@ async fn reconcile_detects_leaf_rename_preserving_id_and_messages() {
             account,
             &[
                 discovered("INBOX", MailboxRole::Inbox, Some("/"), true),
+                discovered("Sent", MailboxRole::Sent, Some("/"), true),
                 discovered("INBOX/Work", MailboxRole::Custom, Some("/"), true),
             ],
         )
         .await
         .unwrap();
     let work_id = find(&list(&store, account).await, "INBOX/Work").id;
+    let sent_id = find(&list(&store, account).await, "Sent").id;
     store
         .messages()
         .insert(&sample_message(work_id, "note", Some(1)))
         .await
         .unwrap();
 
-    // The folder is renamed on the server: one vanished, one appears, same parent.
+    // The folder is moved on the server: INBOX/Work -> Sent/Work (leaf "Work"
+    // preserved). One vanished, one appears, same leaf.
     let summary = store
         .mailboxes()
         .reconcile(
             account,
             &[
                 discovered("INBOX", MailboxRole::Inbox, Some("/"), true),
-                discovered("INBOX/Projects", MailboxRole::Custom, Some("/"), true),
+                discovered("Sent", MailboxRole::Sent, Some("/"), true),
+                discovered("Sent/Work", MailboxRole::Custom, Some("/"), true),
             ],
         )
         .await
@@ -207,12 +214,83 @@ async fn reconcile_detects_leaf_rename_preserving_id_and_messages() {
             .iter()
             .any(|m| m.remote_name.as_str() == "INBOX/Work")
     );
+    let moved = find(&mailboxes, "Sent/Work");
+    assert_eq!(moved.id, work_id, "the move preserves the folder id");
+    assert_eq!(
+        moved.parent,
+        Some(sent_id),
+        "re-parented under the new path"
+    );
+    assert_eq!(
+        store.mailboxes().counts(moved.id).await.unwrap().total,
+        1,
+        "the message moved with the relocated folder"
+    );
+}
+
+#[tokio::test]
+async fn reconcile_does_not_merge_unrelated_delete_and_create() {
+    // Deleting one folder and creating an unrelated one under the same parent in
+    // a single interval must NOT be mistaken for a rename: the leaf names differ,
+    // so identity cannot be confirmed. Merging them would reassign the deleted
+    // folder's id, messages, and stale sync state to the new folder, and the
+    // next sync's UIDVALIDITY mismatch would then wipe the mis-attached cache.
+    let (store, account, _) = store_with_inbox().await;
+    store
+        .mailboxes()
+        .reconcile(
+            account,
+            &[
+                discovered("INBOX", MailboxRole::Inbox, Some("/"), true),
+                discovered("INBOX/Archive2024", MailboxRole::Custom, Some("/"), true),
+            ],
+        )
+        .await
+        .unwrap();
+    let archive_id = find(&list(&store, account).await, "INBOX/Archive2024").id;
+    store
+        .messages()
+        .insert(&sample_message(archive_id, "held", Some(1)))
+        .await
+        .unwrap();
+
+    // Archive2024 vanishes; an unrelated Projects folder appears under INBOX.
+    let summary = store
+        .mailboxes()
+        .reconcile(
+            account,
+            &[
+                discovered("INBOX", MailboxRole::Inbox, Some("/"), true),
+                discovered("INBOX/Projects", MailboxRole::Custom, Some("/"), true),
+            ],
+        )
+        .await
+        .unwrap();
+    assert_eq!(summary.renamed, 0, "leaf changed: never merged");
+    assert_eq!(summary.orphaned, 1, "the vanished folder is preserved");
+    assert_eq!(summary.created, 1, "the new folder is created fresh");
+
+    let mailboxes = list(&store, account).await;
+    let archive = find(&mailboxes, "INBOX/Archive2024");
+    assert!(
+        archive.orphaned,
+        "the deleted folder is orphan-flagged, kept"
+    );
+    assert_eq!(archive.id, archive_id, "the orphan keeps its own id");
+    assert_eq!(
+        store.mailboxes().counts(archive.id).await.unwrap().total,
+        1,
+        "the orphaned folder's message survived (not reassigned or wiped)"
+    );
     let projects = find(&mailboxes, "INBOX/Projects");
-    assert_eq!(projects.id, work_id, "rename preserves the folder id");
+    assert_ne!(
+        projects.id, archive_id,
+        "the new folder is a distinct row, not the orphan's id"
+    );
     assert_eq!(
         store.mailboxes().counts(projects.id).await.unwrap().total,
-        1,
-        "the message moved with the renamed folder"
+        0,
+        "the new folder starts empty"
     );
 }
 
@@ -238,6 +316,60 @@ async fn counts_report_total_and_unread_per_folder() {
 
     let single = store.mailboxes().counts(inbox.id).await.unwrap();
     assert_eq!(single, counts);
+}
+
+#[tokio::test]
+async fn rename_rewrites_descendants_of_a_multibyte_folder() {
+    // A German user's folder names carry umlauts, so the path is multi-byte:
+    // "Entwürfe" is 8 chars but 9 bytes. SQLite `substr()` counts characters,
+    // so the descendant-rewrite offsets must be char counts, not byte lengths —
+    // otherwise the child path is never matched and the folder is stranded.
+    let (store, account, inbox) = store_with_inbox().await;
+    let parent = store
+        .mailboxes()
+        .create_local(
+            account,
+            Some(inbox.id),
+            &MailboxName::new("Entwürfe"),
+            Some("/"),
+            MailboxRole::Drafts,
+        )
+        .await
+        .unwrap();
+    let child = store
+        .mailboxes()
+        .create_local(
+            account,
+            Some(parent.id),
+            &MailboxName::new("Entwürfe/Gelöschte"),
+            Some("/"),
+            MailboxRole::Custom,
+        )
+        .await
+        .unwrap();
+
+    store
+        .mailboxes()
+        .rename_subtree(parent.id, &MailboxName::new("Drafts"))
+        .await
+        .unwrap();
+
+    // The child's path must follow the renamed parent, preserving its id.
+    let rewritten = store.mailboxes().get(child.id).await.unwrap().unwrap();
+    assert_eq!(
+        rewritten.remote_name.as_str(),
+        "Drafts/Gelöschte",
+        "the multi-byte parent's descendant was rewritten under the new prefix"
+    );
+    assert_eq!(rewritten.parent, Some(parent.id));
+    // No stray row kept the stale multi-byte prefix.
+    assert!(
+        !list(&store, account)
+            .await
+            .iter()
+            .any(|m| m.remote_name.as_str().starts_with("Entwürfe")),
+        "no descendant kept the old multi-byte prefix"
+    );
 }
 
 #[tokio::test]

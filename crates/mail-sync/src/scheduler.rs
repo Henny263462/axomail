@@ -40,7 +40,7 @@ use tokio_util::sync::CancellationToken;
 use crate::engine::SyncEngine;
 use crate::event::SyncEvent;
 use crate::factory::ProviderFactory;
-use crate::job::SyncMailbox;
+use crate::job::{SyncMailbox, WorkRequest};
 
 mod task;
 #[cfg(test)]
@@ -57,6 +57,15 @@ pub(crate) trait JobSink: Send + Sync + 'static {
     /// is de-duplicated by the implementor).
     fn enqueue(&self, job: SyncMailbox) -> impl Future<Output = Result<(), MailError>> + Send;
 
+    /// Enqueues an account's write-back op replay as a periodic backstop, so
+    /// queued offline ops drain even when no interactive command or crash
+    /// recovery has triggered a replay (equivalent work is de-duplicated by the
+    /// implementor).
+    fn enqueue_op_replay(
+        &self,
+        account: AccountId,
+    ) -> impl Future<Output = Result<(), MailError>> + Send;
+
     /// Subscribes to the progress event stream.
     fn subscribe(&self) -> broadcast::Receiver<SyncEvent>;
 }
@@ -68,6 +77,18 @@ where
 {
     fn enqueue(&self, job: SyncMailbox) -> impl Future<Output = Result<(), MailError>> + Send {
         SyncEngine::enqueue(self, job)
+    }
+
+    fn enqueue_op_replay(
+        &self,
+        account: AccountId,
+    ) -> impl Future<Output = Result<(), MailError>> + Send {
+        SyncEngine::enqueue_work(
+            self,
+            WorkRequest::OpReplay {
+                account_id: account,
+            },
+        )
     }
 
     fn subscribe(&self) -> broadcast::Receiver<SyncEvent> {

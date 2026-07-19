@@ -172,6 +172,12 @@ export interface MessageDetailDto {
   inReplyTo: string[];
   /** References chain, oldest ancestor first. */
   references: string[];
+  /**
+   * True only for the offline placeholder: the body is not cached and could
+   * not be fetched because the app is working offline. Header fields are still
+   * populated; the body fields are empty. Absent (falsey) on a normal load.
+   */
+  offlineUnavailable?: boolean;
 }
 
 /**

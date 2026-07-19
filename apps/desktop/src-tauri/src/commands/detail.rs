@@ -40,6 +40,11 @@ const FETCH_SELECT_BATCH: u32 = 50;
 /// `allow_remote` value always wins over the stored per-sender decision; when
 /// it is `None`, the stored decision applies.
 ///
+/// When `offline` is set, an on-demand body fetch is never attempted: a
+/// message with a remote source that is not already cached resolves to an
+/// honest "unavailable offline" placeholder (header from the stored envelope,
+/// no body) rather than opening a network connection.
+///
 /// # Errors
 ///
 /// Returns [`MailError::Configuration`] if the message is unknown or has no
@@ -51,6 +56,7 @@ pub async fn get_message_detail_impl<P, F>(
     raw_root: &Path,
     message_id: i64,
     allow_remote: Option<bool>,
+    offline: bool,
 ) -> Result<MessageDetailDto, MailError>
 where
     P: IncomingMailProvider + 'static,
@@ -66,19 +72,43 @@ where
         })?;
 
     let path = raw_message_path(raw_root, message_id);
-    let bytes = match read_raw(&path).await? {
-        Some(bytes) => bytes,
+    // `freshly_fetched` distinguishes an on-demand download (which must flip
+    // `has_raw` and index the body) from reading an already-cached body.
+    let (bytes, freshly_fetched) = match read_raw(&path).await? {
+        Some(bytes) => (bytes, false),
         None => {
-            fetch_and_cache(store, factory, &envelope.remote_id, envelope.mailbox, &path).await?
+            // Work Offline: do not open a network connection for a body fetch.
+            // A remote-backed message that is not cached is simply unavailable
+            // offline; return a placeholder instead of hanging or silently
+            // syncing. Local-only messages fall through to the existing
+            // "no content source" error below.
+            if offline && envelope.remote_id.is_some() {
+                return MessageDetailDto::offline_placeholder(message_id, &envelope);
+            }
+            let bytes =
+                fetch_and_cache(store, factory, &envelope.remote_id, envelope.mailbox, &path)
+                    .await?;
+            (bytes, true)
         }
     };
 
     let parsed = parse_message(&bytes)?;
 
     // Feed the full body text into the search index; until a message is
-    // opened (and thus fetched) only its header/preview text is
-    // searchable. Indexing failures must not break reading the message.
-    if let Some(text) = parsed.text_body.as_deref()
+    // opened (and thus fetched) only its header/preview text is searchable.
+    // When the body was just fetched on demand, flip `has_raw` and index the
+    // body in one storage call (`mark_downloaded`) so the offline-cache
+    // accounting — cleanup and the download plan — sees the cached file;
+    // otherwise just (re)index. Neither failure must break reading the message.
+    if freshly_fetched {
+        if let Err(error) = store
+            .offline()
+            .mark_downloaded(id, parsed.text_body.as_deref().unwrap_or_default())
+            .await
+        {
+            tracing::warn!(%message_id, %error, "failed to mark fetched message downloaded");
+        }
+    } else if let Some(text) = parsed.text_body.as_deref()
         && let Err(error) = store.search().index_message_body(id, text).await
     {
         tracing::warn!(%message_id, %error, "failed to index message body for search");
@@ -214,6 +244,7 @@ pub async fn get_message_detail(
         state.raw_root(),
         message_id,
         allow_remote,
+        state.is_offline(),
     )
     .await
     .map_err(map_command_error)

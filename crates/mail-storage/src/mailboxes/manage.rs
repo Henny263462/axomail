@@ -183,9 +183,14 @@ async fn rename_row(
 /// Rewrites every descendant's path prefix from the old path to the new one.
 ///
 /// A descendant's path begins `"<old_remote><delimiter>…"`; the leading
-/// `old_remote` run (its byte length is `old_len`) is replaced by `new_remote`,
-/// keeping the delimiter and tail. Matched by an exact prefix compare on the
-/// same length, so no `LIKE` wildcard escaping is needed.
+/// `old_remote` run (its **character** length is `old_len`) is replaced by
+/// `new_remote`, keeping the delimiter and tail. Matched by an exact prefix
+/// compare on the same length, so no `LIKE` wildcard escaping is needed.
+///
+/// The lengths are counted in Unicode scalar values, not bytes: SQLite's
+/// `substr()` indexes TEXT by character, so a byte length would mis-offset any
+/// non-ASCII folder name (umlauts: `Entwürfe`, `Gelöschte Objekte`) and strand
+/// its descendants instead of rewriting them.
 async fn rewrite_descendants(
     tx: &mut SqliteConnection,
     account: i64,
@@ -193,8 +198,8 @@ async fn rewrite_descendants(
     prefix: &str,
     new_remote: &str,
 ) -> Result<(), MailError> {
-    let old_len = i64::try_from(old_remote.len()).unwrap_or(i64::MAX);
-    let prefix_len = i64::try_from(prefix.len()).unwrap_or(i64::MAX);
+    let old_len = i64::try_from(old_remote.chars().count()).unwrap_or(i64::MAX);
+    let prefix_len = i64::try_from(prefix.chars().count()).unwrap_or(i64::MAX);
     sqlx::query(
         "UPDATE mailboxes
              SET remote_name = ?1 || substr(remote_name, ?2),

@@ -140,6 +140,19 @@ async fn fire_due<S: JobSink>(
                 }
             }
         }
+
+        // Periodic write-back backstop: drain any queued offline ops for this
+        // account. De-duplicated by the engine, so a running replay is not
+        // piled on; a no-op when the queue is empty.
+        tokio::select! {
+            biased;
+            () = shutdown.cancelled() => return,
+            result = sink.enqueue_op_replay(account) => {
+                if let Err(error) = result {
+                    tracing::debug!(error = %error, account_id = %account, "scheduler op-replay enqueue rejected");
+                }
+            }
+        }
     }
 }
 
