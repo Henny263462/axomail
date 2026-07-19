@@ -246,6 +246,45 @@ async fn cancel_scheduled_send_returns_the_message_to_a_draft() {
 }
 
 #[tokio::test]
+async fn cancel_scheduled_send_loses_the_race_to_a_started_send() {
+    let store = Store::open_in_memory().await.unwrap();
+    let (_c, secrets) = secret_stores();
+    let summary = create_account_impl(&store, &secrets, outgoing_account_input(2525))
+        .await
+        .unwrap();
+    let record = store
+        .outbox()
+        .create(&new_outbox(
+            AccountId::new(summary.id),
+            "Racing",
+            None,
+            Some(now() + 3_600),
+        ))
+        .await
+        .unwrap();
+
+    // Simulate the concurrent send winning: it flips the row to `sending`
+    // between the user's decision and the cancel's delete.
+    assert!(store.outbox().begin_send(record.id).await.unwrap());
+
+    // The cancel now finds no queued row to claim: it errors and creates no
+    // draft, and the in-flight row is left untouched.
+    let err = cancel_scheduled_send_impl(&store, record.id.value())
+        .await
+        .unwrap_err();
+    assert!(matches!(err, axomail_core::MailError::Configuration { .. }));
+    assert!(
+        store.drafts().list().await.unwrap().is_empty(),
+        "no draft may be created for a message already sending"
+    );
+    assert_eq!(
+        store.outbox().get(record.id).await.unwrap().unwrap().state,
+        OutboxState::Sending,
+        "the in-flight row must survive the failed cancel"
+    );
+}
+
+#[tokio::test]
 async fn a_deferred_send_uses_its_identity_from_address() {
     let store = Store::open_in_memory().await.unwrap();
     let (_c, secrets) = secret_stores();

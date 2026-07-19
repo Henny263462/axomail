@@ -5,6 +5,7 @@
 //! a thin `#[tauri::command]` wrapper that pulls shared state from the Tauri
 //! runtime and maps errors to user-facing strings.
 
+pub mod account_secrets;
 pub mod accounts;
 pub mod compose;
 pub mod connection;

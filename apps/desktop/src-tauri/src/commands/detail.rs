@@ -59,7 +59,7 @@ where
             message: "the requested message does not exist".to_owned(),
         })?;
 
-    let path = raw_path(raw_root, message_id);
+    let path = raw_message_path(raw_root, message_id);
     let bytes = match read_cached(&path).await? {
         Some(bytes) => bytes,
         None => {
@@ -190,8 +190,14 @@ where
     Ok(result?.bytes)
 }
 
-/// Path of the cached raw message for `message_id`.
-fn raw_path(raw_root: &Path, message_id: i64) -> PathBuf {
+/// Path of the cached raw message for `message_id`
+/// (`<raw_root>/raw/<message_id>.eml`).
+///
+/// This is the single source of truth for the raw-cache layout: the on-demand
+/// body fetch here writes it, and account deletion
+/// ([`crate::commands::accounts`]) reads it to clean up orphaned files.
+#[must_use]
+pub fn raw_message_path(raw_root: &Path, message_id: i64) -> PathBuf {
     raw_root.join("raw").join(format!("{message_id}.eml"))
 }
 

@@ -42,6 +42,13 @@ export interface SettingsSectionContext {
   reportError(message: string): void;
   /** Shows a message in the dialog's shared polite status region. */
   reportStatus(message: string): void;
+  /**
+   * Signals that account rows changed (edited or deleted) so the app shell can
+   * re-fetch its accounts and reconcile a now-missing selection. Bubbles from
+   * the dialog through {@link DialogHost} to `App.vue`; sections that never
+   * mutate accounts simply do not call it.
+   */
+  notifyAccountsChanged(): void;
 }
 
 /** Normalizes an unknown thrown value into a user-facing settings error. */

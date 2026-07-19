@@ -219,9 +219,52 @@ describe("ComposerDialog identities", () => {
     const body = wrapper.get("#compose-body").element as HTMLTextAreaElement;
     expect(body.value).toContain("-- \nCheers,\nKlaus");
   });
+
+  it("replaces a draft's baked-in signature on identity switch, never duplicating", async () => {
+    listIdentitiesMock.mockResolvedValue([
+      identity({ id: 7, accountId: 3, isDefault: true, signatureText: "Klaus" }),
+      identity({ id: 8, accountId: 3, signatureText: "Sales Team" }),
+    ]);
+    // The saved draft already carries the first identity's signature in its
+    // body; the composer does not re-insert one for a loaded draft.
+    const draftWithSig: DraftDto = {
+      id: 88,
+      accountId: 3,
+      to: ["x@y.com"],
+      cc: [],
+      bcc: [],
+      subject: "Re: hi",
+      textBody: "Hello there\n\n-- \nKlaus",
+      updatedUnix: 1_752_790_000,
+    };
+    const wrapper = mount(ComposerDialog, {
+      props: { accountId: 3, draft: draftWithSig },
+    });
+    await flushPromises();
+
+    await wrapper.get("#compose-from").setValue("8");
+
+    const body = (wrapper.get("#compose-body").element as HTMLTextAreaElement)
+      .value;
+    // The new identity's signature replaced the old one in place.
+    expect(body).toContain("-- \nSales Team");
+    expect(body).not.toContain("Klaus");
+    // Exactly one signature delimiter, and the user's body is preserved above it.
+    expect(body.match(/-- \n/g)).toHaveLength(1);
+    expect(body).toContain("Hello there");
+  });
 });
 
 describe("ComposerDialog send later", () => {
+  /** A datetime-local string roughly one hour in the future, in local time. */
+  function futureLocal(): string {
+    const d = new Date(Date.now() + 3_600_000);
+    const pad = (n: number) => String(n).padStart(2, "0");
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(
+      d.getHours(),
+    )}:${pad(d.getMinutes())}`;
+  }
+
   it("schedules the message through the send-later menu", async () => {
     const wrapper = mount(ComposerDialog, { props: { accountId: 42 } });
     await flushPromises();
@@ -235,5 +278,23 @@ describe("ComposerDialog send later", () => {
       expect.objectContaining({ scheduledAtUnix: expect.any(Number) }),
     );
     expect(wrapper.emitted("sent")).toBeTruthy();
+  });
+
+  it("Enter in the datetime field schedules rather than sending now", async () => {
+    const wrapper = mount(ComposerDialog, { props: { accountId: 42 } });
+    await flushPromises();
+    await wrapper.get("#compose-to").setValue("a@x.com");
+
+    await wrapper.get('button[aria-label="Send later"]').trigger("click");
+    await wrapper.get("#send-later-custom").setValue(futureLocal());
+    await wrapper.get("#send-later-custom").trigger("keydown", { key: "Enter" });
+    await flushPromises();
+
+    // Exactly one call, and it carries a schedule — never an immediate send
+    // (an immediate send would omit scheduledAtUnix).
+    expect(sendMessageMock).toHaveBeenCalledTimes(1);
+    expect(sendMessageMock).toHaveBeenCalledWith(
+      expect.objectContaining({ scheduledAtUnix: expect.any(Number) }),
+    );
   });
 });

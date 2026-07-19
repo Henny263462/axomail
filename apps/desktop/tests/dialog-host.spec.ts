@@ -130,4 +130,14 @@ describe("DialogHost", () => {
     await flushPromises();
     expect(wrapper.findComponent(SettingsDialog).exists()).toBe(false);
   });
+
+  it("re-emits accountsChanged from the settings dialog to the parent", async () => {
+    const { dialogs, wrapper } = mountHost();
+
+    dialogs.open("settings");
+    await flushPromises();
+    wrapper.findComponent(SettingsDialog).vm.$emit("accountsChanged");
+
+    expect(wrapper.emitted("accountsChanged")).toHaveLength(1);
+  });
 });

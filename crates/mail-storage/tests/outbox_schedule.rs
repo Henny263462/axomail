@@ -82,6 +82,40 @@ async fn list_queued_withholds_future_rows_and_yields_due_ones() {
 }
 
 #[tokio::test]
+async fn delete_if_queued_refuses_a_row_that_is_no_longer_queued() {
+    let store = Store::open_in_memory().await.unwrap();
+    let acc = account(&store).await;
+    let row = store
+        .outbox()
+        .create(&scheduled(acc, "Later", Some(now() + 3_600)))
+        .await
+        .unwrap();
+
+    // A concurrent send claims the row (queued -> sending).
+    assert!(store.outbox().begin_send(row.id).await.unwrap());
+
+    // The guarded delete must not remove a row that has left `queued`: this is
+    // the atomicity a plain unconditional delete could not provide.
+    assert!(
+        !store.outbox().delete_if_queued(row.id).await.unwrap(),
+        "a sending row must not be deletable via the queued guard"
+    );
+    assert!(
+        store.outbox().get(row.id).await.unwrap().is_some(),
+        "the in-flight row must survive the guarded delete"
+    );
+
+    // A still-queued row is removed and reported as removed.
+    let queued = store
+        .outbox()
+        .create(&scheduled(acc, "Cancel me", None))
+        .await
+        .unwrap();
+    assert!(store.outbox().delete_if_queued(queued.id).await.unwrap());
+    assert!(store.outbox().get(queued.id).await.unwrap().is_none());
+}
+
+#[tokio::test]
 async fn clearing_the_schedule_makes_a_future_row_due() {
     let store = Store::open_in_memory().await.unwrap();
     let acc = account(&store).await;

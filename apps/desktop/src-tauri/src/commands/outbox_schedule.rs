@@ -6,7 +6,7 @@
 //! out of the outbox into a draft the user can keep editing.
 
 use axomail_core::MailError;
-use axomail_storage::{NewDraft, OutboxId, OutboxState, Store};
+use axomail_storage::{NewDraft, OutboxId, Store};
 
 use crate::commands::compose::retry_outbox_impl;
 use crate::commands::map_command_error;
@@ -40,13 +40,22 @@ pub async fn send_outbox_now_impl(
 /// the outbox row. Only a `queued` (pending) row can be cancelled; a message
 /// already in flight or sent cannot. Returns the new draft's id.
 ///
+/// Cancellation is atomic: the row is removed with a `state = 'queued'` guard
+/// **first**, and the draft is created only if that guarded delete claimed the
+/// row. This closes the time-of-check/time-of-use race where a concurrent send
+/// flips the row to `sending` between a plain state check and the delete — in
+/// that case no draft is created and the in-flight (or sent) message is left
+/// intact.
+///
 /// # Errors
 ///
 /// Returns [`MailError::Configuration`] if the row does not exist or is no
-/// longer pending, and a safe-integer error if the new draft id cannot cross
-/// to the frontend.
+/// longer pending (already sending or sent), and a safe-integer error if the
+/// new draft id cannot cross to the frontend.
 pub async fn cancel_scheduled_send_impl(store: &Store, outbox_id: i64) -> Result<i64, MailError> {
     let id = OutboxId::new(outbox_id);
+    // Read the content up front (also distinguishes "no such item" from "no
+    // longer cancellable"); the guarded delete below is the real authority.
     let record = store
         .outbox()
         .get(id)
@@ -54,11 +63,16 @@ pub async fn cancel_scheduled_send_impl(store: &Store, outbox_id: i64) -> Result
         .ok_or_else(|| MailError::Configuration {
             message: "no such outbox item".to_owned(),
         })?;
-    if record.state != OutboxState::Queued {
+
+    // Atomic claim: only a still-queued row can be cancelled. If the guard
+    // matches nothing, a send has already begun or completed — do not create a
+    // draft.
+    if !store.outbox().delete_if_queued(id).await? {
         return Err(MailError::Configuration {
-            message: "only a pending message can be returned to drafts".to_owned(),
+            message: "this message is already sending or has been sent".to_owned(),
         });
     }
+
     let draft = store
         .drafts()
         .insert(&NewDraft {
@@ -70,7 +84,6 @@ pub async fn cancel_scheduled_send_impl(store: &Store, outbox_id: i64) -> Result
             bcc: record.bcc,
         })
         .await?;
-    store.outbox().delete(id).await?;
     checked_id(draft.id.value())
 }
 

@@ -8,8 +8,8 @@ use std::collections::HashSet;
 use std::time::Duration;
 
 use axomail_core::{
-    ConnectionSecurity, IncomingMailProvider, MailError, MailboxId, MailboxName, MailboxRole,
-    MailboxSyncState, RemoteMessageId, SyncRequest,
+    ConnectionCredential, ConnectionSecurity, IncomingMailProvider, MailError, MailboxId,
+    MailboxName, MailboxRole, MailboxSyncState, RemoteMessageId, SyncRequest,
 };
 use axomail_pop3::Pop3Provider;
 
@@ -71,6 +71,33 @@ async fn starttls_upgrade_then_sync() {
         outcome.new_envelopes.len(),
         2,
         "sync ran over the TLS channel"
+    );
+}
+
+#[tokio::test]
+async fn starttls_authenticates_with_sasl_advertised_only_after_tls() {
+    // The server hides `SASL XOAUTH2` from the plaintext CAPA and only reveals
+    // it in the CAPA issued over TLS. The adapter must therefore re-query
+    // capabilities after the handshake, or it would reject XOAUTH2 up front.
+    let mut spec = Spec::base(TlsMode::StartTls);
+    spec.advertise_sasl = true;
+    spec.messages = two_messages();
+    let server = common::start(spec).await;
+
+    let mut config = server.config(ConnectionSecurity::StartTls, "pass");
+    config.credential = ConnectionCredential::xoauth2("access-token-xyz");
+    let mut provider = Pop3Provider::new(config);
+
+    provider
+        .connect()
+        .await
+        .expect("XOAUTH2 auth over TLS after re-issued CAPA");
+    provider.disconnect().await.expect("disconnect");
+
+    assert!(server.saw_command("STLS"));
+    assert!(
+        server.saw_command("AUTH XOAUTH2"),
+        "the adapter must attempt XOAUTH2 once TLS-phase CAPA advertises SASL"
     );
 }
 

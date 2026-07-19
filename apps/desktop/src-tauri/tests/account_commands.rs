@@ -196,8 +196,9 @@ async fn delete_account_removes_rows_and_secrets() {
     let account_id = AccountId::new(summary.id);
     let incoming_ref = credential_ref_for_account(account_id, Direction::Incoming);
     let outgoing_ref = credential_ref_for_account(account_id, Direction::Outgoing);
+    let raw_root = tempfile::tempdir().unwrap();
 
-    delete_account_impl(&store, &secrets, summary.id)
+    delete_account_impl(&store, &secrets, raw_root.path(), summary.id)
         .await
         .unwrap();
 
@@ -217,7 +218,7 @@ async fn delete_account_removes_rows_and_secrets() {
     );
 
     // Deleting an already-absent account is a no-op, not an error.
-    delete_account_impl(&store, &secrets, summary.id)
+    delete_account_impl(&store, &secrets, raw_root.path(), summary.id)
         .await
         .unwrap();
 }
@@ -236,8 +237,9 @@ async fn delete_account_cascades_to_messages() {
         .insert(&sample_message(inbox, "keep-me", Some(1)))
         .await
         .unwrap();
+    let raw_root = tempfile::tempdir().unwrap();
 
-    delete_account_impl(&store, &secrets, summary.id)
+    delete_account_impl(&store, &secrets, raw_root.path(), summary.id)
         .await
         .unwrap();
 
@@ -246,6 +248,50 @@ async fn delete_account_cascades_to_messages() {
     assert!(store.accounts().get(account_id).await.unwrap().is_none());
     assert!(store.mailboxes().list(account_id).await.unwrap().is_empty());
     assert!(store.messages().get(message.id).await.unwrap().is_none());
+}
+
+#[tokio::test]
+async fn delete_account_removes_orphaned_raw_message_bodies() {
+    use axomail_desktop_lib::commands::detail::raw_message_path;
+
+    let store = Store::open_in_memory().await.unwrap();
+    let (_concrete, secrets) = secret_stores();
+    let raw_root = tempfile::tempdir().unwrap();
+    let summary = create_account_impl(&store, &secrets, valid_input())
+        .await
+        .unwrap();
+    let inbox = MailboxId::new(summary.mailboxes[0].id);
+
+    // One message whose raw body was cached to disk, and a second whose body
+    // was never fetched (its raw file is absent).
+    let cached = store
+        .messages()
+        .insert(&sample_message(inbox, "cached", Some(1)))
+        .await
+        .unwrap();
+    let uncached = store
+        .messages()
+        .insert(&sample_message(inbox, "uncached", Some(2)))
+        .await
+        .unwrap();
+
+    let cached_path = raw_message_path(raw_root.path(), cached.id.value());
+    let uncached_path = raw_message_path(raw_root.path(), uncached.id.value());
+    std::fs::create_dir_all(cached_path.parent().unwrap()).unwrap();
+    std::fs::write(&cached_path, b"raw bytes").unwrap();
+    assert!(cached_path.exists());
+
+    // Deletion succeeds despite the second message's missing raw file, and the
+    // cached file is gone afterwards.
+    delete_account_impl(&store, &secrets, raw_root.path(), summary.id)
+        .await
+        .unwrap();
+
+    assert!(
+        !cached_path.exists(),
+        "the orphaned raw body must be deleted"
+    );
+    assert!(!uncached_path.exists());
 }
 
 #[tokio::test]

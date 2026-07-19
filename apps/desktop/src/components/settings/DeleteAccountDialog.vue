@@ -9,7 +9,9 @@
  * account's exact email address. It uses `role="alertdialog"` because it
  * interrupts the flow to confirm a consequential, unrecoverable action.
  */
-import { computed, onMounted, ref } from "vue";
+import { computed, onBeforeUnmount, onMounted, ref } from "vue";
+
+import { useFocusTrap } from "../../composables/useFocusTrap";
 
 const props = defineProps<{
   /** Display name of the account being deleted (shown for orientation). */
@@ -29,22 +31,33 @@ const emit = defineEmits<{
 
 const typed = ref("");
 const input = ref<HTMLInputElement | null>(null);
+const root = ref<HTMLElement | null>(null);
+
+// Restore focus to whatever opened the dialog (the row's Delete button) once
+// it closes, so keyboard users are not dumped at the top of the page.
+let invoker: HTMLElement | null = null;
 
 /** True once the typed text matches the account email exactly. */
 const confirmed = computed(() => typed.value === props.email);
 
+// Tab cycles within the alertdialog and Escape cancels it, both via the shared
+// trap. This is a nested modal (it sits inside the settings dialog's DOM), so
+// Escape additionally stops propagation below so it never also closes Settings.
+const { onKeydown: trapKeydown } = useFocusTrap(root, () => emit("cancel"));
+
+function onKeydown(event: KeyboardEvent): void {
+  if (event.key === "Escape") event.stopPropagation();
+  trapKeydown(event);
+}
+
 onMounted(() => {
+  invoker = document.activeElement as HTMLElement | null;
   input.value?.focus();
 });
 
-function onKeydown(event: KeyboardEvent): void {
-  if (event.key === "Escape") {
-    // Keep Escape from also reaching the settings dialog behind this one.
-    event.preventDefault();
-    event.stopPropagation();
-    emit("cancel");
-  }
-}
+onBeforeUnmount(() => {
+  invoker?.focus();
+});
 
 function onConfirm(): void {
   if (!confirmed.value || props.deleting) return;
@@ -58,6 +71,7 @@ function onConfirm(): void {
     @keydown="onKeydown"
   >
     <div
+      ref="root"
       class="dialog"
       role="alertdialog"
       aria-modal="true"

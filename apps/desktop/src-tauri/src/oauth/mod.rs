@@ -21,11 +21,14 @@ mod loopback;
 mod token;
 mod url;
 
-use std::sync::{Arc, Once};
+use std::collections::HashMap;
+use std::future::Future;
+use std::sync::{Arc, Mutex, Once, OnceLock, PoisonError};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use axomail_core::{CredentialRef, MailError, OAuthConfig};
 use axomail_security::OAuthTokens;
+use tokio::sync::Mutex as AsyncMutex;
 
 use crate::state::SharedSecretStore;
 
@@ -56,16 +59,52 @@ pub fn install_crypto_provider() {
 /// it is expired or within the skew window and persisting any rotated refresh
 /// token back to the keychain.
 ///
+/// Refreshes for one account are serialized by a per-account async mutex, so
+/// two concurrent syncs cannot both refresh (and, with a rotating refresh
+/// token, invalidate each other's stored token). The second caller re-reads
+/// the freshly stored token and returns it without a second round-trip.
+///
 /// # Errors
 ///
 /// Returns [`MailError::Configuration`] if the account has never signed in or
-/// its refresh token is gone (the user must sign in again), plus any
-/// keychain, network, or authentication error from the refresh.
+/// its refresh token is gone (the user must sign in again — a user-actionable
+/// class), plus any keychain, network, or authentication error from the
+/// refresh.
 pub async fn resolve_access_token(
     secrets: &SharedSecretStore,
     reference: &CredentialRef,
     config: &OAuthConfig,
 ) -> Result<String, MailError> {
+    resolve_access_token_with(secrets, reference, |refresh_token| async move {
+        refresh_tokens(
+            config.token_url.as_str(),
+            config.client_id.as_str(),
+            &refresh_token,
+        )
+        .await
+    })
+    .await
+}
+
+/// The refresh-serializing core of [`resolve_access_token`], parameterized over
+/// the actual token-endpoint call so it can be exercised against a local stub.
+///
+/// The per-account lock is held across the load → refresh → store sequence, so
+/// a second concurrent caller for the same account blocks, then re-reads the
+/// token the first caller just stored (the double-check that avoids a redundant
+/// refresh).
+async fn resolve_access_token_with<F, Fut>(
+    secrets: &SharedSecretStore,
+    reference: &CredentialRef,
+    refresh: F,
+) -> Result<String, MailError>
+where
+    F: FnOnce(String) -> Fut,
+    Fut: Future<Output = Result<OAuthTokens, MailError>>,
+{
+    let lock = account_refresh_lock(reference);
+    let _guard = lock.lock().await;
+
     let tokens =
         load_tokens(secrets, reference)
             .await?
@@ -83,14 +122,24 @@ pub async fn resolve_access_token(
         });
     }
 
-    let refreshed = refresh_tokens(
-        config.token_url.as_str(),
-        config.client_id.as_str(),
-        &tokens.refresh_token,
-    )
-    .await?;
+    let refreshed = refresh(tokens.refresh_token).await?;
     store_tokens(secrets, reference, &refreshed).await?;
     Ok(refreshed.access_token)
+}
+
+/// Returns the process-wide async mutex guarding refreshes for one account,
+/// keyed by its (account-scoped) credential reference. Created on first use.
+fn account_refresh_lock(reference: &CredentialRef) -> Arc<AsyncMutex<()>> {
+    static LOCKS: OnceLock<Mutex<HashMap<String, Arc<AsyncMutex<()>>>>> = OnceLock::new();
+    let map = LOCKS.get_or_init(|| Mutex::new(HashMap::new()));
+    // The map guard is a std mutex held only long enough to clone the Arc; the
+    // awaited section runs on the per-account async mutex, never this one.
+    let mut guard = map.lock().unwrap_or_else(PoisonError::into_inner);
+    Arc::clone(
+        guard
+            .entry(reference.as_str().to_owned())
+            .or_insert_with(|| Arc::new(AsyncMutex::new(()))),
+    )
 }
 
 /// Persists a token set as JSON under `reference` on a blocking task.
@@ -148,13 +197,118 @@ pub(crate) fn unix_now() -> i64 {
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::unwrap_used)]
+    #![allow(clippy::unwrap_used, clippy::expect_used)]
 
     use super::*;
     use axomail_security::InMemorySecretStore;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    use tokio::net::TcpListener;
 
     fn store() -> SharedSecretStore {
         Arc::new(InMemorySecretStore::new())
+    }
+
+    /// A local token endpoint that counts the refreshes it serves and always
+    /// returns a *rotated* refresh token, so a caller can prove exactly one
+    /// refresh happened and that the new set replaced the old one. Loops so it
+    /// can (but here must not) serve more than one request.
+    async fn counting_token_endpoint() -> (String, Arc<AtomicUsize>) {
+        let listener = TcpListener::bind(("127.0.0.1", 0)).await.unwrap();
+        let url = format!("http://127.0.0.1:{}", listener.local_addr().unwrap().port());
+        let hits = Arc::new(AtomicUsize::new(0));
+        let hits_task = Arc::clone(&hits);
+        tokio::spawn(async move {
+            loop {
+                let Ok((mut stream, _)) = listener.accept().await else {
+                    return;
+                };
+                hits_task.fetch_add(1, Ordering::SeqCst);
+                let mut buf = [0u8; 2048];
+                let _ = stream.read(&mut buf).await;
+                let body = r#"{"access_token":"fresh-access","refresh_token":"rotated-refresh","expires_in":3600}"#;
+                let response = format!(
+                    "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\
+                     Content-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                    body.len()
+                );
+                let _ = stream.write_all(response.as_bytes()).await;
+                let _ = stream.flush().await;
+            }
+        });
+        (url, hits)
+    }
+
+    /// Stores an already-expired token set under `reference`.
+    async fn store_expired(secrets: &SharedSecretStore, reference: &CredentialRef) {
+        let tokens = OAuthTokens {
+            access_token: "stale".to_owned(),
+            refresh_token: "r1".to_owned(),
+            expires_at_unix: unix_now() - 10,
+        };
+        store_tokens(secrets, reference, &tokens).await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn refresh_rotates_the_stored_token_set_with_a_single_write() {
+        let secrets = store();
+        // A distinct reference so the process-wide lock map cannot collide with
+        // other tests in this binary.
+        let reference = CredentialRef::new("account/rotation/oauth");
+        store_expired(&secrets, &reference).await;
+        let (url, hits) = counting_token_endpoint().await;
+
+        let access = resolve_access_token_with(&secrets, &reference, |refresh_token| {
+            let url = url.clone();
+            async move { refresh_tokens(&url, "client", &refresh_token).await }
+        })
+        .await
+        .unwrap();
+        assert_eq!(access, "fresh-access");
+
+        // The single stored set both directions read now carries the rotated
+        // refresh token; the old "r1" is gone.
+        let stored = load_tokens(&secrets, &reference).await.unwrap().unwrap();
+        assert_eq!(stored.access_token, "fresh-access");
+        assert_eq!(stored.refresh_token, "rotated-refresh");
+        assert_eq!(hits.load(Ordering::SeqCst), 1, "exactly one refresh write");
+
+        // The "other direction" resolving the same reference sees the fresh
+        // token without another endpoint round-trip.
+        let again = resolve_access_token_with(&secrets, &reference, |refresh_token| {
+            let url = url.clone();
+            async move { refresh_tokens(&url, "client", &refresh_token).await }
+        })
+        .await
+        .unwrap();
+        assert_eq!(again, "fresh-access");
+        assert_eq!(hits.load(Ordering::SeqCst), 1, "no second refresh");
+    }
+
+    #[tokio::test]
+    async fn concurrent_resolves_serialize_into_one_refresh() {
+        let secrets = store();
+        let reference = CredentialRef::new("account/concurrent/oauth");
+        store_expired(&secrets, &reference).await;
+        let (url, hits) = counting_token_endpoint().await;
+
+        let first = resolve_access_token_with(&secrets, &reference, |refresh_token| {
+            let url = url.clone();
+            async move { refresh_tokens(&url, "client", &refresh_token).await }
+        });
+        let second = resolve_access_token_with(&secrets, &reference, |refresh_token| {
+            let url = url.clone();
+            async move { refresh_tokens(&url, "client", &refresh_token).await }
+        });
+        let (a, b) = tokio::join!(first, second);
+
+        assert_eq!(a.unwrap(), "fresh-access");
+        assert_eq!(b.unwrap(), "fresh-access");
+        assert_eq!(
+            hits.load(Ordering::SeqCst),
+            1,
+            "the per-account lock collapses the two resolves into one refresh"
+        );
     }
 
     #[tokio::test]

@@ -47,6 +47,7 @@ const context = {
   setTheme: vi.fn(),
   reportError: vi.fn(),
   reportStatus: vi.fn(),
+  notifyAccountsChanged: vi.fn(),
 } satisfies SettingsSectionContext;
 
 function identity(over: Partial<IdentityDto>): IdentityDto {

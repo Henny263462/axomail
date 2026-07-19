@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref } from "vue";
+import { computed, nextTick, onMounted, onUnmounted, ref } from "vue";
 
 import { cancelAllSyncJobs, cancelSyncJob, listSyncJobs } from "../../api/jobs";
 import { subscribeSyncEvents } from "../../api/sync";
@@ -18,6 +18,9 @@ const busy = ref(false);
 const root = ref<HTMLElement | null>(null);
 let dispose: (() => void) | null = null;
 let disposed = false;
+// Monotonic guard: sync events can trigger overlapping loads, so a slow
+// earlier response must never overwrite the result of a newer one.
+let loadSeq = 0;
 
 function isActive(job: SyncJobDto): boolean {
   return job.state === "running" || job.state === "pending";
@@ -30,7 +33,10 @@ const activeJobs = computed(() => jobs.value.filter(isActive));
 const recentJobs = computed(() => jobs.value.filter((job) => !isActive(job)));
 
 async function load(): Promise<void> {
+  const id = ++loadSeq;
   const result = await listSyncJobs();
+  // A newer load started while this one was in flight; drop the stale result.
+  if (id !== loadSeq) return;
   if (result === null) {
     state.value = "unavailable";
     return;
@@ -94,6 +100,10 @@ function onKeydown(event: KeyboardEvent): void {
 
 onMounted(async () => {
   await load();
+  // Move focus into the dialog on open so the keyboard is trapped here and not
+  // left on the status-bar button that opened it (Tab would walk the page).
+  await nextTick();
+  focusables()[0]?.focus();
   // Keep the list live while the dialog is open: every sync event reloads it.
   const off = await subscribeSyncEvents(() => {
     void load();

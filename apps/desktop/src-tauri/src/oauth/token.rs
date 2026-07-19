@@ -88,9 +88,9 @@ async fn post_token(
         .send()
         .await
         .map_err(map_reqwest)?;
-    if !response.status().is_success() {
-        // The error body is intentionally discarded (it may be sensitive).
-        return Err(MailError::Authentication);
+    let status = response.status();
+    if !status.is_success() {
+        return Err(classify_token_error(status, response.headers()));
     }
     let body: TokenResponse = response.json().await.map_err(|_| MailError::Protocol {
         message: "the token endpoint returned an unexpected response".to_owned(),
@@ -119,7 +119,51 @@ fn http_client() -> Result<reqwest::Client, MailError> {
         })
 }
 
-/// Maps a reqwest transport error to a redacted [`MailError`].
+/// Classifies a non-2xx token-endpoint response into a redacted [`MailError`]
+/// whose [`ErrorClass`](axomail_core::ErrorClass) drives retry behaviour.
+///
+/// - `429` → [`MailError::RateLimited`] (temporary; honours `Retry-After`),
+/// - `5xx` → [`MailError::Network`] (temporary; the endpoint is unavailable),
+/// - other `4xx` → [`MailError::Authentication`] (user-actionable): the grant
+///   or client was rejected (e.g. `invalid_grant`/`invalid_client`), so retrying
+///   without re-authorizing cannot help.
+///
+/// The response body is never read: it may carry sensitive detail, and the
+/// status code alone is sufficient to classify.
+fn classify_token_error(
+    status: reqwest::StatusCode,
+    headers: &reqwest::header::HeaderMap,
+) -> MailError {
+    if status == reqwest::StatusCode::TOO_MANY_REQUESTS {
+        return MailError::RateLimited {
+            retry_after: parse_retry_after(headers),
+        };
+    }
+    if status.is_server_error() {
+        return MailError::Network {
+            message: "the token endpoint is temporarily unavailable".to_owned(),
+        };
+    }
+    MailError::Authentication
+}
+
+/// Parses a `Retry-After` header expressed as an integer number of seconds.
+/// The HTTP-date form is not interpreted (it is rare for token endpoints); a
+/// missing or unparseable header yields `None`.
+fn parse_retry_after(headers: &reqwest::header::HeaderMap) -> Option<Duration> {
+    let seconds = headers
+        .get(reqwest::header::RETRY_AFTER)?
+        .to_str()
+        .ok()?
+        .trim()
+        .parse::<u64>()
+        .ok()?;
+    Some(Duration::from_secs(seconds))
+}
+
+/// Maps a reqwest transport error to a redacted [`MailError`]. Transport
+/// failures are temporary (timeout or network), so sync retries them with
+/// backoff.
 fn map_reqwest(error: reqwest::Error) -> MailError {
     if error.is_timeout() {
         MailError::Timeout {
@@ -143,6 +187,16 @@ mod tests {
     /// A one-shot plain-HTTP token endpoint returning `json_body`, plus the
     /// `http://127.0.0.1:<port>` URL to reach it.
     async fn scripted_token_endpoint(status_line: &'static str, json_body: &'static str) -> String {
+        scripted_token_endpoint_with_headers(status_line, "", json_body).await
+    }
+
+    /// As [`scripted_token_endpoint`], but injects `extra_headers` (each a bare
+    /// `Name: value` line without the trailing CRLF) into the response head.
+    async fn scripted_token_endpoint_with_headers(
+        status_line: &'static str,
+        extra_headers: &'static str,
+        json_body: &'static str,
+    ) -> String {
         let listener = TcpListener::bind(("127.0.0.1", 0)).await.unwrap();
         let url = format!("http://127.0.0.1:{}", listener.local_addr().unwrap().port());
         tokio::spawn(async move {
@@ -151,8 +205,13 @@ mod tests {
             // writing the request before we answer.
             let mut buf = [0u8; 2048];
             let _ = stream.read(&mut buf).await;
+            let extra = if extra_headers.is_empty() {
+                String::new()
+            } else {
+                format!("{extra_headers}\r\n")
+            };
             let response = format!(
-                "{status_line}\r\nContent-Type: application/json\r\n\
+                "{status_line}\r\nContent-Type: application/json\r\n{extra}\
                  Content-Length: {}\r\nConnection: close\r\n\r\n{json_body}",
                 json_body.len()
             );
@@ -192,7 +251,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn error_status_maps_to_authentication_without_body() {
+    async fn invalid_grant_is_user_actionable_without_body() {
         let url = scripted_token_endpoint(
             "HTTP/1.1 400 Bad Request",
             r#"{"error":"invalid_grant","error_description":"secret detail"}"#,
@@ -200,6 +259,62 @@ mod tests {
         .await;
         let err = refresh_tokens(&url, "client", "bad").await.unwrap_err();
         assert!(matches!(err, MailError::Authentication));
+        assert_eq!(err.class(), axomail_core::ErrorClass::UserConfiguration);
         assert!(!err.to_string().contains("secret detail"));
+    }
+
+    #[tokio::test]
+    async fn unauthorized_client_is_user_actionable() {
+        let url =
+            scripted_token_endpoint("HTTP/1.1 401 Unauthorized", r#"{"error":"invalid_client"}"#)
+                .await;
+        let err = refresh_tokens(&url, "client", "bad").await.unwrap_err();
+        assert!(matches!(err, MailError::Authentication));
+        assert_eq!(err.class(), axomail_core::ErrorClass::UserConfiguration);
+    }
+
+    #[tokio::test]
+    async fn rate_limited_is_temporary_and_carries_retry_after() {
+        let url = scripted_token_endpoint_with_headers(
+            "HTTP/1.1 429 Too Many Requests",
+            "Retry-After: 30",
+            r#"{"error":"rate_limited"}"#,
+        )
+        .await;
+        let err = refresh_tokens(&url, "client", "r").await.unwrap_err();
+        match err {
+            MailError::RateLimited { retry_after } => {
+                assert_eq!(retry_after, Some(Duration::from_secs(30)));
+            }
+            other => panic!("expected RateLimited, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn server_error_is_temporary_so_sync_retries() {
+        let url = scripted_token_endpoint(
+            "HTTP/1.1 503 Service Unavailable",
+            r#"{"error":"temporarily_unavailable"}"#,
+        )
+        .await;
+        let err = refresh_tokens(&url, "client", "r").await.unwrap_err();
+        assert!(matches!(err, MailError::Network { .. }));
+        assert!(err.is_temporary(), "5xx must be retryable");
+    }
+
+    #[tokio::test]
+    async fn transport_failure_is_temporary() {
+        // Bind then drop a listener to obtain a closed port, so the connection
+        // is refused: a transport failure, which must classify as temporary.
+        let listener = TcpListener::bind(("127.0.0.1", 0)).await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        drop(listener);
+        let url = format!("http://127.0.0.1:{port}");
+        let err = refresh_tokens(&url, "client", "r").await.unwrap_err();
+        assert!(
+            matches!(err, MailError::Network { .. } | MailError::Timeout { .. }),
+            "got {err:?}"
+        );
+        assert!(err.is_temporary());
     }
 }

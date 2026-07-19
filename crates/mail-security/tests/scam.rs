@@ -111,6 +111,41 @@ fn detection_never_mutates_the_sanitized_html() {
 }
 
 #[test]
+fn flags_a_host_embedded_in_prose_link_text() {
+    // The whitespace-bypass fix: a mismatching host buried in surrounding text
+    // is still detected, not only when it is the entire link text.
+    assert_eq!(
+        kinds("<a href=\"https://evil.example/login\">Please sign in at paypal.com now</a>"),
+        vec![ScamIndicatorKind::DeceptiveLink]
+    );
+}
+
+#[test]
+fn does_not_flag_prose_with_no_real_host_token() {
+    // The conservative gate survives the embedded scan: a non-TLD dotted token
+    // in prose must not be read as a host.
+    assert!(
+        kinds("<a href=\"https://evil.example\">read my essay.Really it is good</a>").is_empty()
+    );
+}
+
+#[test]
+fn suppresses_deceptive_link_for_known_esp_redirectors() {
+    // A click-tracker legitimately shows the brand while linking through its own
+    // domain: no deceptive-link warning for a curated redirector...
+    assert!(
+        kinds("<a href=\"https://click.list-manage.com/track/click?u=1\">shop.brand.com</a>")
+            .is_empty()
+    );
+    assert!(kinds("<a href=\"https://url9.sendgrid.net/ls/click?x=1\">brand.com</a>").is_empty());
+    // ...but the identical shape through an unlisted domain is still flagged.
+    assert_eq!(
+        kinds("<a href=\"https://evil.example/track\">shop.brand.com</a>"),
+        vec![ScamIndicatorKind::DeceptiveLink]
+    );
+}
+
+#[test]
 fn benign_message_has_no_flags() {
     let input = concat!(
         "<p>Hello, please read the <a href=\"https://example.org/notes\">release notes</a>.</p>",

@@ -12,6 +12,10 @@
 use serde::{Deserialize, Serialize};
 
 use crate::error::MailError;
+// The leaf value newtypes live in a sibling module (file-size split); re-export
+// them here so `oauth::{HttpsUrl, OAuthClientId, OAuthScopes}` stays the public
+// path and this module can use them unqualified.
+pub use crate::oauth_values::{HttpsUrl, OAuthClientId, OAuthScopes};
 
 /// How an account authenticates to its servers.
 ///
@@ -51,11 +55,15 @@ pub struct OAuthPreset {
     pub token_url: HttpsUrl,
     /// Scopes granting IMAP/SMTP (and offline access for a refresh token).
     pub scopes: OAuthScopes,
+    /// Provider-specific parameters appended only to the **authorization**
+    /// request (never the token request), e.g. Google's `access_type=offline`
+    /// and `prompt=consent`, which are what make Google return a refresh token.
+    pub extra_auth_params: Vec<AuthParam>,
 }
 
 impl OAuthProvider {
-    /// Returns the built-in endpoints and scopes for a known provider, or
-    /// `None` for [`OAuthProvider::Custom`].
+    /// Returns the built-in endpoints, scopes, and authorization parameters for
+    /// a known provider, or `None` for [`OAuthProvider::Custom`].
     ///
     /// # Panics
     ///
@@ -64,11 +72,15 @@ impl OAuthProvider {
     /// the unit tests, not a runtime condition.
     #[must_use]
     pub fn preset(self) -> Option<OAuthPreset> {
-        let build = |auth: &str, token: &str, scopes: &[&str]| {
+        let build = |auth: &str, token: &str, scopes: &[&str], extra: &[(&str, &str)]| {
             Some(OAuthPreset {
                 auth_url: HttpsUrl::parse(auth).ok()?,
                 token_url: HttpsUrl::parse(token).ok()?,
                 scopes: OAuthScopes::new(scopes.iter().map(|s| (*s).to_owned()).collect()).ok()?,
+                extra_auth_params: extra
+                    .iter()
+                    .map(|(key, value)| AuthParam::parse(*key, *value).ok())
+                    .collect::<Option<Vec<_>>>()?,
             })
         };
         match self {
@@ -76,183 +88,103 @@ impl OAuthProvider {
                 "https://accounts.google.com/o/oauth2/v2/auth",
                 "https://oauth2.googleapis.com/token",
                 &["https://mail.google.com/"],
+                // Google only returns a refresh token when offline access is
+                // requested, and only re-returns one on re-consent, so both are
+                // required for a durable XOAUTH2 login.
+                &[("access_type", "offline"), ("prompt", "consent")],
             ),
             Self::Microsoft => build(
                 "https://login.microsoftonline.com/common/oauth2/v2.0/authorize",
                 "https://login.microsoftonline.com/common/oauth2/v2.0/token",
+                // `offline_access` is the scope that yields a (rotating)
+                // refresh token from Microsoft identity platform.
                 &[
                     "https://outlook.office.com/IMAP.AccessAsUser.All",
                     "https://outlook.office.com/SMTP.Send",
                     "offline_access",
                 ],
+                &[],
             ),
             Self::Custom => None,
         }
     }
-}
 
-/// A non-empty OAuth2 client id (a public identifier, never a secret).
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-#[serde(try_from = "String", into = "String")]
-pub struct OAuthClientId(String);
-
-impl OAuthClientId {
-    /// Validates and wraps a client id.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`MailError::Configuration`] for an empty id or one containing
-    /// whitespace or control characters.
-    pub fn parse(value: impl Into<String>) -> Result<Self, MailError> {
-        let value = value.into();
-        if value.is_empty() {
-            return Err(MailError::Configuration {
-                message: "OAuth client id must not be empty".into(),
-            });
-        }
-        if value.chars().any(|c| c.is_whitespace() || c.is_control()) {
-            return Err(MailError::Configuration {
-                message: "OAuth client id must not contain whitespace".into(),
-            });
-        }
-        Ok(Self(value))
-    }
-
-    /// Returns the client id string.
+    /// The provider whose preset authorization endpoint exactly equals
+    /// `auth_url`, if any. Used to attach a provider's authorization
+    /// parameters to a consent URL built from a persisted config, so the same
+    /// parameters apply on both first sign-in and re-authorization.
     #[must_use]
-    pub fn as_str(&self) -> &str {
-        &self.0
+    pub fn from_auth_url(auth_url: &str) -> Option<Self> {
+        [Self::Gmail, Self::Microsoft].into_iter().find(|provider| {
+            provider
+                .preset()
+                .is_some_and(|p| p.auth_url.as_str() == auth_url)
+        })
     }
 }
 
-impl TryFrom<String> for OAuthClientId {
-    type Error = MailError;
-    fn try_from(value: String) -> Result<Self, Self::Error> {
-        Self::parse(value)
-    }
-}
-
-impl From<OAuthClientId> for String {
-    fn from(value: OAuthClientId) -> Self {
-        value.0
-    }
-}
-
-/// An `https://` URL used as an OAuth2 endpoint.
+/// Returns the provider-specific authorization-request parameters for the
+/// account whose authorization endpoint is `auth_url`, or an empty list when
+/// the endpoint does not match a known preset (a custom provider).
 ///
-/// Only the scheme and basic well-formedness are checked here; the transport's
-/// TLS stack performs certificate validation at request time. Plain `http`
-/// endpoints are rejected so a misconfiguration cannot send a token request in
-/// the clear.
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-#[serde(try_from = "String", into = "String")]
-pub struct HttpsUrl(String);
+/// This keeps the parameter set as a property of the [`OAuthPreset`] model
+/// rather than as scheme-detecting string logic in the URL builder.
+#[must_use]
+pub fn extra_auth_params_for(auth_url: &str) -> Vec<AuthParam> {
+    OAuthProvider::from_auth_url(auth_url)
+        .and_then(OAuthProvider::preset)
+        .map(|preset| preset.extra_auth_params)
+        .unwrap_or_default()
+}
 
-impl HttpsUrl {
-    /// Validates and wraps an `https://` URL.
+/// A single provider-specific authorization-request parameter, such as
+/// `access_type=offline`.
+///
+/// These are non-secret, static per provider, and defined only by the built-in
+/// [`OAuthPreset`]s. The key and value are validated free of whitespace and
+/// control characters so they cannot corrupt the query string they are
+/// percent-encoded into.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AuthParam {
+    key: String,
+    value: String,
+}
+
+impl AuthParam {
+    /// Validates and wraps an authorization parameter.
     ///
     /// # Errors
     ///
-    /// Returns [`MailError::Configuration`] when the value is not an
-    /// `https://` URL, contains whitespace or control characters, or has an
-    /// empty host.
-    pub fn parse(value: impl Into<String>) -> Result<Self, MailError> {
+    /// Returns [`MailError::Configuration`] for an empty key, or a key/value
+    /// containing whitespace or control characters.
+    pub fn parse(key: impl Into<String>, value: impl Into<String>) -> Result<Self, MailError> {
+        let key = key.into();
         let value = value.into();
         let invalid = |message: &str| MailError::Configuration {
-            message: format!("invalid OAuth endpoint URL: {message}"),
+            message: format!("invalid OAuth authorization parameter: {message}"),
         };
+        if key.is_empty() {
+            return Err(invalid("empty key"));
+        }
+        if key.chars().any(|c| c.is_whitespace() || c.is_control()) {
+            return Err(invalid("key contains whitespace"));
+        }
         if value.chars().any(|c| c.is_whitespace() || c.is_control()) {
-            return Err(invalid("contains whitespace"));
+            return Err(invalid("value contains whitespace"));
         }
-        let Some(rest) = value.strip_prefix("https://") else {
-            return Err(invalid("must use the https scheme"));
-        };
-        let host = rest.split(['/', '?', '#']).next().unwrap_or_default();
-        if host.is_empty() {
-            return Err(invalid("empty host"));
-        }
-        Ok(Self(value))
+        Ok(Self { key, value })
     }
 
-    /// Returns the URL string.
+    /// The parameter name.
     #[must_use]
-    pub fn as_str(&self) -> &str {
-        &self.0
-    }
-}
-
-impl TryFrom<String> for HttpsUrl {
-    type Error = MailError;
-    fn try_from(value: String) -> Result<Self, Self::Error> {
-        Self::parse(value)
-    }
-}
-
-impl From<HttpsUrl> for String {
-    fn from(value: HttpsUrl) -> Self {
-        value.0
-    }
-}
-
-/// A non-empty set of OAuth2 scopes.
-///
-/// Each scope is a single space-free token; the wire form joins them with
-/// spaces (RFC 6749 §3.3), so an embedded space would corrupt the request.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(try_from = "Vec<String>", into = "Vec<String>")]
-pub struct OAuthScopes(Vec<String>);
-
-impl OAuthScopes {
-    /// Validates and wraps a list of scopes.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`MailError::Configuration`] when the list is empty or any
-    /// scope is empty or contains whitespace or control characters.
-    pub fn new(scopes: Vec<String>) -> Result<Self, MailError> {
-        if scopes.is_empty() {
-            return Err(MailError::Configuration {
-                message: "at least one OAuth scope is required".into(),
-            });
-        }
-        for scope in &scopes {
-            if scope.is_empty() {
-                return Err(MailError::Configuration {
-                    message: "OAuth scope must not be empty".into(),
-                });
-            }
-            if scope.chars().any(|c| c.is_whitespace() || c.is_control()) {
-                return Err(MailError::Configuration {
-                    message: "OAuth scope must not contain whitespace".into(),
-                });
-            }
-        }
-        Ok(Self(scopes))
+    pub fn key(&self) -> &str {
+        &self.key
     }
 
-    /// Returns the scopes as a single space-delimited string for the wire.
+    /// The parameter value.
     #[must_use]
-    pub fn as_space_delimited(&self) -> String {
-        self.0.join(" ")
-    }
-
-    /// Returns the individual scopes.
-    #[must_use]
-    pub fn as_slice(&self) -> &[String] {
-        &self.0
-    }
-}
-
-impl TryFrom<Vec<String>> for OAuthScopes {
-    type Error = MailError;
-    fn try_from(value: Vec<String>) -> Result<Self, Self::Error> {
-        Self::new(value)
-    }
-}
-
-impl From<OAuthScopes> for Vec<String> {
-    fn from(value: OAuthScopes) -> Self {
-        value.0
+    pub fn value(&self) -> &str {
+        &self.value
     }
 }
 
@@ -331,29 +263,6 @@ mod tests {
     }
 
     #[test]
-    fn client_id_rejects_blank_and_whitespace() {
-        assert!(OAuthClientId::parse("").is_err());
-        assert!(OAuthClientId::parse("has space").is_err());
-        assert!(OAuthClientId::parse("123.apps.googleusercontent.com").is_ok());
-    }
-
-    #[test]
-    fn https_url_requires_https_and_host() {
-        assert!(HttpsUrl::parse("http://token.example.org/").is_err());
-        assert!(HttpsUrl::parse("https:///path").is_err());
-        assert!(HttpsUrl::parse("https://token.example.org/oauth?x=1").is_ok());
-        assert!(HttpsUrl::parse("https://has space.example.org/").is_err());
-    }
-
-    #[test]
-    fn scopes_reject_empty_list_and_embedded_space() {
-        assert!(OAuthScopes::new(vec![]).is_err());
-        assert!(OAuthScopes::new(vec!["a b".into()]).is_err());
-        let scopes = OAuthScopes::new(vec!["mail".into(), "offline_access".into()]).unwrap();
-        assert_eq!(scopes.as_space_delimited(), "mail offline_access");
-    }
-
-    #[test]
     fn known_presets_are_valid_and_custom_is_none() {
         assert!(OAuthProvider::Gmail.preset().is_some());
         assert!(OAuthProvider::Microsoft.preset().is_some());
@@ -363,6 +272,47 @@ mod tests {
             gmail.token_url.as_str(),
             "https://oauth2.googleapis.com/token"
         );
+    }
+
+    #[test]
+    fn gmail_preset_requests_offline_access_on_the_authorization_request() {
+        let gmail = OAuthProvider::Gmail.preset().unwrap();
+        let params: Vec<(&str, &str)> = gmail
+            .extra_auth_params
+            .iter()
+            .map(|p| (p.key(), p.value()))
+            .collect();
+        assert!(params.contains(&("access_type", "offline")));
+        assert!(params.contains(&("prompt", "consent")));
+    }
+
+    #[test]
+    fn microsoft_preset_carries_offline_access_scope_and_no_extra_auth_params() {
+        let ms = OAuthProvider::Microsoft.preset().unwrap();
+        assert!(ms.scopes.as_slice().iter().any(|s| s == "offline_access"));
+        assert!(ms.extra_auth_params.is_empty());
+    }
+
+    #[test]
+    fn extra_auth_params_resolve_by_authorization_endpoint() {
+        // Gmail's endpoint resolves to its offline-access parameters.
+        let gmail_url = OAuthProvider::Gmail.preset().unwrap().auth_url;
+        let params = extra_auth_params_for(gmail_url.as_str());
+        assert_eq!(params.len(), 2);
+        // Microsoft has no extra authorization parameters.
+        let ms_url = OAuthProvider::Microsoft.preset().unwrap().auth_url;
+        assert!(extra_auth_params_for(ms_url.as_str()).is_empty());
+        // An unknown (custom) endpoint has none.
+        assert!(extra_auth_params_for("https://auth.custom.example/authorize").is_empty());
+    }
+
+    #[test]
+    fn auth_param_rejects_whitespace_and_empty_key() {
+        assert!(AuthParam::parse("", "v").is_err());
+        assert!(AuthParam::parse("k", "has space").is_err());
+        assert!(AuthParam::parse("has space", "v").is_err());
+        let param = AuthParam::parse("access_type", "offline").unwrap();
+        assert_eq!((param.key(), param.value()), ("access_type", "offline"));
     }
 
     #[test]

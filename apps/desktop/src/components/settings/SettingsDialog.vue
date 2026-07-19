@@ -20,6 +20,8 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   close: [];
+  /** An account section edited or deleted an account; the shell must refresh. */
+  accountsChanged: [];
 }>();
 
 type LoadState = "loading" | "ready" | "unavailable";
@@ -83,6 +85,9 @@ const context: SettingsSectionContext = {
   },
   reportStatus(message) {
     statusMessage.value = message;
+  },
+  notifyAccountsChanged() {
+    emit("accountsChanged");
   },
 };
 

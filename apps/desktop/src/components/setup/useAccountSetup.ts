@@ -7,9 +7,9 @@
  * the browser sign-in and store tokens). No secret is ever held here beyond the
  * transient password the user types for a password account.
  */
-import { ref } from "vue";
+import { onBeforeUnmount, ref, watch } from "vue";
 
-import { createAccount } from "../../api/accounts";
+import { createAccount, deleteAccount } from "../../api/accounts";
 import { testConnection } from "../../api/connection";
 import { oauthAuthorize, testAccountConnection } from "../../api/oauth";
 import type {
@@ -68,9 +68,65 @@ export function useAccountSetup({ onCreated }: Callbacks) {
   // timed-out sign-in reuses the same account rather than creating another.
   const createdAccountId = ref<number | null>(null);
   const createdAccount = ref<AccountSummary | null>(null);
+  // True only once setup has fully succeeded (account created AND, for OAuth2,
+  // authorized). Guards {@link discardCreatedAccount} so a completed account is
+  // never deleted by field-edit resets or dialog-close cleanup.
+  const succeeded = ref(false);
 
   const isOAuth = () => mechanism.value === "oauth2";
   const isCustom = () => provider.value === "custom";
+
+  /**
+   * Best-effort removal of an OAuth2 account row that was created but never
+   * authorized. Called (a) when the user edits any field after a failed
+   * sign-in, so a retry re-creates the row with the edited config, and (b) when
+   * the dialog closes without success, so no orphan account is left behind.
+   *
+   * A successful setup is never touched (guarded by {@link succeeded}), and a
+   * double call is harmless: the id is cleared before the delete is awaited, so
+   * a concurrent call returns immediately and the backend delete is idempotent.
+   */
+  async function discardCreatedAccount(): Promise<void> {
+    const id = createdAccountId.value;
+    if (id === null || succeeded.value) return;
+    createdAccountId.value = null;
+    createdAccount.value = null;
+    try {
+      await deleteAccount(id);
+    } catch {
+      // The row may already be gone; a failed cleanup must not surface an error.
+    }
+  }
+
+  // Editing any field after an unauthorized OAuth2 row exists invalidates it:
+  // drop the stale row now so the next submit re-creates it with the edited
+  // client id / auth method / server values instead of silently reusing it.
+  watch(
+    [
+      displayName,
+      email,
+      mechanism,
+      provider,
+      clientId,
+      customAuthUrl,
+      customTokenUrl,
+      customScopes,
+      incoming,
+      outgoing,
+    ],
+    () => {
+      if (createdAccountId.value !== null && !succeeded.value) {
+        void discardCreatedAccount();
+      }
+    },
+    { deep: true },
+  );
+
+  // Closing the dialog with a created-but-never-authorized OAuth2 account must
+  // not leave an orphan row; a successful setup is guarded and never deleted.
+  onBeforeUnmount(() => {
+    void discardCreatedAccount();
+  });
 
   function validate(): string | null {
     if (displayName.value.trim() === "") return "Enter a display name.";
@@ -210,6 +266,7 @@ export function useAccountSetup({ onCreated }: Callbacks) {
       createdAccount.value = account;
     }
     if (!isOAuth()) {
+      succeeded.value = true;
       onCreated(createdAccount.value as AccountSummary);
       return;
     }
@@ -219,6 +276,7 @@ export function useAccountSetup({ onCreated }: Callbacks) {
       return;
     }
     if (result.status === "authorized") {
+      succeeded.value = true;
       onCreated(createdAccount.value as AccountSummary);
     } else if (result.status === "denied") {
       errorMessage.value = "Sign-in was declined in the browser. You can try again.";

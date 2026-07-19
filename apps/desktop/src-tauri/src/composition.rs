@@ -21,6 +21,7 @@ use axomail_core::{
 };
 use axomail_imap::{ImapConfig, ImapProvider};
 use axomail_pop3::{Pop3Config, Pop3Provider};
+use axomail_security::credential_ref_for_oauth;
 use axomail_storage::Store;
 use axomail_sync::ProviderFactory;
 
@@ -168,15 +169,19 @@ impl ProviderFactory<AnyIncomingProvider> for AppProviderFactory {
 
 /// Resolves the connection credential for one direction of an account.
 ///
-/// Password accounts read their stored password from the keychain. OAuth2
-/// accounts load their token set and refresh it when due (rotating the stored
-/// refresh token), yielding a fresh access token for XOAUTH2. The secret is
+/// Password accounts read their per-direction password from `reference` in the
+/// keychain. OAuth2 accounts ignore the per-direction `reference` and resolve
+/// the account's **single** shared token set (see
+/// [`credential_ref_for_oauth`]), refreshing it when due (rotating the stored
+/// refresh token) and yielding a fresh access token for XOAUTH2. The secret is
 /// never logged or placed in an error.
 ///
 /// # Errors
 ///
-/// Returns [`MailError::Configuration`] if no secret/token is stored, plus any
-/// keychain, network, or authentication error from an OAuth refresh.
+/// Returns [`MailError::Configuration`] if no secret/token is stored (an
+/// OAuth2 account that has not signed in resolves to a user-actionable
+/// "sign in again"), plus any keychain, network, or authentication error from
+/// an OAuth refresh.
 pub(crate) async fn resolve_credential(
     secrets: &SharedSecretStore,
     account: &Account,
@@ -186,9 +191,15 @@ pub(crate) async fn resolve_credential(
         AccountAuth::Password => Ok(ConnectionCredential::password(
             resolve_secret(secrets, reference).await?,
         )),
-        AccountAuth::OAuth2(config) => Ok(ConnectionCredential::xoauth2(
-            crate::oauth::resolve_access_token(secrets, reference, config).await?,
-        )),
+        AccountAuth::OAuth2(config) => {
+            // Both directions share one token set, keyed by the account, so a
+            // rotating refresh token can never invalidate the "other"
+            // direction's copy.
+            let oauth_ref = credential_ref_for_oauth(account.id);
+            Ok(ConnectionCredential::xoauth2(
+                crate::oauth::resolve_access_token(secrets, &oauth_ref, config).await?,
+            ))
+        }
     }
 }
 

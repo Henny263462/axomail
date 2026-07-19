@@ -91,6 +91,9 @@ pub struct Spec {
     pub advertise_top: bool,
     pub uidl_ok: bool,
     pub top_ok: bool,
+    /// Advertise `SASL XOAUTH2` — but only in a `CAPA` issued **over TLS**, so a
+    /// client that trusts the plaintext capability list would never see it.
+    pub advertise_sasl: bool,
     pub disruption: Disruption,
 }
 
@@ -108,6 +111,7 @@ impl Spec {
             advertise_top: true,
             uidl_ok: true,
             top_ok: true,
+            advertise_sasl: false,
             disruption: Disruption::None,
         }
     }
@@ -240,7 +244,8 @@ where
         record(commands, &line);
         let upper = line.to_ascii_uppercase();
         if upper.starts_with("CAPA") {
-            send_capa(stream, spec).await?;
+            // Plaintext phase: never advertise SASL here.
+            send_capa(stream, spec, false).await?;
         } else if upper.starts_with("STLS") {
             if spec.advertise_stls {
                 write_line(stream, "+OK begin TLS negotiation").await?;
@@ -285,7 +290,14 @@ where
 
         let upper = line.to_ascii_uppercase();
         if upper.starts_with("CAPA") {
-            send_capa(stream, spec).await?;
+            // This loop only runs over TLS (implicit, or post-STLS upgrade), so
+            // SASL may be advertised here.
+            send_capa(stream, spec, true).await?;
+        } else if upper.starts_with("AUTH XOAUTH2") {
+            // Accept the SASL initial-response form outright; the adapter only
+            // checks for a leading `+OK`.
+            write_line(stream, "+OK maildrop ready").await?;
+            logged_in = true;
         } else if upper.starts_with("USER") {
             write_line(stream, "+OK user accepted").await?;
         } else if upper.starts_with("PASS") {
@@ -318,8 +330,10 @@ where
     }
 }
 
-/// Sends a `CAPA` reply reflecting the advertised capabilities.
-async fn send_capa<S>(stream: &mut S, spec: &Spec) -> std::io::Result<()>
+/// Sends a `CAPA` reply reflecting the advertised capabilities. `tls_active`
+/// gates TLS-only advertisements: `SASL` is only ever listed once the channel
+/// is encrypted, mirroring servers that hide their SASL mechanisms in plaintext.
+async fn send_capa<S>(stream: &mut S, spec: &Spec, tls_active: bool) -> std::io::Result<()>
 where
     S: AsyncRead + AsyncWrite + Unpin,
 {
@@ -332,6 +346,9 @@ where
     }
     if spec.advertise_stls {
         lines.push("STLS".to_owned());
+    }
+    if spec.advertise_sasl && tls_active {
+        lines.push("SASL XOAUTH2".to_owned());
     }
     send_multiline(stream, "+OK capability list follows", &lines).await
 }

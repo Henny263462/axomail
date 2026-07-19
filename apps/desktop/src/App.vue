@@ -27,7 +27,7 @@ import SidebarPane from "./components/sidebar/SidebarPane.vue";
 import type { SidebarView } from "./components/sidebar/view";
 import { useDialogs } from "./composables/useDialogs";
 import { useSyncStatus } from "./composables/useSyncStatus";
-import { setTheme } from "./composables/useTheme";
+import { reconcileTheme } from "./composables/useTheme";
 import type {
   AccountSummary,
   DraftDto,
@@ -126,7 +126,9 @@ onMounted(loadAccounts);
  */
 async function syncTheme(): Promise<void> {
   const settings = await getSettings();
-  if (settings !== null) setTheme(settings.theme);
+  // Reconcile (not set): if the user already picked a theme in Settings while
+  // this slow read was in flight, their choice must stand — not be stomped.
+  if (settings !== null) reconcileTheme(settings.theme);
 }
 
 onMounted(syncTheme);
@@ -136,6 +138,25 @@ async function refreshAccounts(): Promise<void> {
   if (usingFixtures.value) return;
   const real = await listAccounts();
   if (real !== null) accounts.value = real;
+}
+
+/**
+ * Handles an account edit/delete made in Settings. Re-fetches the account
+ * summaries (so the sidebar reflects a renamed account) and then reconciles
+ * the current selection: if the selected mailbox's account was removed, fall
+ * back cleanly to the unified inbox rather than leaving a dangling selection.
+ */
+async function onAccountsChanged(): Promise<void> {
+  await refreshAccounts();
+  const mailboxId = selectedMailboxId.value;
+  if (activeView.value !== "mailbox" || mailboxId === null) return;
+  const stillExists = accounts.value.some((account) =>
+    account.mailboxes.some((mailbox) => mailbox.id === mailboxId),
+  );
+  if (!stillExists) {
+    messages.value = [];
+    await selectUnified();
+  }
 }
 
 async function loadMessages(mailboxId: number): Promise<void> {
@@ -373,5 +394,6 @@ function onSyncEvent(event: SyncEventDto): void {
     @account-created="onAccountCreated"
     @composer-sent="onComposerSent"
     @composer-saved="onComposerSaved"
+    @accounts-changed="onAccountsChanged"
   />
 </template>

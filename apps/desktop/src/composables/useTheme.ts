@@ -41,6 +41,15 @@ let mediaQuery: MediaQueryList | null = null;
 let mediaListener: ((event: MediaQueryListEvent) => void) | null = null;
 
 /**
+ * Whether the user has explicitly chosen a theme this session. Once true, the
+ * startup backend reconcile ({@link reconcileTheme}) must not override the
+ * user's live choice — otherwise a slow `getSettings` resolving the *old*
+ * value would stomp a theme the user just picked in Settings. Reset by
+ * {@link initTheme} at the start of each session.
+ */
+let userPinned = false;
+
+/**
  * The palette in effect: the preference itself when pinned, or the OS
  * preference when following the system.
  */
@@ -109,21 +118,40 @@ function bindMediaQuery(): void {
  * as early as possible (before the Vue app mounts), to avoid a theme flash.
  */
 export function initTheme(): void {
+  // A fresh session starts un-pinned: no user choice has been made yet, so the
+  // upcoming backend reconcile is free to apply the authoritative value.
+  userPinned = false;
   preference.value = readStored();
   bindMediaQuery();
   applyToDom();
 }
 
-/**
- * Sets and applies the preference, updating the no-flash cache. This is the
- * single commit path used by both the startup backend reconciliation and the
- * settings dialog.
- */
-export function setTheme(next: ThemePreference): void {
+/** Commits and paints a preference, updating the no-flash cache. */
+function applyPreference(next: ThemePreference): void {
   preference.value = next;
   writeStored(next);
   bindMediaQuery();
   applyToDom();
+}
+
+/**
+ * Sets and applies the preference in response to a user action (the settings
+ * dialog). This marks the theme as user-pinned for the session so a late
+ * startup reconcile cannot override it.
+ */
+export function setTheme(next: ThemePreference): void {
+  userPinned = true;
+  applyPreference(next);
+}
+
+/**
+ * Applies the authoritative backend theme during startup reconciliation —
+ * unless the user has already picked a theme this session, in which case the
+ * user's live choice wins and this is a no-op (the race guard).
+ */
+export function reconcileTheme(next: ThemePreference): void {
+  if (userPinned) return;
+  applyPreference(next);
 }
 
 /** Reactive theme state plus the commit helpers. */
@@ -131,7 +159,8 @@ export function useTheme(): {
   theme: ComputedRef<ThemePreference>;
   resolvedTheme: ComputedRef<ResolvedTheme>;
   setTheme: (next: ThemePreference) => void;
+  reconcileTheme: (next: ThemePreference) => void;
   initTheme: () => void;
 } {
-  return { theme, resolvedTheme, setTheme, initTheme };
+  return { theme, resolvedTheme, setTheme, reconcileTheme, initTheme };
 }

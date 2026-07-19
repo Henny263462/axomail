@@ -1,6 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { initTheme, setTheme, useTheme } from "../src/composables/useTheme";
+import {
+  initTheme,
+  reconcileTheme,
+  setTheme,
+  useTheme,
+} from "../src/composables/useTheme";
 
 const STORAGE_KEY = "axomail.theme";
 
@@ -145,6 +150,36 @@ describe("useTheme", () => {
     globalThis.matchMedia =
       undefined as unknown as typeof globalThis.matchMedia;
     expect(() => setTheme("system")).not.toThrow();
+    expect(domTheme()).toBe("light");
+  });
+});
+
+describe("startup theme reconcile race", () => {
+  it("applies the backend theme when the user has not chosen this session", () => {
+    initTheme(); // fresh, un-pinned session
+    reconcileTheme("dark");
+
+    expect(domTheme()).toBe("dark");
+    expect(useTheme().theme.value).toBe("dark");
+  });
+
+  it("keeps a user-picked theme when a slow backend reconcile resolves late", () => {
+    // The user opens Settings early and picks Dark before the slow getSettings
+    // read (which still holds the old Light value) resolves.
+    initTheme();
+    setTheme("dark"); // user action in Settings
+    reconcileTheme("light"); // stale backend value lands afterwards
+
+    // The user's live choice must stand; the reconcile is a no-op.
+    expect(domTheme()).toBe("dark");
+    expect(useTheme().theme.value).toBe("dark");
+  });
+
+  it("re-arms the guard on a new session so a later reconcile applies again", () => {
+    setTheme("dark"); // pin from a prior session
+    initTheme(); // a new session starts un-pinned
+    reconcileTheme("light");
+
     expect(domTheme()).toBe("light");
   });
 });

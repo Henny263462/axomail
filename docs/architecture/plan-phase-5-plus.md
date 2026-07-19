@@ -198,7 +198,7 @@ contract (multi-id selection over stable row identity, thread-aware).
 
 | Wave | Status |
 |---|---|
-| 1 | in progress (Stage 0) |
+| 1 | done 2026-07-19 (7 tracks + integration + adversarial review: 15 confirmed findings fixed, incl. Gmail offline_access, single-ref OAuth tokens, cancel-send TOCTOU, raw-eml cleanup on account delete, STLS re-CAPA, scam-heuristic hardening, accounts-changed propagation, focus traps) |
 | 2 | pending |
 | 3 | pending |
 | 4 | pending |

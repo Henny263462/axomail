@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { cancelAllSyncJobs, cancelSyncJob, listSyncJobs } from "../src/api/jobs";
 import { subscribeSyncEvents } from "../src/api/sync";
 import ActivityDialog from "../src/components/activity/ActivityDialog.vue";
-import type { SyncJobDto } from "../src/types/mail";
+import type { SyncEventDto, SyncJobDto } from "../src/types/mail";
 
 vi.mock("../src/api/jobs", () => ({
   listSyncJobs: vi.fn(),
@@ -129,5 +129,60 @@ describe("ActivityDialog", () => {
 
     await wrapper.get("button.button").trigger("click");
     expect(wrapper.emitted("close")).toHaveLength(1);
+  });
+});
+
+describe("ActivityDialog focus and load ordering", () => {
+  it("moves focus into the dialog on open", async () => {
+    listSyncJobsMock.mockResolvedValue([job({ id: 1, state: "running" })]);
+
+    const wrapper = mount(ActivityDialog, { attachTo: document.body });
+    await flushPromises();
+
+    // Focus is inside the dialog, not left on the status-bar button that opened it.
+    const dialog = wrapper.get('[role="dialog"]').element;
+    expect(dialog.contains(document.activeElement)).toBe(true);
+    wrapper.unmount();
+  });
+
+  it("discards a stale load that resolves after a newer one", async () => {
+    let fire: () => void = () => {};
+    subscribeSyncEventsMock.mockImplementation(async (cb) => {
+      fire = () => cb({} as SyncEventDto);
+      return () => {};
+    });
+
+    // One resolver per listSyncJobs call, so resolution order is fully controlled.
+    const resolvers: Array<(jobs: SyncJobDto[]) => void> = [];
+    listSyncJobsMock.mockImplementation(
+      () =>
+        new Promise<SyncJobDto[]>((resolve) => {
+          resolvers.push(resolve);
+        }),
+    );
+
+    const wrapper = mount(ActivityDialog);
+    // Resolve the initial mount load so onMounted proceeds to subscribe.
+    await flushPromises();
+    resolvers[0]?.([]);
+    await flushPromises();
+
+    // Two rapid sync events launch overlapping loads (#2 then #3).
+    fire();
+    fire();
+
+    // The newer load (#3) resolves first with the fresh list…
+    resolvers[2]?.([job({ id: 99, mailboxLabel: "Fresh" })]);
+    await flushPromises();
+    // …then the older load (#2) resolves late and must be ignored.
+    resolvers[1]?.([
+      job({ id: 1, mailboxLabel: "Stale" }),
+      job({ id: 2, mailboxLabel: "AlsoStale" }),
+    ]);
+    await flushPromises();
+
+    expect(wrapper.text()).toContain("Fresh");
+    expect(wrapper.text()).not.toContain("Stale");
+    wrapper.unmount();
   });
 });

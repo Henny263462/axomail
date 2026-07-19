@@ -1,7 +1,7 @@
 import { flushPromises, mount, type VueWrapper } from "@vue/test-utils";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { createAccount } from "../src/api/accounts";
+import { createAccount, deleteAccount } from "../src/api/accounts";
 import { oauthAuthorize } from "../src/api/oauth";
 import AccountSetupDialog from "../src/components/setup/AccountSetupDialog.vue";
 import SidebarPane from "../src/components/sidebar/SidebarPane.vue";
@@ -19,7 +19,23 @@ vi.mock("../src/api/oauth", () => ({
 }));
 
 const createAccountMock = vi.mocked(createAccount);
+const deleteAccountMock = vi.mocked(deleteAccount);
 const oauthAuthorizeMock = vi.mocked(oauthAuthorize);
+
+/** Fills the required fields for an OAuth2 account with the given client id. */
+async function fillOAuthFields(
+  wrapper: VueWrapper,
+  clientId: string,
+): Promise<void> {
+  await wrapper.get("#account-display-name").setValue("Klaus Ferber");
+  await wrapper.get("#account-email").setValue("klaus@gmail.com");
+  await wrapper.get("#auth-mechanism").setValue("oauth2");
+  await wrapper.get("#oauth-client-id").setValue(clientId);
+  await wrapper.get("#incoming-host").setValue("imap.gmail.com");
+  await wrapper.get("#incoming-username").setValue("klaus@gmail.com");
+  await wrapper.get("#outgoing-host").setValue("smtp.gmail.com");
+  await wrapper.get("#outgoing-username").setValue("klaus@gmail.com");
+}
 
 const createdAccount: AccountSummary = {
   id: 7,
@@ -45,6 +61,7 @@ async function fillRequiredFields(
 beforeEach(() => {
   vi.clearAllMocks();
   createAccountMock.mockResolvedValue(createdAccount);
+  deleteAccountMock.mockResolvedValue(null);
 });
 
 describe("SidebarPane add-account button", () => {
@@ -213,5 +230,61 @@ describe("AccountSetupDialog", () => {
 
     await wrapper.get(".overlay").trigger("keydown", { key: "Escape" });
     expect(wrapper.emitted("close")).toHaveLength(2);
+  });
+});
+
+describe("AccountSetupDialog OAuth2 retry cleanup", () => {
+  it("re-creates with the edited config on retry, deleting the stale row", async () => {
+    oauthAuthorizeMock.mockResolvedValue({ status: "denied" });
+    const wrapper = mount(AccountSetupDialog);
+    await fillOAuthFields(wrapper, "cid-original");
+    await wrapper.get("form").trigger("submit");
+    await flushPromises();
+
+    // Account created, sign-in declined; the row is kept for a retry.
+    expect(createAccountMock).toHaveBeenCalledTimes(1);
+    expect(deleteAccountMock).not.toHaveBeenCalled();
+
+    // Editing any field invalidates the stale unauthorized row.
+    await wrapper.get("#oauth-client-id").setValue("cid-edited");
+    await flushPromises();
+    expect(deleteAccountMock).toHaveBeenCalledWith(7);
+
+    // The retry creates a fresh account carrying the edited client id.
+    await wrapper.get("form").trigger("submit");
+    await flushPromises();
+    expect(createAccountMock).toHaveBeenCalledTimes(2);
+    expect(createAccountMock.mock.calls[1]?.[0].auth).toEqual({
+      mechanism: "oauth2",
+      oauth: { provider: "gmail", clientId: "cid-edited" },
+    });
+    wrapper.unmount();
+  });
+
+  it("deletes the orphan account when the dialog closes without success", async () => {
+    oauthAuthorizeMock.mockResolvedValue({ status: "denied" });
+    const wrapper = mount(AccountSetupDialog);
+    await fillOAuthFields(wrapper, "cid");
+    await wrapper.get("form").trigger("submit");
+    await flushPromises();
+    expect(deleteAccountMock).not.toHaveBeenCalled();
+
+    wrapper.unmount();
+    await flushPromises();
+    expect(deleteAccountMock).toHaveBeenCalledWith(7);
+  });
+
+  it("never deletes a successfully authorized account on close", async () => {
+    oauthAuthorizeMock.mockResolvedValue({ status: "authorized" });
+    const wrapper = mount(AccountSetupDialog);
+    await fillOAuthFields(wrapper, "cid");
+    await wrapper.get("form").trigger("submit");
+    await flushPromises();
+    expect(wrapper.emitted("created")).toBeTruthy();
+
+    // Closing after success must not touch the created account.
+    wrapper.unmount();
+    await flushPromises();
+    expect(deleteAccountMock).not.toHaveBeenCalled();
   });
 });

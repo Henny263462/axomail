@@ -119,8 +119,9 @@ async fn implicit_tls(
     Ok(Connected { wire, caps })
 }
 
-/// `STLS` path: greeting and `CAPA` in plaintext, upgrade, then auth over
-/// TLS. Credentials are never sent on the plaintext channel.
+/// `STLS` path: greeting and `CAPA` in plaintext (used **only** to confirm
+/// `STLS` support), upgrade, re-issue `CAPA` over TLS, then auth. Credentials
+/// are never sent on the plaintext channel.
 async fn start_tls(
     config: &Pop3Config,
     tls_config: Arc<ClientConfig>,
@@ -129,8 +130,9 @@ async fn start_tls(
 ) -> Result<Connected, MailError> {
     let mut plain = Wire::new(tcp);
     read_greeting(&mut plain, config.timeout).await?;
-    let caps = Capabilities::from_atoms(command::capabilities(&mut plain, config.timeout).await?);
-    if caps.known() && !caps.has("STLS") {
+    let plain_caps =
+        Capabilities::from_atoms(command::capabilities(&mut plain, config.timeout).await?);
+    if plain_caps.known() && !plain_caps.has("STLS") {
         return Err(MailError::UnsupportedCapability {
             capability: "STLS".to_owned(),
         });
@@ -149,6 +151,11 @@ async fn start_tls(
 
     let tls = with_deadline(config.timeout, handshake(tls_config, host, tcp)).await?;
     let mut wire = Wire::new(tls);
+    // The plaintext CAPA is unauthenticated, and many servers only advertise
+    // SASL mechanisms (e.g. XOAUTH2) once TLS is active. Re-query capabilities
+    // over the encrypted channel and use those for authentication and for the
+    // returned session; the plaintext list is discarded here.
+    let caps = Capabilities::from_atoms(command::capabilities(&mut wire, config.timeout).await?);
     authenticate(config, &mut wire, &caps).await?;
     tracing::debug!("POP3 session authenticated (STLS)");
     Ok(Connected { wire, caps })

@@ -23,20 +23,51 @@ export function signatureBlock(text: string | null | undefined): string {
 }
 
 /**
- * Swaps a signature block at the end of `body`: strips `oldBlock` when the body
- * still ends with it (the user has not edited past it), then appends
- * `newBlock`. When the body no longer ends with the old block — because the
- * user edited below it — the new block is appended without removing anything,
- * so no user text is ever lost.
+ * Removes a trailing signature block from `body`: everything from the last
+ * standalone delimiter line ("-- ") to the end, plus the blank separator lines
+ * that precede it. Text above the delimiter is preserved untouched. Returns
+ * `body` unchanged when it carries no delimiter line.
+ *
+ * Used when no in-session block is tracked (e.g. a draft loaded with a
+ * signature already baked into its body) so an identity switch replaces the
+ * existing signature instead of appending a second one.
+ */
+function stripTrailingSignature(body: string): string {
+  const lines = body.split("\n");
+  let delimiter = -1;
+  for (let i = lines.length - 1; i >= 0; i--) {
+    if (lines[i] === SIGNATURE_DELIMITER) {
+      delimiter = i;
+      break;
+    }
+  }
+  if (delimiter === -1) return body;
+  const above = lines.slice(0, delimiter);
+  while (above.length > 0 && above[above.length - 1] === "") above.pop();
+  return above.join("\n");
+}
+
+/**
+ * Swaps the signature block at the end of `body`, then appends `newBlock`.
+ *
+ * When `oldBlock` is a tracked in-session block, it is stripped only if the
+ * body still ends with it — if the user typed below it, the new block is
+ * appended without touching their text (nothing is lost). When no block is
+ * tracked (`oldBlock` is empty), an existing trailing signature block is
+ * detected by its delimiter and replaced, so switching identities on a loaded
+ * draft never duplicates the signature. Body text above the delimiter is
+ * always preserved.
  */
 export function applySignature(
   body: string,
   oldBlock: string,
   newBlock: string,
 ): string {
-  let base = body;
-  if (oldBlock.length > 0 && base.endsWith(oldBlock)) {
-    base = base.slice(0, base.length - oldBlock.length);
+  if (oldBlock.length > 0) {
+    const base = body.endsWith(oldBlock)
+      ? body.slice(0, body.length - oldBlock.length)
+      : body;
+    return base + newBlock;
   }
-  return base + newBlock;
+  return stripTrailingSignature(body) + newBlock;
 }

@@ -20,6 +20,7 @@ const emit = defineEmits<{
   accountCreated: [account: AccountSummary];
   composerSent: [payload: { draftId: number | null }];
   composerSaved: [];
+  accountsChanged: [];
 }>();
 
 // The composer is only mounted while open; the fallback keeps the prop types
@@ -48,6 +49,7 @@ const composer = computed(
     v-if="dialogs.isOpen('settings')"
     :accounts="accounts"
     @close="dialogs.close('settings')"
+    @accounts-changed="emit('accountsChanged')"
   />
   <ActivityDialog
     v-if="dialogs.isOpen('activity')"

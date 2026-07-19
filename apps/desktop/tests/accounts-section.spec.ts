@@ -24,6 +24,7 @@ const context = {
   setTheme: vi.fn(),
   reportError: vi.fn(),
   reportStatus: vi.fn(),
+  notifyAccountsChanged: vi.fn(),
 } satisfies SettingsSectionContext;
 
 vi.mock("../src/api/accounts", () => ({
@@ -170,6 +171,8 @@ describe("AccountsSection edit", () => {
     });
     // Mount load + reload after a successful save.
     expect(listAccountDetailsMock).toHaveBeenCalledTimes(2);
+    // The shell is signalled so the sidebar reflects the rename too.
+    expect(context.notifyAccountsChanged).toHaveBeenCalledTimes(1);
     wrapper.unmount();
   });
 
@@ -255,6 +258,8 @@ describe("AccountsSection delete", () => {
     expect(deleteAccountMock).toHaveBeenCalledWith(1);
     expect(listAccountDetailsMock).toHaveBeenCalledTimes(2);
     expect(wrapper.find('[role="alertdialog"]').exists()).toBe(false);
+    // The removed account must be reconciled out of the app shell too.
+    expect(context.notifyAccountsChanged).toHaveBeenCalledTimes(1);
     wrapper.unmount();
   });
 
@@ -273,6 +278,8 @@ describe("AccountsSection delete", () => {
     );
     // The account was not removed from the list, so no reload happened.
     expect(listAccountDetailsMock).toHaveBeenCalledTimes(1);
+    // A failed delete must not signal the shell to reconcile.
+    expect(context.notifyAccountsChanged).not.toHaveBeenCalled();
     wrapper.unmount();
   });
 });

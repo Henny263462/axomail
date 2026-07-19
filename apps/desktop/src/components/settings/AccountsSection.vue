@@ -18,11 +18,12 @@ import AccountEditForm from "./AccountEditForm.vue";
 import type { SettingsSectionContext } from "./context";
 import DeleteAccountDialog from "./DeleteAccountDialog.vue";
 
-// A registry section: the shared context is part of the contract, but this
-// section is self-contained (it loads and mutates its own account data
-// through the accounts api and reloads after each change), so it does not
-// read from or write back to the batch-saved settings context.
-defineProps<{ context: SettingsSectionContext }>();
+// A registry section: it loads and mutates its own account data through the
+// accounts api and reloads its own list after each change. It does not read
+// from or write back to the batch-saved settings fields, but it does call
+// `context.notifyAccountsChanged` after a successful edit or delete so the app
+// shell (sidebar, selection) is refreshed too — its list is not the only view.
+const props = defineProps<{ context: SettingsSectionContext }>();
 
 type LoadState = "loading" | "ready" | "unavailable";
 
@@ -65,6 +66,8 @@ function onEditCancel(): void {
 async function onSaved(): Promise<void> {
   editing.value = null;
   await load();
+  // An edit (e.g. a renamed display name) changes the sidebar too.
+  props.context.notifyAccountsChanged();
 }
 
 function onDelete(account: AccountDetail): void {
@@ -83,6 +86,9 @@ async function onDeleteConfirm(): Promise<void> {
     await deleteAccount(deleting.value.id);
     deleting.value = null;
     await load();
+    // The account is gone from the sidebar too; the shell must reconcile any
+    // selection that pointed at one of its mailboxes.
+    props.context.notifyAccountsChanged();
   } catch (error) {
     deleteError.value = messageFrom(error);
   } finally {

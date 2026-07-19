@@ -20,6 +20,7 @@ mod id;
 mod mailbox;
 mod message;
 mod oauth;
+mod oauth_values;
 mod provider;
 mod provider_types;
 
@@ -34,8 +35,8 @@ pub use id::{AccountId, AttachmentId, CredentialRef, MailboxId, MessageId, Remot
 pub use mailbox::{Mailbox, MailboxName, MailboxRole};
 pub use message::{MessageEnvelope, MessageFlags, ThreadingHeaders, UtcTimestamp};
 pub use oauth::{
-    AccountAuth, AuthMechanism, HttpsUrl, OAuthClientId, OAuthConfig, OAuthPreset, OAuthProvider,
-    OAuthScopes,
+    AccountAuth, AuthMechanism, AuthParam, HttpsUrl, OAuthClientId, OAuthConfig, OAuthPreset,
+    OAuthProvider, OAuthScopes, extra_auth_params_for,
 };
 pub use provider::{IncomingMailProvider, OutgoingMailProvider};
 pub use provider_types::{

@@ -179,6 +179,32 @@ impl<'a> MessageRepo<'a> {
         Ok(Some(row.into_envelope(from, to)?))
     }
 
+    /// Returns the ids of every message belonging to `account`, across all its
+    /// mailboxes.
+    ///
+    /// Used to reclaim out-of-database resources keyed by message id (the
+    /// cached raw `.eml` bodies) before an account row is deleted and its
+    /// message rows cascade away.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`MailError::Database`] on any query failure.
+    pub async fn list_ids_for_account(
+        &self,
+        account: AccountId,
+    ) -> Result<Vec<MessageId>, MailError> {
+        let ids = sqlx::query_scalar::<_, i64>(
+            "SELECT m.id FROM messages m \
+             JOIN mailboxes mb ON mb.id = m.mailbox_id \
+             WHERE mb.account_id = ?",
+        )
+        .bind(account.value())
+        .fetch_all(self.pool)
+        .await
+        .map_err(|error| map_sqlx("list_message_ids_for_account", error))?;
+        Ok(ids.into_iter().map(MessageId::new).collect())
+    }
+
     /// Returns one page of a mailbox's messages ordered by
     /// `(date DESC, id DESC)`, plus a cursor for the next page.
     ///

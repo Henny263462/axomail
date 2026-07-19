@@ -290,18 +290,24 @@ impl<'a> OutboxRepo<'a> {
         rows.into_iter().map(OutboxRow::into_record).collect()
     }
 
-    /// Removes an outbox row. Used when a scheduled message is cancelled back
-    /// to a draft. Returns `true` if a row was removed.
+    /// Removes an outbox row **only if it is still `queued`**, returning `true`
+    /// when a row was removed. Used when a scheduled message is cancelled back
+    /// to a draft.
+    ///
+    /// The `state = 'queued'` guard makes cancellation atomic against a
+    /// concurrent send: if a submission has already flipped the row to
+    /// `sending` (or it has since `sent`), no row matches and `false` is
+    /// returned, so the caller must not resurrect the message as a draft.
     ///
     /// # Errors
     ///
     /// Returns [`MailError::Database`] on any query failure.
-    pub async fn delete(&self, id: OutboxId) -> Result<bool, MailError> {
-        let result = sqlx::query("DELETE FROM outbox WHERE id = ?")
+    pub async fn delete_if_queued(&self, id: OutboxId) -> Result<bool, MailError> {
+        let result = sqlx::query("DELETE FROM outbox WHERE id = ? AND state = 'queued'")
             .bind(id.value())
             .execute(self.pool)
             .await
-            .map_err(|error| map_sqlx("delete_outbox", error))?;
+            .map_err(|error| map_sqlx("delete_queued_outbox", error))?;
         Ok(result.rows_affected() > 0)
     }
 

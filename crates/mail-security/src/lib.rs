@@ -40,7 +40,7 @@ mod remote_policy;
 mod scam;
 mod secret_store;
 
-pub use credential::{Direction, credential_ref_for_account};
+pub use credential::{Direction, credential_ref_for_account, credential_ref_for_oauth};
 pub use filename::sanitize_attachment_filename;
 pub use html::{
     SanitizedHtml, sanitize_message_html, sanitize_message_html_bytes,

@@ -13,6 +13,7 @@
 use std::time::Duration;
 
 use axomail_core::{AccountAuth, AccountId, MailError};
+use axomail_security::credential_ref_for_oauth;
 use axomail_storage::Store;
 use tauri_plugin_opener::OpenerExt;
 
@@ -37,7 +38,7 @@ pub enum OAuthOutcome {
 
 /// Drives the full sign-in: build the consent URL, open the browser via
 /// `open_browser`, receive the loopback redirect, exchange the code, and store
-/// the tokens under both credential references.
+/// the token set under the account's single shared OAuth credential reference.
 ///
 /// `open_browser` is injected so the flow is testable without a real browser
 /// (a test drives the loopback directly).
@@ -88,10 +89,11 @@ where
                 &pkce.verifier,
             )
             .await?;
-            // The same token set serves both the incoming and outgoing
-            // connections, so it is stored under both references.
-            oauth::store_tokens(secrets, &account.incoming.credential, &tokens).await?;
-            oauth::store_tokens(secrets, &account.outgoing.credential, &tokens).await?;
+            // One token set per account serves both the incoming and outgoing
+            // connections, stored under the single account-scoped OAuth
+            // reference. A later refresh (with token rotation) rewrites this one
+            // entry, so no direction can be left holding an invalidated token.
+            oauth::store_tokens(secrets, &credential_ref_for_oauth(account.id), &tokens).await?;
             Ok(OAuthOutcome::Authorized)
         }
         Ok(LoopbackResult::Denied) => Ok(OAuthOutcome::Denied),

@@ -2,6 +2,7 @@ import { flushPromises, mount } from "@vue/test-utils";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { getSettings, setPop3DeletePolicy } from "../src/api/settings";
+import AccountsSection from "../src/components/settings/AccountsSection.vue";
 import type { SettingsSectionContext } from "../src/components/settings/context";
 import NotificationsSection from "../src/components/settings/NotificationsSection.vue";
 import Pop3DeleteSection from "../src/components/settings/Pop3DeleteSection.vue";
@@ -48,6 +49,7 @@ function stubContext(
     setTheme: vi.fn(),
     reportError: vi.fn(),
     reportStatus: vi.fn(),
+    notifyAccountsChanged: vi.fn(),
     ...overrides,
   };
 }
@@ -190,5 +192,22 @@ describe("SettingsDialog registry integration", () => {
     const dialog = wrapper.get('[role="dialog"]');
     expect(dialog.attributes("aria-modal")).toBe("true");
     expect(dialog.attributes("aria-labelledby")).toBe("settings-title");
+  });
+
+  it("forwards a section's notifyAccountsChanged as an accountsChanged event", async () => {
+    getSettingsMock.mockResolvedValue({
+      ...settings,
+      pop3DeletePolicies: settings.pop3DeletePolicies.map((p) => ({ ...p })),
+    });
+    const wrapper = mount(SettingsDialog, { props: { accounts } });
+    await flushPromises();
+
+    const section = wrapper.findComponent(AccountsSection);
+    expect(section.exists()).toBe(true);
+    // The callback the section receives via context must reach the parent so
+    // the app shell (sidebar, selection) can reconcile the change.
+    (section.props("context") as SettingsSectionContext).notifyAccountsChanged();
+
+    expect(wrapper.emitted("accountsChanged")).toHaveLength(1);
   });
 });

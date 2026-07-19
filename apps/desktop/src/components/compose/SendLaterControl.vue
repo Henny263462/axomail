@@ -103,6 +103,7 @@ function scheduleCustom(): void {
           id="send-later-custom"
           v-model="customValue"
           type="datetime-local"
+          @keydown.enter.prevent="scheduleCustom"
         >
         <button
           type="button"

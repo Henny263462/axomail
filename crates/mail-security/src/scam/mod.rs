@@ -21,7 +21,8 @@
 mod host;
 
 use host::{
-    decode_entities, is_http_url, is_ip_literal, parse_text_host, registrable_domain, url_host,
+    decode_entities, is_http_url, is_ip_literal, is_known_redirector, registrable_domain,
+    scan_text_hosts, url_host,
 };
 
 /// The kind of a detected scam indicator. Stable identifiers so the frontend
@@ -121,19 +122,32 @@ fn evaluate_anchor(href_raw: &str, content: &str, out: &mut Vec<ScamIndicator>) 
         );
     }
 
+    let href_domain = registrable_domain(&href_host);
+    // ESP click-trackers and redirectors deliberately point their link text at
+    // the destination brand while the href is the tracker's own domain, so a
+    // mismatch there is noise rather than phishing. Suppress the deceptive-link
+    // heuristic (only) for them.
+    if is_known_redirector(&href_domain) {
+        return;
+    }
+
+    // Scan the visible text for any embedded host token (not just a
+    // whole-string host); a mismatch of any one against the href's registrable
+    // domain is enough to flag, and one flag per anchor suffices.
     let visible = strip_tags_and_decode(content);
-    if let Some(text_host) = parse_text_host(&visible)
-        && registrable_domain(&text_host) != registrable_domain(&href_host)
-    {
-        push_unique(
-            out,
-            ScamIndicator {
-                kind: ScamIndicatorKind::DeceptiveLink,
-                detail: format!(
-                    "Link text shows \"{text_host}\" but the link goes to \"{href_host}\"."
-                ),
-            },
-        );
+    for text_host in scan_text_hosts(&visible) {
+        if registrable_domain(&text_host) != href_domain {
+            push_unique(
+                out,
+                ScamIndicator {
+                    kind: ScamIndicatorKind::DeceptiveLink,
+                    detail: format!(
+                        "Link text shows \"{text_host}\" but the link goes to \"{href_host}\"."
+                    ),
+                },
+            );
+            break;
+        }
     }
 }
 

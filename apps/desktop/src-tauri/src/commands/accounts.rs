@@ -1,18 +1,21 @@
 //! Account listing, creation, and deletion commands.
 
 use std::num::NonZeroU16;
-use std::sync::Arc;
+use std::path::Path;
 
 use axomail_core::{
-    Account, AccountAuth, AccountId, CredentialRef, EmailAddress, IncomingServerConfig, MailError,
-    Mailbox, MailboxName, MailboxRole, OutgoingServerConfig, ServerEndpoint,
+    Account, AccountAuth, AccountId, EmailAddress, IncomingServerConfig, MailError, Mailbox,
+    MailboxName, MailboxRole, OutgoingServerConfig, ServerEndpoint,
 };
-use axomail_security::{Direction, credential_ref_for_account};
+use axomail_security::{Direction, credential_ref_for_account, credential_ref_for_oauth};
 use axomail_storage::{
     AccountUpdate, ArchiveGranularity, ForwardMode, IdentityFields, NewAccount, NewIdentity,
     NewMailbox, ReplyPosition, SignaturePlacement, Store,
 };
 
+use crate::commands::account_secrets::{
+    delete_secret_best_effort, remove_raw_best_effort, set_secret,
+};
 use crate::commands::map_command_error;
 use crate::commands::messages::count_unread;
 use crate::dto::{
@@ -195,11 +198,17 @@ pub async fn update_account_impl(
     AccountDetailDto::from_domain(&account)
 }
 
-/// Deletes an account and its keychain secrets.
+/// Deletes an account, its cached raw message bodies, and its keychain secrets.
 ///
-/// The row deletion cascades to mailboxes and messages. Secret deletion is
-/// best-effort and idempotent: it runs even when no row existed and never
-/// fails the command, so a missing secret cannot block account removal.
+/// The account's cached raw `.eml` files live outside the database keyed by
+/// message id, so they are enumerated and removed **before** the row deletion
+/// cascades the message rows away (otherwise their ids — and thus their paths —
+/// would be unrecoverable). Raw-file removal, like secret deletion, is
+/// best-effort: filesystem or keychain errors are logged, never surfaced, so a
+/// locked or already-missing file cannot block account removal.
+///
+/// Secret deletion covers both the per-direction password references and the
+/// account-scoped OAuth token reference, and is idempotent.
 ///
 /// # Errors
 ///
@@ -207,14 +216,29 @@ pub async fn update_account_impl(
 pub async fn delete_account_impl(
     store: &Store,
     secrets: &SharedSecretStore,
+    raw_root: &Path,
     account_id: i64,
 ) -> Result<(), MailError> {
     let id = AccountId::new(account_id);
+
+    // Capture the message ids while their rows still exist. A query failure
+    // here must not block deletion, so it degrades to "no raw files to clean".
+    let message_ids = match store.messages().list_ids_for_account(id).await {
+        Ok(ids) => ids,
+        Err(error) => {
+            tracing::warn!(account_id, %error, "could not enumerate messages for raw-cache cleanup");
+            Vec::new()
+        }
+    };
+    for message_id in &message_ids {
+        remove_raw_best_effort(raw_root, message_id.value()).await;
+    }
+
     store.accounts().delete(id).await?;
     for direction in [Direction::Incoming, Direction::Outgoing] {
-        let reference = credential_ref_for_account(id, direction);
-        delete_secret_best_effort(secrets, &reference).await;
+        delete_secret_best_effort(secrets, &credential_ref_for_account(id, direction)).await;
     }
+    delete_secret_best_effort(secrets, &credential_ref_for_oauth(id)).await;
     Ok(())
 }
 
@@ -306,34 +330,6 @@ async fn create_default_mailboxes(
     Ok(mailboxes)
 }
 
-/// Stores a secret on a blocking task (keychain I/O blocks).
-async fn set_secret(
-    secrets: &SharedSecretStore,
-    reference: CredentialRef,
-    secret: String,
-) -> Result<(), MailError> {
-    let secrets = Arc::clone(secrets);
-    match tokio::task::spawn_blocking(move || secrets.set_secret(&reference, &secret)).await {
-        Ok(result) => result,
-        Err(_) => Err(MailError::Keychain {
-            message: "keychain write did not complete".to_owned(),
-        }),
-    }
-}
-
-/// Deletes a secret on a blocking task, logging but swallowing any failure.
-async fn delete_secret_best_effort(secrets: &SharedSecretStore, reference: &CredentialRef) {
-    let secrets = Arc::clone(secrets);
-    let reference = reference.clone();
-    match tokio::task::spawn_blocking(move || secrets.delete_secret(&reference)).await {
-        Ok(Ok(())) => {}
-        Ok(Err(error)) => {
-            tracing::warn!(error = %error, "failed to delete account secret from keychain");
-        }
-        Err(_) => tracing::warn!("keychain deletion task did not complete"),
-    }
-}
-
 /// Lists every configured account.
 #[tauri::command]
 pub async fn list_accounts(
@@ -364,7 +360,7 @@ pub async fn delete_account(
     state: tauri::State<'_, AppState>,
     account_id: i64,
 ) -> Result<(), String> {
-    delete_account_impl(state.store(), state.secrets(), account_id)
+    delete_account_impl(state.store(), state.secrets(), state.raw_root(), account_id)
         .await
         .map_err(map_command_error)?;
     // Drop the removed account's inbox from the background-sync target set.
