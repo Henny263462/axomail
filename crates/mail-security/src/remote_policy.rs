@@ -3,10 +3,10 @@
 //! By default the sanitizer blocks every remote resource (tracking-pixel
 //! defense). This policy is the single, explicit knob that relaxes exactly
 //! one thing: whether remote `http(s)` `img@src` references are kept so the
-//! WebView loads them. It never widens any other rule — `data:` images,
-//! `srcset`, CSS, scripts, the link scheme allowlist, and every other strip
-//! stay exactly as they are with blocking on. See [`crate::html`] for how the
-//! attribute filter consumes it.
+//! WebView loads them. It never widens any other rule — `data:` URLs (rejected
+//! at the scheme gate), `srcset`, CSS, scripts, the link scheme allowlist, and
+//! every other strip stay exactly as they are with blocking on. See
+//! [`crate::html`] for how the attribute filter consumes it.
 
 /// Whether remote `http(s)` images may be kept during sanitization.
 ///
@@ -14,8 +14,8 @@
 /// Constructing it with `allow_remote_images = true` corresponds to the user
 /// choosing "show remote content" for a message or sender; the sanitizer then
 /// keeps `http(s)` `img@src` targets and does not count them as blocked, while
-/// continuing to strip and count `data:` images and `srcset` — those remain
-/// rejected in every mode.
+/// continuing to reject `data:` URLs at the scheme gate and to strip and count
+/// `srcset` — those remain rejected in every mode.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct RemoteContentPolicy {
     /// Keep remote `http(s)` image sources instead of blocking and counting

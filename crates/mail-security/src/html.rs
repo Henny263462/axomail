@@ -13,15 +13,24 @@
 //!   `<embed>`, `<applet>`, `<meta>`, `<base>`, `<link>`, `<svg>`/`<math>`,
 //!   or other active/embedding elements;
 //! - no `on*` event-handler attributes and no `style`/`class` attributes;
-//! - no `javascript:`, `vbscript:`, or `data:` URLs anywhere;
+//! - no `javascript:`, `vbscript:`, or attacker-supplied `data:` URLs anywhere:
+//!   `data:` is not in the scheme allowlist, so ammonia strips it from every
+//!   attribute before the filter runs (proven against `<a href>` and non-`img`
+//!   contexts by the adversarial corpus);
 //! - hyperlinks keep only `http`/`https`/`mailto` targets (for display) and
 //!   always carry `rel="noopener noreferrer"`; the frontend still intercepts
 //!   activation — the retained `href` is for display only;
-//! - inline `cid:` images are preserved (resolved locally later); remote
-//!   `http(s)` images are blocked and counted by default, or kept when the
-//!   caller passes an allowing [`RemoteContentPolicy`]; `data:` images and
-//!   every `srcset` are removed and counted in [`SanitizedHtml::remote_blocked`]
-//!   in *both* modes (tracking-pixel blocking; `data:` is never loaded).
+//! - inline `cid:` images resolve to an inline `data:` URI on `img@src` only
+//!   when the caller supplies a matching message-local part (see
+//!   [`sanitize_message_html_with_inline`] and [`InlineImages`]); a `cid:` with
+//!   no supplied part is dropped, and without any inline map the `cid:` value is
+//!   left in place for a later resolver. The emitted `data:` URI is the filter's
+//!   trusted output, which ammonia does not re-scheme-check — that is why inline
+//!   images work without `data:` being in the global scheme allowlist;
+//! - remote `http(s)` images are blocked and counted by default, or kept when
+//!   the caller passes an allowing [`RemoteContentPolicy`]; every `srcset` is
+//!   removed and counted in [`SanitizedHtml::remote_blocked`] in *both* modes
+//!   (tracking-pixel blocking).
 //!
 //! After sanitization a warning-only pass ([`crate::scam`]) walks the clean
 //! DOM for deceptive-link tells; its findings ride along in
@@ -31,7 +40,9 @@ use std::borrow::Cow;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
+use crate::active_content::detect_active_content;
 use crate::html_policy::message_policy;
+use crate::inline_images::InlineImages;
 use crate::remote_policy::RemoteContentPolicy;
 use crate::scam::{ScamIndicator, detect_scam_indicators};
 
@@ -71,10 +82,42 @@ pub fn sanitize_message_html(html: &str) -> SanitizedHtml {
 /// The only behavior the policy changes is whether remote `http(s)` `img@src`
 /// targets are kept (and therefore not counted as blocked). Every other rule —
 /// the tag/attribute allowlist, CSS and script removal, the link scheme
-/// allowlist, and the blocking of `data:` images and `srcset` — is identical
-/// in both modes.
+/// allowlist, and the blocking of `srcset` — is identical in both modes.
+///
+/// Inline `cid:` `img@src` values are left in place for a later resolver; use
+/// [`sanitize_message_html_with_inline`] to embed them as `data:` URIs.
 #[must_use]
 pub fn sanitize_message_html_with_policy(html: &str, policy: RemoteContentPolicy) -> SanitizedHtml {
+    sanitize_core(html, policy, None)
+}
+
+/// Sanitizes an HTML message body and embeds its inline `cid:` images.
+///
+/// Behaves exactly like [`sanitize_message_html_with_policy`], except a
+/// `cid:` reference on `img@src` that matches a part in `inline` is rewritten
+/// to that part's inline `data:` URI (see [`InlineImages`]). A `cid:` with no
+/// matching part is dropped — it renders as a broken image and can neither
+/// fetch nor exfiltrate. The `data:` URI is only ever emitted here, on
+/// `img@src`, as the attribute filter's output; `data:` remains outside the
+/// global scheme allowlist, so it is still rejected on `href` and every other
+/// attribute.
+#[must_use]
+pub fn sanitize_message_html_with_inline(
+    html: &str,
+    policy: RemoteContentPolicy,
+    inline: &InlineImages,
+) -> SanitizedHtml {
+    sanitize_core(html, policy, Some(Arc::new(inline.clone())))
+}
+
+/// Shared sanitization core. `inline` is `Some` only when the caller asked to
+/// embed `cid:` images (the `Arc` lets the resolver ride into the `'static`
+/// attribute-filter closure).
+fn sanitize_core(
+    html: &str,
+    policy: RemoteContentPolicy,
+    inline: Option<Arc<InlineImages>>,
+) -> SanitizedHtml {
     let had_active_content = detect_active_content(html);
 
     let remote = Arc::new(AtomicUsize::new(0));
@@ -83,7 +126,14 @@ pub fn sanitize_message_html_with_policy(html: &str, policy: RemoteContentPolicy
 
     let mut builder = message_policy();
     builder.attribute_filter(move |element, attribute, value| {
-        filter_attribute(element, attribute, value, allow_remote_images, &counter)
+        filter_attribute(
+            element,
+            attribute,
+            value,
+            allow_remote_images,
+            inline.as_deref(),
+            &counter,
+        )
     });
 
     let cleaned = builder.clean(html).to_string();
@@ -115,25 +165,30 @@ pub fn sanitize_message_html_bytes(bytes: &[u8]) -> SanitizedHtml {
 /// blocked remote content into `counter`.
 ///
 /// `allow_remote_images` relaxes exactly one arm: remote `http(s)` image
-/// sources are kept (and not counted) instead of blocked. `data:` images and
-/// `srcset` are still stripped and counted regardless, and no other arm is
-/// affected.
+/// sources are kept (and not counted) instead of blocked. `inline` supplies
+/// the message-local parts a `cid:` `img@src` resolves to. `srcset` is stripped
+/// and counted regardless. Attacker `data:` never reaches here — it is rejected
+/// at the scheme gate that runs before this filter — so there is no `data:`
+/// arm; the only `data:` this stage produces is the trusted inline-image URI it
+/// substitutes for a resolved `cid:`.
 fn filter_attribute<'v>(
     element: &str,
     attribute: &str,
     value: &'v str,
     allow_remote_images: bool,
+    inline: Option<&InlineImages>,
     counter: &AtomicUsize,
 ) -> Option<Cow<'v, str>> {
     match (element, attribute) {
-        // Images: keep inline `cid:` sources. Remote `http(s)` sources are
-        // kept only when the policy allows them (and then not counted, since
-        // they are loaded); otherwise they are blocked and counted. `data:`
-        // sources are always blocked and counted — never loaded.
+        // Images: resolve inline `cid:` sources to a message-local `data:` URI
+        // when a matching part was supplied (dropping any `cid:` that points
+        // outside the message). Remote `http(s)` sources are kept only when the
+        // policy allows them (and then not counted, since they are loaded);
+        // otherwise they are blocked and counted.
         ("img", "src") => match url_scheme(value).as_deref() {
-            Some("cid") => Some(Cow::Borrowed(value)),
+            Some("cid") => resolve_cid_image(value, inline),
             Some("http" | "https") if allow_remote_images => Some(Cow::Borrowed(value)),
-            Some("http" | "https" | "data") => {
+            Some("http" | "https") => {
                 counter.fetch_add(1, Ordering::Relaxed);
                 None
             }
@@ -169,6 +224,24 @@ fn filter_attribute<'v>(
                 Some(Cow::Borrowed(value))
             }
         }
+    }
+}
+
+/// Resolves a `cid:` `img@src` to its inline `data:` URI.
+///
+/// With an inline map, a matching message-local part becomes a `data:` URI and
+/// anything else (a `cid:` pointing outside the message, an oversize or
+/// disallowed part) is dropped — the image cannot fetch or exfiltrate. Without
+/// a map (the plain sanitize entry points), the original `cid:` value is left
+/// in place for a later resolver. The reference is the substring after the
+/// first colon, trimmed; the scheme itself was already validated as `cid`.
+fn resolve_cid_image<'v>(value: &'v str, inline: Option<&InlineImages>) -> Option<Cow<'v, str>> {
+    match inline {
+        Some(map) => {
+            let reference = value.split_once(':').map(|(_, rest)| rest.trim())?;
+            map.resolve(reference).map(|uri| Cow::Owned(uri.to_owned()))
+        }
+        None => Some(Cow::Borrowed(value)),
     }
 }
 
@@ -219,101 +292,8 @@ fn url_scheme(value: &str) -> Option<String> {
     }
 }
 
-/// Tag names whose presence signals stripped active or embedding content.
-const ACTIVE_TAGS: [&str; 8] = [
-    "script", "form", "iframe", "object", "embed", "applet", "frame", "frameset",
-];
-
-/// Detects whether the raw input carried active content that sanitization
-/// removes: any [`ACTIVE_TAGS`] element or any `on*` event-handler attribute.
-///
-/// This is a lightweight, single-pass heuristic used only to set the UI
-/// signal [`SanitizedHtml::had_active_content`]; the actual security
-/// guarantee is enforced by the ammonia policy, not by this scan, so an
-/// occasional false positive or negative here is harmless.
-fn detect_active_content(input: &str) -> bool {
-    let bytes = input.as_bytes();
-    let len = bytes.len();
-    let mut i = 0;
-    while i < len {
-        if bytes[i] != b'<' {
-            i += 1;
-            continue;
-        }
-        // Parse an optional closing slash, then an ASCII tag name.
-        let mut j = i + 1;
-        if j < len && bytes[j] == b'/' {
-            j += 1;
-        }
-        let name_start = j;
-        while j < len && bytes[j].is_ascii_alphanumeric() {
-            j += 1;
-        }
-        // `name_start..j` spans only ASCII bytes, so slicing is valid here.
-        if is_active_tag(&input[name_start..j]) || tag_has_event_handler(bytes, j) {
-            return true;
-        }
-        i = j.max(i + 1);
-    }
-    false
-}
-
-/// Returns `true` if `name` (any case) is an active-content tag.
-fn is_active_tag(name: &str) -> bool {
-    ACTIVE_TAGS.iter().any(|tag| name.eq_ignore_ascii_case(tag))
-}
-
-/// Scans one tag's attribute region, starting just after the tag name,
-/// for an `on*=` event-handler attribute. Stops at the tag's `>`.
-fn tag_has_event_handler(bytes: &[u8], mut i: usize) -> bool {
-    let len = bytes.len();
-    while i < len {
-        match bytes[i] {
-            b'>' => return false,
-            b if is_attr_boundary(b) => {
-                if starts_event_handler(bytes, i + 1) {
-                    return true;
-                }
-                i += 1;
-            }
-            _ => i += 1,
-        }
-    }
-    false
-}
-
-/// Bytes that can precede an attribute name inside a tag. Quotes are
-/// included because `<a href="x"onmouseover=...>` needs no whitespace.
-fn is_attr_boundary(b: u8) -> bool {
-    b.is_ascii_whitespace() || matches!(b, b'"' | b'\'' | b'`' | b'/')
-}
-
-/// Returns `true` if an `on` + letter(s) + `=` event handler begins at `p`.
-fn starts_event_handler(bytes: &[u8], p: usize) -> bool {
-    let len = bytes.len();
-    if p + 2 >= len
-        || !bytes[p].eq_ignore_ascii_case(&b'o')
-        || !bytes[p + 1].eq_ignore_ascii_case(&b'n')
-    {
-        return false;
-    }
-    let mut q = p + 2;
-    if !bytes[q].is_ascii_alphabetic() {
-        return false; // Bare "on" is not a handler; require "on<letter>".
-    }
-    while q < len && bytes[q].is_ascii_alphabetic() {
-        q += 1;
-    }
-    while q < len && bytes[q].is_ascii_whitespace() {
-        q += 1;
-    }
-    q < len && bytes[q] == b'='
-}
-
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::unwrap_used)]
-
     use super::*;
 
     #[test]
@@ -324,23 +304,5 @@ mod tests {
         assert_eq!(url_scheme("/relative/path"), None);
         assert_eq!(url_scheme("noscheme"), None);
         assert_eq!(url_scheme("1http://x"), None);
-    }
-
-    #[test]
-    fn detects_event_handlers_and_active_tags() {
-        assert!(detect_active_content("<img onerror=alert(1)>"));
-        assert!(detect_active_content("<a href=\"x\"onmouseover=y()>"));
-        assert!(detect_active_content("<SCRIPT>bad()</SCRIPT>"));
-        assert!(detect_active_content("<svg onload=alert(1)>"));
-        assert!(detect_active_content("<form><input></form>"));
-    }
-
-    #[test]
-    fn ignores_benign_content_in_detection() {
-        assert!(!detect_active_content("<p>hello <b>world</b></p>"));
-        assert!(!detect_active_content("5 < 10 and 10 > 5"));
-        assert!(!detect_active_content("<a href=\"https://x\">link</a>"));
-        // "on" not followed by a letter+`=` is not a handler.
-        assert!(!detect_active_content("<div data-on=1>"));
     }
 }

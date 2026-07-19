@@ -33,7 +33,7 @@ const hasLinks = computed(
     <div
       class="tabs"
       role="tablist"
-      aria-label="Body format"
+      aria-label="Body display mode"
     >
       <button
         type="button"
@@ -43,7 +43,7 @@ const hasLinks = computed(
         :aria-selected="activeTab === 'text'"
         @click="activeTab = 'text'"
       >
-        Text
+        Plain Text
       </button>
       <button
         v-if="hasHtml"
@@ -54,7 +54,7 @@ const hasLinks = computed(
         :aria-selected="activeTab === 'html'"
         @click="activeTab = 'html'"
       >
-        HTML
+        Sanitized HTML
       </button>
     </div>
 

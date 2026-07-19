@@ -58,6 +58,18 @@ impl ParsedMessage {
             references: self.references.clone(),
         }
     }
+
+    /// Iterates the message's downloadable attachments — every part that is not
+    /// inline — in document order.
+    ///
+    /// This is the single ordering shared by the detail DTO's attachment list
+    /// and the save/open commands, so an attachment index chosen in the UI
+    /// resolves to the same part on the backend. Inline parts (`cid:` images
+    /// referenced from the body) are excluded: they render in place and are not
+    /// offered as separate downloads.
+    pub fn downloadable_attachments(&self) -> impl Iterator<Item = &ParsedAttachment> {
+        self.attachments.iter().filter(|part| !part.inline)
+    }
 }
 
 /// A single attachment or inline part extracted from a message.

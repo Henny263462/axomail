@@ -18,6 +18,8 @@
 //!   for untrusted message bodies and layer one of the four-layer rendering
 //!   defense in ADR-0007. [`sanitize_message_html_with_policy`] takes a
 //!   [`RemoteContentPolicy`] to keep remote images for an allowed sender;
+//!   [`sanitize_message_html_with_inline`] additionally embeds message-local
+//!   `cid:` images as `data:` URIs via an [`InlineImages`] map;
 //!   [`detect_scam_indicators`] adds a warning-only deceptive-link pass.
 //!
 //! # Blocking I/O
@@ -28,10 +30,12 @@
 //! `tokio::task::spawn_blocking`).
 #![forbid(unsafe_code)]
 
+mod active_content;
 mod credential;
 mod filename;
 mod html;
 mod html_policy;
+mod inline_images;
 mod keyring_store;
 mod memory_store;
 mod oauth_tokens;
@@ -44,8 +48,9 @@ pub use credential::{Direction, credential_ref_for_account, credential_ref_for_o
 pub use filename::sanitize_attachment_filename;
 pub use html::{
     SanitizedHtml, sanitize_message_html, sanitize_message_html_bytes,
-    sanitize_message_html_with_policy,
+    sanitize_message_html_with_inline, sanitize_message_html_with_policy,
 };
+pub use inline_images::{InlineImagePart, InlineImages, MAX_INLINE_IMAGE_BYTES};
 pub use keyring_store::KeyringSecretStore;
 pub use memory_store::InMemorySecretStore;
 pub use oauth_tokens::OAuthTokens;

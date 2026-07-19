@@ -2,7 +2,10 @@
 
 use axomail_core::{Address, MailError, MessageEnvelope, UtcTimestamp};
 use axomail_parser::{ParsedAttachment, ParsedMessage};
-use axomail_security::{RemoteContentPolicy, ScamIndicator, sanitize_message_html_with_policy};
+use axomail_security::{
+    InlineImagePart, InlineImages, RemoteContentPolicy, ScamIndicator,
+    sanitize_message_html_with_inline,
+};
 use serde::Serialize;
 
 use super::checked_id;
@@ -111,8 +114,9 @@ pub struct MessageDetailDto {
     pub text_body: Option<String>,
     /// Sanitized HTML body, if the message had one.
     pub sanitized_html: Option<String>,
-    /// Count of remote resources blocked during sanitization (with remote
-    /// images allowed, this counts only the still-blocked `data:`/`srcset`).
+    /// Count of remote fetches suppressed during sanitization — blocked remote
+    /// `http(s)` images and `srcset` (with remote images allowed, only
+    /// `srcset`). `data:` URLs are rejected at the scheme gate and not counted.
     pub remote_blocked_count: i64,
     /// Whether remote `http(s)` images were kept for this render.
     pub remote_allowed: bool,
@@ -149,15 +153,29 @@ impl MessageDetailDto {
         policy: RemoteContentPolicy,
         flagged: bool,
     ) -> Result<Self, MailError> {
+        // Embed message-local inline `cid:` images as `data:` URIs so a
+        // `multipart/related` body renders its logo/signature images with no
+        // network fetch (ADR-0007). The map is built from the parsed inline
+        // parts; a `cid:` with no matching part is dropped by the sanitizer.
+        let inline_images =
+            InlineImages::from_parts(parsed.attachments.iter().filter_map(|part| {
+                let content_id = part.content_id.as_deref()?;
+                part.inline.then_some(InlineImagePart {
+                    content_id,
+                    mime_type: &part.mime_type,
+                    bytes: &part.bytes,
+                })
+            }));
         let sanitized = parsed
             .html_body
             .as_deref()
-            .map(|html| sanitize_message_html_with_policy(html, policy));
+            .map(|html| sanitize_message_html_with_inline(html, policy, &inline_images));
         let sender = parsed.from.first();
+        // Downloadable attachments share the parser's `!inline` ordering with
+        // the save/open commands, so a UI attachment index resolves to the same
+        // part on the backend.
         let attachments = parsed
-            .attachments
-            .iter()
-            .filter(|part| !part.inline)
+            .downloadable_attachments()
             .map(AttachmentMetaDto::from_parsed)
             .collect::<Result<Vec<_>, _>>()?;
         let scam_flags = sanitized.as_ref().map_or_else(Vec::new, |s| {

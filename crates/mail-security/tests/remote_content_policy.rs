@@ -1,8 +1,12 @@
 //! Policy matrix for the remote-content allow mode (ADR-0007, Track 1.6).
 //!
 //! These tests prove that allowing remote images relaxes *exactly one thing* —
-//! remote `http(s)` `img@src` — and nothing else: `data:` images and `srcset`
-//! stay blocked and counted, and every scripting/CSS/scheme guard is untouched.
+//! remote `http(s)` `img@src` — and nothing else: `data:` images are rejected
+//! at the scheme gate, `srcset` stays blocked and counted, and every
+//! scripting/CSS/scheme guard is untouched. `data:` is not in the scheme
+//! allowlist, so it never reaches the counting filter; the `remote_blocked`
+//! tally covers the resources that would otherwise trigger a network fetch
+//! (remote `http(s)` images and `srcset`).
 #![allow(clippy::unwrap_used)]
 
 use axomail_security::{
@@ -57,11 +61,16 @@ fn allow_mode_keeps_remote_http_images_and_does_not_count_them() {
 }
 
 #[test]
-fn allow_mode_still_blocks_and_counts_data_images() {
-    // Adversarial: allowing remote images must NOT admit `data:` images.
+fn allow_mode_still_rejects_data_images_at_the_scheme_gate() {
+    // Adversarial: allowing remote images must NOT admit `data:` images. They
+    // are stripped by the scheme allowlist before the counting filter runs, so
+    // they are absent from the output and not tallied as a suppressed fetch.
     let input = "<img src=\"data:image/png;base64,AAAABBBB\">";
     let allowed = sanitize_message_html_with_policy(input, RemoteContentPolicy::allow_images());
-    assert_eq!(allowed.remote_blocked, 1, "data: images stay blocked");
+    assert_eq!(
+        allowed.remote_blocked, 0,
+        "data: never reaches the fetch tally"
+    );
     assert!(!allowed.html.contains("data:image"));
     assert_invariants(&allowed.html);
 }
@@ -101,22 +110,21 @@ fn allow_mode_does_not_loosen_scripts_css_or_link_schemes() {
 #[test]
 fn count_is_correct_for_a_mixed_document_in_both_modes() {
     let input = concat!(
-        "<img src=\"https://a/remote.png\">",     // remote http(s)
-        "<img src=\"cid:inline\">",               // inline, never counted
-        "<img src=\"data:image/png;base64,QQ\">", // data, always blocked
-        "<img src=\"cid:x\" srcset=\"https://a/2.png 2x\">", // srcset, always blocked
+        "<img src=\"https://a/remote.png\">", // remote http(s), a fetch
+        "<img src=\"cid:inline\">",           // inline, never counted
+        "<img src=\"data:image/png;base64,QQ\">", // data, dropped at the gate
+        "<img src=\"cid:x\" srcset=\"https://a/2.png 2x\">", // srcset, a fetch
     );
 
     let blocked = sanitize_message_html(input);
     assert_eq!(
-        blocked.remote_blocked, 3,
-        "http + data + srcset all blocked"
+        blocked.remote_blocked, 2,
+        "http + srcset are suppressed fetches; data: is dropped, not tallied"
     );
 
     let allowed = sanitize_message_html_with_policy(input, RemoteContentPolicy::allow_images());
-    assert_eq!(allowed.remote_blocked, 2, "only data + srcset stay blocked");
+    assert_eq!(allowed.remote_blocked, 1, "only srcset stays blocked");
     assert!(allowed.html.contains("https://a/remote.png"));
-    assert!(allowed.html.contains("cid:inline"));
     assert!(!allowed.html.contains("data:image"));
     assert!(!allowed.html.contains("https://a/2.png"));
 }
@@ -125,6 +133,9 @@ fn count_is_correct_for_a_mixed_document_in_both_modes() {
 fn uppercase_data_scheme_is_still_blocked_when_images_allowed() {
     let input = "<img src=\"DATA:image/png;base64,QQ\">";
     let allowed = sanitize_message_html_with_policy(input, RemoteContentPolicy::allow_images());
-    assert_eq!(allowed.remote_blocked, 1);
+    assert_eq!(
+        allowed.remote_blocked, 0,
+        "data: is rejected at the scheme gate"
+    );
     assert!(!allowed.html.to_ascii_lowercase().contains("data:"));
 }

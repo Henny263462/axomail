@@ -99,6 +99,47 @@ async fn detail_parses_and_sanitizes_a_cached_message() {
     assert!(detail.attachments.is_empty());
 }
 
+#[tokio::test]
+async fn inline_cid_image_is_embedded_as_a_data_uri_in_the_detail() {
+    let store = Store::open_in_memory().await.unwrap();
+    let (_concrete, secrets) = secret_stores();
+    let factory = AppProviderFactory::new(secrets.clone(), store.clone());
+    let raw_root = tempfile::tempdir().unwrap();
+
+    let summary = create_account_impl(&store, &secrets, valid_input())
+        .await
+        .unwrap();
+    let inbox = MailboxId::new(summary.mailboxes[0].id);
+    let envelope = store
+        .messages()
+        .insert(&sample_message(inbox, "row-subject", Some(1)))
+        .await
+        .unwrap();
+    let message_id = envelope.id.value();
+    cache_raw(raw_root.path(), message_id, fixtures::RELATED_WITH_CID);
+
+    let detail =
+        get_message_detail_impl(&store, &factory, raw_root.path(), message_id, None, false)
+            .await
+            .unwrap();
+
+    let html = detail.sanitized_html.expect("html body present");
+    // The `cid:logo-1@example.org` reference resolved to an inline data: URI
+    // (no network fetch, no leftover cid: reference).
+    assert!(
+        html.contains("src=\"data:image/png;base64,"),
+        "inline cid image embedded: {html}"
+    );
+    assert!(!html.contains("cid:"), "no unresolved cid remains: {html}");
+    // The inline image is not offered as a downloadable attachment.
+    assert!(
+        detail.attachments.is_empty(),
+        "inline part is not a download"
+    );
+    // Inlining a local image is not a suppressed remote fetch.
+    assert_eq!(detail.remote_blocked_count, 0);
+}
+
 /// A reply message with threading headers and a plain-text body, used to
 /// prove both the DTO exposure and the lazy backfill of migration 0006.
 const THREADED_REPLY: &str = concat!(
