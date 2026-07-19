@@ -7,6 +7,7 @@
 //! |-----|-------|---------|
 //! | `notifications_enabled` | `"true"`/`"false"` | `true` |
 //! | `sync_interval_minutes` | decimal integer, clamped `>= 1` | `10` |
+//! | `theme` | `"system"`/`"light"`/`"dark"` | `system` |
 //! | `pop3_delete_policy.<accountId>` | `"true"`/`"false"` | `false` |
 //!
 //! The POP3 delete policy is the second of the two guards against POP3's
@@ -18,10 +19,14 @@
 use axomail_core::MailError;
 use axomail_storage::Store;
 
+use crate::dto::ThemePreference;
+
 /// Whether desktop notifications are shown when a sync brings new mail.
 const KEY_NOTIFICATIONS: &str = "notifications_enabled";
 /// Base background-sync polling interval, in whole minutes.
 const KEY_SYNC_INTERVAL: &str = "sync_interval_minutes";
+/// Preferred application color theme.
+const KEY_THEME: &str = "theme";
 /// Prefix of the per-account POP3 server-deletion policy key.
 const KEY_POP3_DELETE_PREFIX: &str = "pop3_delete_policy.";
 
@@ -70,6 +75,24 @@ pub async fn sync_interval_minutes(store: &Store) -> Result<u32, MailError> {
     Ok(clamp_interval(minutes))
 }
 
+/// Reads the preferred color theme (default [`ThemePreference::System`]).
+///
+/// An absent or unrecognized stored value resolves to the system default, so
+/// a corrupt row can never leave the UI without a theme.
+///
+/// # Errors
+///
+/// Returns [`MailError::Database`] on any query failure.
+pub async fn theme(store: &Store) -> Result<ThemePreference, MailError> {
+    Ok(store
+        .settings()
+        .get(KEY_THEME)
+        .await?
+        .map_or(ThemePreference::default(), |value| {
+            ThemePreference::from_key(&value)
+        }))
+}
+
 /// Reads a single account's POP3 server-deletion policy (default `false`).
 ///
 /// # Errors
@@ -108,6 +131,15 @@ pub async fn set_sync_interval_minutes(store: &Store, minutes: u32) -> Result<u3
         .set(KEY_SYNC_INTERVAL, &clamped.to_string())
         .await?;
     Ok(clamped)
+}
+
+/// Persists the preferred color theme.
+///
+/// # Errors
+///
+/// Returns [`MailError::Database`] on any query failure.
+pub async fn set_theme(store: &Store, preference: ThemePreference) -> Result<(), MailError> {
+    store.settings().set(KEY_THEME, preference.as_key()).await
 }
 
 /// Persists a single account's POP3 server-deletion policy.

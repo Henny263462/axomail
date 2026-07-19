@@ -1,23 +1,19 @@
 <script setup lang="ts">
 import { onMounted, ref } from "vue";
 
-import {
-  getSettings,
-  setPop3DeletePolicy,
-  updateSettings,
-} from "../../api/settings";
+import { getSettings, updateSettings } from "../../api/settings";
+import { useTheme } from "../../composables/useTheme";
 import { isTauri } from "../../lib/tauri";
 import type {
   AccountSummary,
   Pop3DeletePolicyDto,
   SettingsDto,
+  ThemePreference,
 } from "../../types/mail";
+import AppearanceSection from "./AppearanceSection.vue";
+import Pop3DeleteSection from "./Pop3DeleteSection.vue";
 
-/** Exact warning shown beside every POP3 server-deletion toggle. */
-const DELETE_WARNING =
-  "Deletes mail from the server after download. This cannot be undone.";
-
-const props = defineProps<{
+defineProps<{
   /** Accounts, used to label each POP3 delete-policy toggle. */
   accounts: AccountSummary[];
 }>();
@@ -26,8 +22,14 @@ const emit = defineEmits<{
   close: [];
 }>();
 
+const { theme: activeTheme, setTheme } = useTheme();
+
 const notificationsEnabled = ref(false);
 const syncIntervalMinutes = ref(5);
+// Live-previewed selection; `savedTheme` is the last committed value the
+// dialog reverts to when the user cancels without saving.
+const theme = ref<ThemePreference>(activeTheme.value);
+const savedTheme = ref<ThemePreference>(activeTheme.value);
 const policies = ref<Pop3DeletePolicyDto[]>([]);
 
 type LoadState = "loading" | "ready" | "unavailable";
@@ -46,11 +48,21 @@ onMounted(async () => {
   }
   notificationsEnabled.value = settings.notificationsEnabled;
   syncIntervalMinutes.value = Math.max(1, settings.syncIntervalMinutes);
+  theme.value = settings.theme;
+  savedTheme.value = settings.theme;
   policies.value = settings.pop3DeletePolicies.map((policy) => ({ ...policy }));
   state.value = "ready";
 });
 
+/** Applies a theme selection immediately as a live preview. */
+function onSelectTheme(value: ThemePreference): void {
+  theme.value = value;
+  setTheme(value);
+}
+
 function close(): void {
+  // Undo an unsaved live preview so cancelling leaves the theme untouched.
+  if (theme.value !== savedTheme.value) setTheme(savedTheme.value);
   emit("close");
 }
 
@@ -83,11 +95,6 @@ function onKeydown(event: KeyboardEvent): void {
   }
 }
 
-function accountName(accountId: number): string {
-  const account = props.accounts.find((item) => item.id === accountId);
-  return account?.displayName ?? `Account ${accountId}`;
-}
-
 function messageFrom(error: unknown): string {
   if (typeof error === "string") return error;
   if (error instanceof Error) return error.message;
@@ -98,35 +105,9 @@ function currentSettings(): SettingsDto {
   return {
     notificationsEnabled: notificationsEnabled.value,
     syncIntervalMinutes: Math.max(1, Math.floor(syncIntervalMinutes.value || 1)),
+    theme: theme.value,
     pop3DeletePolicies: policies.value.map((policy) => ({ ...policy })),
   };
-}
-
-/**
- * Flips one account's POP3 delete policy through the dedicated command — the
- * user-visible second guard. On failure the checkbox reverts and the error is
- * announced; local state changes only after the backend accepts it.
- */
-async function onTogglePolicy(
-  policy: Pop3DeletePolicyDto,
-  event: Event,
-): Promise<void> {
-  const next = (event.target as HTMLInputElement).checked;
-  statusMessage.value = "";
-  if (!isTauri()) {
-    (event.target as HTMLInputElement).checked = policy.enabled;
-    errorMessage.value =
-      "Changing the delete policy needs the desktop app; it is unavailable in the browser preview.";
-    return;
-  }
-  try {
-    await setPop3DeletePolicy(policy.accountId, next);
-    policy.enabled = next;
-    errorMessage.value = "";
-  } catch (error) {
-    (event.target as HTMLInputElement).checked = policy.enabled;
-    errorMessage.value = messageFrom(error);
-  }
 }
 
 async function onSave(): Promise<void> {
@@ -141,6 +122,9 @@ async function onSave(): Promise<void> {
   try {
     await updateSettings(currentSettings());
     errorMessage.value = "";
+    // The previewed theme is now persisted; make it the revert baseline so
+    // closing does not undo it.
+    savedTheme.value = theme.value;
     close();
   } catch (error) {
     errorMessage.value = messageFrom(error);
@@ -211,29 +195,17 @@ async function onSave(): Promise<void> {
           >
         </div>
 
-        <fieldset
+        <AppearanceSection
+          :model-value="theme"
+          @update:model-value="onSelectTheme"
+        />
+
+        <Pop3DeleteSection
           v-if="policies.length > 0"
-          class="group"
-        >
-          <legend class="legend">
-            POP3 server deletion
-          </legend>
-          <p class="warning">
-            {{ DELETE_WARNING }}
-          </p>
-          <label
-            v-for="policy in policies"
-            :key="policy.accountId"
-            class="toggle"
-          >
-            <input
-              type="checkbox"
-              :checked="policy.enabled"
-              @change="onTogglePolicy(policy, $event)"
-            >
-            <span>{{ accountName(policy.accountId) }}</span>
-          </label>
-        </fieldset>
+          :policies="policies"
+          :accounts="accounts"
+          @error="errorMessage = $event"
+        />
 
         <p
           class="error"
@@ -344,29 +316,6 @@ async function onSave(): Promise<void> {
 
 .field input:focus-visible {
   border-color: var(--color-accent);
-}
-
-.group {
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-  padding: var(--space-3);
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-}
-
-.legend {
-  font-size: var(--text-xs);
-  font-weight: var(--weight-semibold);
-  color: var(--color-text-tertiary);
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  padding: 0 var(--space-1);
-}
-
-.warning {
-  font-size: var(--text-xs);
-  color: var(--color-danger);
 }
 
 .error {

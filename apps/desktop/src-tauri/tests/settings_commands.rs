@@ -12,7 +12,7 @@ use axomail_desktop_lib::commands::settings::{
     get_settings_impl, set_pop3_delete_policy_impl, update_settings_impl,
 };
 use axomail_desktop_lib::composition::AppProviderFactory;
-use axomail_desktop_lib::dto::{Pop3DeletePolicyDto, SettingsDto};
+use axomail_desktop_lib::dto::{Pop3DeletePolicyDto, SettingsDto, ThemePreference};
 use axomail_desktop_lib::scheduler::SchedulerControl;
 use axomail_desktop_lib::settings::pop3_delete_enabled;
 use axomail_desktop_lib::state::{AppSyncEngine, SharedSecretStore};
@@ -32,11 +32,12 @@ fn scheduler_for(store: &Store, secrets: &SharedSecretStore) -> SchedulerControl
     SchedulerControl::new(engine, store.clone())
 }
 
-/// A settings DTO with no POP3 policies.
+/// A settings DTO with no POP3 policies and the default theme.
 fn settings_dto(notifications: bool, interval: u32) -> SettingsDto {
     SettingsDto {
         notifications_enabled: notifications,
         sync_interval_minutes: interval,
+        theme: ThemePreference::System,
         pop3_delete_policies: Vec::new(),
     }
 }
@@ -49,7 +50,38 @@ async fn defaults_are_returned_when_nothing_is_stored() {
 
     assert!(got.notifications_enabled, "notifications default on");
     assert_eq!(got.sync_interval_minutes, 10);
+    assert_eq!(
+        got.theme,
+        ThemePreference::System,
+        "theme defaults to system"
+    );
     assert!(got.pop3_delete_policies.is_empty());
+}
+
+#[tokio::test]
+async fn update_round_trips_the_theme_preference() {
+    let store = Store::open_in_memory().await.unwrap();
+    let (_concrete, secrets) = secret_stores();
+    let scheduler = scheduler_for(&store, &secrets);
+
+    let mut dto = settings_dto(true, 10);
+    dto.theme = ThemePreference::Dark;
+    update_settings_impl(&store, &scheduler, dto).await.unwrap();
+    assert_eq!(
+        get_settings_impl(&store).await.unwrap().theme,
+        ThemePreference::Dark,
+    );
+
+    // Switching back to light persists just as well.
+    let mut light = settings_dto(true, 10);
+    light.theme = ThemePreference::Light;
+    update_settings_impl(&store, &scheduler, light)
+        .await
+        .unwrap();
+    assert_eq!(
+        get_settings_impl(&store).await.unwrap().theme,
+        ThemePreference::Light,
+    );
 }
 
 #[tokio::test]
@@ -134,6 +166,7 @@ async fn delete_policy_is_set_only_by_the_dedicated_command() {
     let dto = SettingsDto {
         notifications_enabled: true,
         sync_interval_minutes: 10,
+        theme: ThemePreference::System,
         pop3_delete_policies: vec![Pop3DeletePolicyDto::new(pop.id, false).unwrap()],
     };
     update_settings_impl(&store, &scheduler, dto).await.unwrap();

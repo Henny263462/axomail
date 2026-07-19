@@ -34,7 +34,7 @@ pub use connection::ConnectionTestResult;
 pub use detail::{AttachmentMetaDto, MessageDetailDto, RecipientDto};
 pub use message::{MessageListItemDto, MessageListPageDto};
 pub use search::SearchResultDto;
-pub use settings::{Pop3DeletePolicyDto, SettingsDto};
+pub use settings::{Pop3DeletePolicyDto, SettingsDto, ThemePreference};
 pub use sync_event::SyncEventDto;
 pub use unified::{UnifiedItemDto, UnifiedPageDto};
 
