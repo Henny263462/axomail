@@ -1,18 +1,15 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from "vue";
 
-import { saveDraft, sendMessage } from "../../api/compose";
 import { listIdentities } from "../../api/identities";
-import { markReplySource } from "../../api/reply";
-import { signatureBlock, withoutSignature } from "../../lib/signature";
-import { mentionsAttachmentKeyword, signatureHtml } from "../../lib/htmlBody";
+import { withoutSignature } from "../../lib/signature";
+import { useComposerSubmit } from "../../composables/useComposerSubmit";
 import { useDraftAutosave } from "../../composables/useDraftAutosave";
 import { useFocusTrap } from "../../composables/useFocusTrap";
 import type {
   AccountSummary,
   AttachmentCandidateDto,
   ComposeAttachmentDto,
-  ComposeInput,
   ComposerPrefillDto,
   DraftDto,
   IdentityDto,
@@ -125,6 +122,36 @@ onMounted(async () => {
   fields.value?.focus();
 });
 
+// Submission orchestration (build payload + send/schedule/save/autosave) lives
+// in a composable so this shell stays under the size gate.
+const { isComposerEmpty, onSend, onSchedule, onSaveDraft, autosave } =
+  useComposerSubmit({
+    accountId,
+    to,
+    cc,
+    bcc,
+    subject,
+    bodyText,
+    bodyHtml,
+    attachments,
+    forwardedAttachments,
+    inReplyTo,
+    references,
+    replySource,
+    selectedIdentityId,
+    draftId,
+    hasPrefill,
+    currentSignatureText,
+    sending,
+    savingDraft,
+    finished,
+    errorMessage,
+    statusMessage,
+    attachmentWarning,
+    emitSent: (payload) => emit("sent", payload),
+    emitSaved: (id) => emit("saved", id),
+  });
+
 useDraftAutosave({
   snapshot: () =>
     JSON.stringify([to.value, cc.value, bcc.value, subject.value, bodyText.value]),
@@ -179,162 +206,6 @@ function onIdentityChange(identityId: number): void {
 
 function close(): void {
   emit("close");
-}
-
-/** Splits a comma-separated recipient field into trimmed, non-empty parts. */
-function splitAddresses(raw: string): string[] {
-  return raw
-    .split(",")
-    .map((part) => part.trim())
-    .filter((part) => part.length > 0);
-}
-
-/** True when nothing worth keeping has been entered. */
-function isComposerEmpty(): boolean {
-  return (
-    [to.value, cc.value, bcc.value, subject.value, bodyText.value].every(
-      (value) => value.trim().length === 0,
-    ) && attachments.value.length === 0
-  );
-}
-
-/** Builds the compose payload, merging the identity signature into the body. A
- * reply/forward prefill already carries its signature, so it is not re-appended
- * (`hasPrefill`). Picked files ride `attachments` (paths); a forwarded message
- * rides `forwardedAttachments` (inline base64) — the backend merges both. */
-function buildInput(scheduledAtUnix?: number): ComposeInput {
-  const signature = hasPrefill.value ? "" : currentSignatureText.value;
-  const html =
-    bodyHtml.value === null ? null : bodyHtml.value + signatureHtml(signature);
-  const input: ComposeInput = {
-    accountId: accountId.value,
-    to: splitAddresses(to.value),
-    cc: splitAddresses(cc.value),
-    bcc: splitAddresses(bcc.value),
-    subject: subject.value.trim(),
-    textBody: bodyText.value + signatureBlock(signature),
-    htmlBody: html !== null && html.trim().length > 0 ? html : null,
-    attachments: attachments.value.map((item) => item.path),
-  };
-  if (selectedIdentityId.value !== null) {
-    input.identityId = selectedIdentityId.value;
-  }
-  if (scheduledAtUnix !== undefined) {
-    input.scheduledAtUnix = scheduledAtUnix;
-  }
-  // Reply/forward context is applied only on the immediate-send path (the
-  // backend does not persist it on the outbox row).
-  if (inReplyTo.value !== null) {
-    input.inReplyTo = inReplyTo.value;
-  }
-  if (references.value.length > 0) {
-    input.references = references.value;
-  }
-  if (forwardedAttachments.value.length > 0) {
-    input.forwardedAttachments = forwardedAttachments.value;
-  }
-  return input;
-}
-
-/** Submits a compose payload, immediately or scheduled. */
-async function submit(input: ComposeInput): Promise<void> {
-  if (sending.value || savingDraft.value) return;
-  statusMessage.value = "";
-  if (input.to.length === 0) {
-    errorMessage.value = "Add at least one recipient.";
-    return;
-  }
-  // Attachment-keyword reminder: warn once, then honour a repeated send.
-  if (attachmentWarning.value === "" && shouldRemindAttachment()) {
-    attachmentWarning.value =
-      "Your message mentions an attachment, but none is attached. Send again to send anyway.";
-    return;
-  }
-  attachmentWarning.value = "";
-  errorMessage.value = "";
-  sending.value = true;
-  try {
-    const outcome = await sendMessage(input);
-    if (outcome === null) {
-      errorMessage.value =
-        "Sending needs the desktop app; it is unavailable in the browser preview.";
-      return;
-    }
-    // Only a message that actually left the machine marks its source answered
-    // or forwarded (the flag reflects a delivered reply, not a queued one).
-    if (outcome.sent) {
-      await markSourceSent();
-      finished.value = true;
-      emit("sent", { draftId: draftId.value });
-      return;
-    }
-    // A scheduled or offline-queued message never leaves now, but it did leave
-    // the composer: it waits in the outbox (offline sends flush on reconnect).
-    if (
-      (outcome.scheduledAtUnix ?? null) !== null ||
-      outcome.queuedOffline === true
-    ) {
-      finished.value = true;
-      emit("sent", { draftId: draftId.value });
-      return;
-    }
-    errorMessage.value = outcome.error ?? "The message could not be sent.";
-  } finally {
-    sending.value = false;
-  }
-}
-
-/** After a successful reply/forward send, marks the source message answered
- * ($Forwarded for a forward). A no-op for a plain new message or draft. */
-async function markSourceSent(): Promise<void> {
-  const source = replySource.value;
-  if (source === null) return;
-  await markReplySource(source.messageId, source.mark);
-}
-
-/** True when the body hints at an attachment but none is attached. */
-function shouldRemindAttachment(): boolean {
-  return (
-    attachments.value.length === 0 &&
-    (mentionsAttachmentKeyword(bodyText.value) ||
-      mentionsAttachmentKeyword(subject.value))
-  );
-}
-
-function onSend(): Promise<void> {
-  return submit(buildInput());
-}
-
-function onSchedule(unixSeconds: number): Promise<void> {
-  return submit(buildInput(unixSeconds));
-}
-
-async function onSaveDraft(): Promise<void> {
-  if (savingDraft.value || sending.value) return;
-  errorMessage.value = "";
-  savingDraft.value = true;
-  try {
-    const id = await saveDraft(buildInput(), draftId.value);
-    if (id === null) {
-      errorMessage.value =
-        "Saving needs the desktop app; it is unavailable in the browser preview.";
-      return;
-    }
-    draftId.value = id;
-    statusMessage.value = "Draft saved.";
-    emit("saved", id);
-  } finally {
-    savingDraft.value = false;
-  }
-}
-
-/** Timer-driven save used by {@link useDraftAutosave}; quiet on failure. */
-async function autosave(): Promise<void> {
-  const id = await saveDraft(buildInput(), draftId.value);
-  if (id !== null) {
-    draftId.value = id;
-    statusMessage.value = "Draft autosaved.";
-  }
 }
 </script>
 

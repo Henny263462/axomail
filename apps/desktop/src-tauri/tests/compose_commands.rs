@@ -311,7 +311,8 @@ async fn forward_with_picked_file_builds_one_mixed_tree() {
     std::fs::write(&file_path, b"%PDF-1.7 picked file payload").unwrap();
 
     // A forwarded message rides as an inline base64 message/rfc822 part.
-    let original = b"From: carol@example.net\r\nSubject: Original\r\n\r\nBody of forwarded note.\r\n";
+    let original =
+        b"From: carol@example.net\r\nSubject: Original\r\n\r\nBody of forwarded note.\r\n";
     let forwarded = ComposeAttachmentDto {
         filename: "Original.eml".to_owned(),
         mime_type: "message/rfc822".to_owned(),
