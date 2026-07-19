@@ -123,6 +123,7 @@ pub fn run() {
             commands::compose::send_message,
             commands::compose::retry_outbox,
             commands::compose::list_outbox,
+            commands::attachments::stat_attachments,
             commands::outbox_schedule::send_outbox_now,
             commands::outbox_schedule::cancel_scheduled_send,
             commands::identities::list_identities,

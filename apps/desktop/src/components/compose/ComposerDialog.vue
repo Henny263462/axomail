@@ -1,16 +1,20 @@
 <script setup lang="ts">
-import { onMounted, ref } from "vue";
+import { computed, onMounted, ref, watch } from "vue";
 
 import { saveDraft, sendMessage } from "../../api/compose";
 import { listIdentities } from "../../api/identities";
-import { applySignature, signatureBlock } from "../../lib/signature";
+import { signatureBlock, withoutSignature } from "../../lib/signature";
+import { mentionsAttachmentKeyword, signatureHtml } from "../../lib/htmlBody";
+import { useDraftAutosave } from "../../composables/useDraftAutosave";
 import { useFocusTrap } from "../../composables/useFocusTrap";
 import type {
   AccountSummary,
+  AttachmentCandidateDto,
   ComposeInput,
   DraftDto,
   IdentityDto,
 } from "../../types/mail";
+import ComposeAttachments from "./ComposeAttachments.vue";
 import ComposeBody from "./ComposeBody.vue";
 import ComposeFields from "./ComposeFields.vue";
 import ComposerActions from "./ComposerActions.vue";
@@ -31,43 +35,54 @@ const emit = defineEmits<{
   saved: [draftId: number];
 }>();
 
-const to = ref("");
-const cc = ref("");
-const bcc = ref("");
-const subject = ref("");
-const body = ref("");
+const draft = props.draft ?? null;
+const isDraft = draft !== null;
 
-// The account the composed message belongs to and, when editing, the draft
-// id updated on save. A draft carries its own account, overriding the prop.
-const accountId = ref(props.accountId);
-const draftId = ref<number | null>(null);
+const to = ref(draft?.to.join(", ") ?? "");
+const cc = ref(draft?.cc.join(", ") ?? "");
+const bcc = ref(draft?.bcc.join(", ") ?? "");
+const subject = ref(draft?.subject ?? "");
+// The editor holds the body WITHOUT the signature. A stored draft baked the
+// signature into its text, so strip it on load; the chosen identity's signature
+// is re-appended per send/save, never duplicated.
+const bodyText = ref(draft !== null ? withoutSignature(draft.textBody) : "");
+const bodyHtml = ref<string | null>(null);
+const attachments = ref<AttachmentCandidateDto[]>([]);
 
-// Sender identities and the chosen one. The signature block currently in the
-// body is tracked so switching identity swaps it in place (see signature.ts).
+// The account the composed message belongs to and, when editing, the draft id.
+// A draft carries its own account, overriding the prop.
+const accountId = ref(draft?.accountId ?? props.accountId);
+const draftId = ref<number | null>(draft?.id ?? null);
+
 const identities = ref<IdentityDto[]>([]);
 const selectedIdentityId = ref<number | null>(null);
-const currentSignature = ref("");
+/** Plain signature text of the chosen identity, or empty when none applies. */
+const currentSignatureText = computed(
+  () =>
+    identities.value.find((identity) => identity.id === selectedIdentityId.value)
+      ?.signatureText ?? "",
+);
 
 const sending = ref(false);
 const savingDraft = ref(false);
+const finished = ref(false);
 const errorMessage = ref("");
 const statusMessage = ref("");
+const attachmentWarning = ref("");
 
 const fields = ref<InstanceType<typeof ComposeFields> | null>(null);
 const root = ref<HTMLElement | null>(null);
 const { onKeydown } = useFocusTrap(root, close);
 
+// Attaching a file resolves the "you mentioned an attachment" reminder.
+watch(
+  () => attachments.value.length,
+  (count) => {
+    if (count > 0) attachmentWarning.value = "";
+  },
+);
+
 onMounted(async () => {
-  const draft = props.draft ?? null;
-  if (draft !== null) {
-    accountId.value = draft.accountId;
-    draftId.value = draft.id;
-    to.value = draft.to.join(", ");
-    cc.value = draft.cc.join(", ");
-    bcc.value = draft.bcc.join(", ");
-    subject.value = draft.subject;
-    body.value = draft.textBody;
-  }
   const loaded = await listIdentities();
   if (loaded !== null) {
     identities.value = loaded;
@@ -76,34 +91,30 @@ onMounted(async () => {
   fields.value?.focus();
 });
 
-/** Picks the default identity for the current account and seeds its signature
- * (only for a brand-new message; a draft keeps its saved body). */
+useDraftAutosave({
+  snapshot: () =>
+    JSON.stringify([to.value, cc.value, bcc.value, subject.value, bodyText.value]),
+  isEmpty: isComposerEmpty,
+  isBusy: () => sending.value || savingDraft.value,
+  isFinished: () => finished.value,
+  save: autosave,
+});
+
+/** Picks the default identity for the current account. */
 function preselectIdentity(): void {
   const forAccount = identities.value.filter(
     (identity) => identity.accountId === accountId.value,
   );
   const chosen = forAccount.find((identity) => identity.isDefault) ?? forAccount[0];
-  if (chosen === undefined) {
-    selectedIdentityId.value = null;
-    return;
-  }
-  selectedIdentityId.value = chosen.id;
-  if (draftId.value === null) {
-    const block = signatureBlock(chosen.signatureText);
-    body.value = applySignature(body.value, "", block);
-    currentSignature.value = block;
-  }
+  selectedIdentityId.value = chosen?.id ?? null;
 }
 
-/** Switches the From identity: updates the account and swaps the signature. */
+/** Switches the From identity, updating the account it sends from. */
 function onIdentityChange(identityId: number): void {
   const identity = identities.value.find((item) => item.id === identityId);
   if (identity === undefined) return;
   selectedIdentityId.value = identityId;
   accountId.value = identity.accountId;
-  const block = signatureBlock(identity.signatureText);
-  body.value = applySignature(body.value, currentSignature.value, block);
-  currentSignature.value = block;
 }
 
 function close(): void {
@@ -118,14 +129,29 @@ function splitAddresses(raw: string): string[] {
     .filter((part) => part.length > 0);
 }
 
+/** True when nothing worth keeping has been entered. */
+function isComposerEmpty(): boolean {
+  return (
+    [to.value, cc.value, bcc.value, subject.value, bodyText.value].every(
+      (value) => value.trim().length === 0,
+    ) && attachments.value.length === 0
+  );
+}
+
+/** Builds the compose payload, merging the identity signature into the body. */
 function buildInput(scheduledAtUnix?: number): ComposeInput {
+  const signature = currentSignatureText.value;
+  const html =
+    bodyHtml.value === null ? null : bodyHtml.value + signatureHtml(signature);
   const input: ComposeInput = {
     accountId: accountId.value,
     to: splitAddresses(to.value),
     cc: splitAddresses(cc.value),
     bcc: splitAddresses(bcc.value),
     subject: subject.value.trim(),
-    textBody: body.value,
+    textBody: bodyText.value + signatureBlock(signature),
+    htmlBody: html !== null && html.trim().length > 0 ? html : null,
+    attachments: attachments.value.map((item) => item.path),
   };
   if (selectedIdentityId.value !== null) {
     input.identityId = selectedIdentityId.value;
@@ -138,14 +164,19 @@ function buildInput(scheduledAtUnix?: number): ComposeInput {
 
 /** Submits a compose payload, immediately or scheduled. */
 async function submit(input: ComposeInput): Promise<void> {
-  // Sending and draft-saving are mutually exclusive: a Save racing a
-  // successful Send would resurrect the message as an unintended draft.
   if (sending.value || savingDraft.value) return;
   statusMessage.value = "";
   if (input.to.length === 0) {
     errorMessage.value = "Add at least one recipient.";
     return;
   }
+  // Attachment-keyword reminder: warn once, then honour a repeated send.
+  if (attachmentWarning.value === "" && shouldRemindAttachment()) {
+    attachmentWarning.value =
+      "Your message mentions an attachment, but none is attached. Send again to send anyway.";
+    return;
+  }
+  attachmentWarning.value = "";
   errorMessage.value = "";
   sending.value = true;
   try {
@@ -155,13 +186,12 @@ async function submit(input: ComposeInput): Promise<void> {
         "Sending needs the desktop app; it is unavailable in the browser preview.";
       return;
     }
-    // A scheduled or offline-queued message never leaves now, but it did leave
-    // the composer: it waits in the outbox (offline sends flush on reconnect).
     if (
       outcome.sent ||
       (outcome.scheduledAtUnix ?? null) !== null ||
       outcome.queuedOffline === true
     ) {
+      finished.value = true;
       emit("sent", { draftId: draftId.value });
       return;
     }
@@ -169,6 +199,15 @@ async function submit(input: ComposeInput): Promise<void> {
   } finally {
     sending.value = false;
   }
+}
+
+/** True when the body hints at an attachment but none is attached. */
+function shouldRemindAttachment(): boolean {
+  return (
+    attachments.value.length === 0 &&
+    (mentionsAttachmentKeyword(bodyText.value) ||
+      mentionsAttachmentKeyword(subject.value))
+  );
 }
 
 function onSend(): Promise<void> {
@@ -195,6 +234,15 @@ async function onSaveDraft(): Promise<void> {
     emit("saved", id);
   } finally {
     savingDraft.value = false;
+  }
+}
+
+/** Timer-driven save used by {@link useDraftAutosave}; quiet on failure. */
+async function autosave(): Promise<void> {
+  const id = await saveDraft(buildInput(), draftId.value);
+  if (id !== null) {
+    draftId.value = id;
+    statusMessage.value = "Draft autosaved.";
   }
 }
 </script>
@@ -236,7 +284,23 @@ async function onSaveDraft(): Promise<void> {
           v-model:bcc="bcc"
           v-model:subject="subject"
         />
-        <ComposeBody v-model="body" />
+        <ComposeBody
+          v-model:text="bodyText"
+          v-model:html="bodyHtml"
+          :signature-text="currentSignatureText"
+          :is-draft="isDraft"
+        />
+        <ComposeAttachments
+          v-model="attachments"
+          @error="errorMessage = $event"
+        />
+        <p
+          v-if="attachmentWarning !== ''"
+          class="warning"
+          role="alert"
+        >
+          {{ attachmentWarning }}
+        </p>
         <ComposerActions
           :saving-draft="savingDraft"
           :sending="sending"
@@ -284,5 +348,14 @@ async function onSaveDraft(): Promise<void> {
   display: flex;
   flex-direction: column;
   gap: var(--space-3);
+}
+
+.warning {
+  font-size: var(--text-sm);
+  color: var(--color-warning, var(--color-text));
+  background: var(--color-bg-subtle);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-sm);
+  padding: var(--space-2);
 }
 </style>

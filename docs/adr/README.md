@@ -15,6 +15,7 @@ superseded ADR is not edited; a new ADR replaces it and links back.
 | [0008](0008-local-search-fts5.md) | Local search via SQLite FTS5 | accepted |
 | [0009](0009-oauth2-http-and-opener.md) | OAuth2 HTTP client and system-browser opener | accepted |
 | [0010](0010-attachment-fs-dialog.md) | Attachment file dialogs + Rust-side disk IO | accepted |
+| [0011](0011-rich-compose-text-durable.md) | Rich compose: session-scoped HTML/attachments, text-only durable store | accepted |
 
 ## Format
 

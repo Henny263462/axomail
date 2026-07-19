@@ -4,7 +4,7 @@
 use axomail_core::MailError;
 use axomail_storage::{OutboxId, OutboxState, Store};
 
-use super::shared::{load_account, submit_record};
+use super::shared::{MessageExtras, load_account, submit_record};
 use crate::commands::map_command_error;
 use crate::dto::{OutboxItemDto, SendOutcomeDto};
 use crate::state::{AppState, SharedSecretStore};
@@ -47,7 +47,19 @@ pub async fn retry_outbox_impl(
     }
 
     let account = load_account(store, record.account.value()).await?;
-    submit_record(store, secrets, extra_roots, &account, &record).await
+    // A retry rebuilds from the durable (text-only) row: an HTML alternative and
+    // attachments from the original compose session are not persisted, so a
+    // re-sent message is plain text. The composer keeps rich content on failure
+    // and is the fidelity-preserving retry surface.
+    submit_record(
+        store,
+        secrets,
+        extra_roots,
+        &account,
+        &record,
+        MessageExtras::default(),
+    )
+    .await
 }
 
 /// Lists every outbox row, most recently updated first.

@@ -228,3 +228,134 @@ async fn retry_outbox_rejects_an_unknown_id() {
         axomail_core::MailError::Configuration { .. }
     ));
 }
+
+#[tokio::test]
+async fn send_message_with_html_and_attachment_builds_multipart() {
+    let store = Store::open_in_memory().await.unwrap();
+    let (_concrete, secrets) = secret_stores();
+    let identity = TestTlsIdentity::generate().unwrap();
+    let server = ScriptedServer::spawn_tls(smtp_steps(true, "250 2.1.5 ok"), &identity)
+        .await
+        .unwrap();
+    let roots = vec![identity.root_der().to_vec()];
+
+    let summary =
+        account_with_folders(&store, &secrets, outgoing_account_input(server.port())).await;
+
+    // A real file on disk is the attachment source (dialog picks path, Rust
+    // reads bytes). A traversal-shaped basename must land sanitized in the MIME.
+    let dir = tempfile::tempdir().unwrap();
+    let file_path = dir.path().join("quarterly.pdf");
+    std::fs::write(&file_path, b"%PDF-1.7 attachment payload").unwrap();
+
+    let mut input = compose_input(summary.id, &["bob@example.org"], "Rich message");
+    input.text_body = "Plain text alternative.".to_owned();
+    // The HTML carries a hostile <script>; the send path must sanitize it out.
+    input.html_body = Some("<p>Hello in <b>HTML</b></p><script>alert(1)</script>".to_owned());
+    input.attachments = vec![file_path.to_str().unwrap().to_owned()];
+
+    let outcome = send_message_impl(&store, &secrets, &roots, input, false)
+        .await
+        .unwrap();
+    assert!(outcome.sent, "rich send should succeed");
+
+    let transcript = server.transcripts().into_iter().next().unwrap();
+    let received = transcript.received_text();
+    assert!(
+        received.contains("multipart/alternative"),
+        "expected a text+html alternative part"
+    );
+    assert!(
+        received.contains("multipart/mixed"),
+        "expected a mixed part wrapping the attachment"
+    );
+    assert!(received.contains("Plain text alternative."));
+    assert!(received.contains("<b>HTML</b>"));
+    // The attachment name (base64 content aside) appears in the part headers.
+    assert!(
+        received.contains("quarterly.pdf"),
+        "attachment filename should be present"
+    );
+    // The injected script was stripped by the server-side sanitizer.
+    assert!(
+        !received.contains("alert(1)"),
+        "hostile script must not reach the wire: {received}"
+    );
+}
+
+#[tokio::test]
+async fn scheduled_send_with_attachment_is_rejected_before_queueing() {
+    let store = Store::open_in_memory().await.unwrap();
+    let (_concrete, secrets) = secret_stores();
+    let summary = create_account_impl(&store, &secrets, outgoing_account_input(2525))
+        .await
+        .unwrap();
+
+    let dir = tempfile::tempdir().unwrap();
+    let file_path = dir.path().join("deck.pdf");
+    std::fs::write(&file_path, b"payload").unwrap();
+
+    let mut input = compose_input(summary.id, &["bob@example.org"], "Later with file");
+    input.attachments = vec![file_path.to_str().unwrap().to_owned()];
+    // Far in the future so it is treated as a scheduled send.
+    input.scheduled_at_unix = Some(i64::MAX);
+
+    let error = send_message_impl(&store, &secrets, &[], input, false)
+        .await
+        .expect_err("a scheduled send with an attachment must be rejected");
+    assert!(matches!(
+        error,
+        axomail_core::MailError::Configuration { .. }
+    ));
+    // Nothing was queued: the rejection happened before any outbox row.
+    assert!(list_outbox_impl(&store).await.unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn offline_send_with_attachment_is_rejected() {
+    let store = Store::open_in_memory().await.unwrap();
+    let (_concrete, secrets) = secret_stores();
+    let summary = create_account_impl(&store, &secrets, outgoing_account_input(2525))
+        .await
+        .unwrap();
+
+    let dir = tempfile::tempdir().unwrap();
+    let file_path = dir.path().join("photo.png");
+    std::fs::write(&file_path, b"\x89PNG payload").unwrap();
+
+    let mut input = compose_input(summary.id, &["bob@example.org"], "Offline with file");
+    input.attachments = vec![file_path.to_str().unwrap().to_owned()];
+
+    let error = send_message_impl(&store, &secrets, &[], input, true)
+        .await
+        .expect_err("an offline send with an attachment must be rejected");
+    assert!(matches!(
+        error,
+        axomail_core::MailError::Configuration { .. }
+    ));
+    assert!(list_outbox_impl(&store).await.unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn html_only_message_may_be_scheduled_as_text() {
+    let store = Store::open_in_memory().await.unwrap();
+    let (_concrete, secrets) = secret_stores();
+    let summary = create_account_impl(&store, &secrets, outgoing_account_input(2525))
+        .await
+        .unwrap();
+
+    let mut input = compose_input(summary.id, &["bob@example.org"], "Later, formatted");
+    input.html_body = Some("<p>Bold <b>plans</b></p>".to_owned());
+    input.scheduled_at_unix = Some(i64::MAX);
+
+    // No attachment: an HTML-only message degrades to its persisted text
+    // alternative and is accepted as a scheduled send.
+    let outcome = send_message_impl(&store, &secrets, &[], input, false)
+        .await
+        .unwrap();
+    assert!(!outcome.sent);
+    assert_eq!(outcome.scheduled_at_unix, Some(i64::MAX));
+    let items = list_outbox_impl(&store).await.unwrap();
+    assert_eq!(items.len(), 1);
+    assert_eq!(items[0].state, "pending");
+}

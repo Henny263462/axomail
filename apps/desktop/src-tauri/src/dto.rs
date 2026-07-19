@@ -37,7 +37,7 @@ pub use account::{
     IncomingServerDetailDto, MailboxSummaryDto, OAuthInput, OutgoingServerDetailDto,
     ServerEndpointInput, ServerInput, UpdateAccountInput,
 };
-pub use compose::{ComposeInput, DraftDto, OutboxItemDto, SendOutcomeDto};
+pub use compose::{AttachmentCandidateDto, ComposeInput, DraftDto, OutboxItemDto, SendOutcomeDto};
 pub use connection::ConnectionTestResult;
 pub use detail::{AttachmentMetaDto, MessageDetailDto, RecipientDto, ScamFlagDto};
 pub use folder::{CreateFolderInput, RenameFolderInput, SetFolderSubscribedInput};

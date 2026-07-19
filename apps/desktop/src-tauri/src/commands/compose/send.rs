@@ -1,10 +1,12 @@
 //! The `send_message` command: queue a composed message and (unless it is
 //! scheduled or the app is offline) submit it immediately.
 
-use axomail_core::{Account, MailError};
+use axomail_core::{Account, MailError, OutgoingAttachment};
+use axomail_security::sanitize_message_html;
 use axomail_storage::{Identity, IdentityId, NewOutbox, Store};
 
-use super::shared::{load_account, now_unix, parse_addresses, submit_record};
+use super::shared::{MessageExtras, load_account, now_unix, parse_addresses, submit_record};
+use crate::commands::attachments::load_attachments;
 use crate::commands::map_command_error;
 use crate::dto::{ComposeInput, SendOutcomeDto};
 use crate::state::{AppState, SharedSecretStore};
@@ -45,6 +47,31 @@ pub async fn send_message_impl(
     // A schedule strictly in the future defers the send; a past/now instant is
     // treated as "send now".
     let scheduled = input.scheduled_at_unix.filter(|&at| at > now_unix());
+    let deferred = scheduled.is_some() || offline;
+
+    // The durable outbox row is text-only (no migration this wave). Attachments
+    // therefore cannot survive to a later, worker-driven submission, so a
+    // deferred send that carries them is rejected up front rather than sent
+    // silently stripped. An HTML alternative degrades to the persisted text.
+    if deferred && !input.attachments.is_empty() {
+        return Err(MailError::Configuration {
+            message: "attachments can only be sent now, not scheduled or queued while offline; \
+                      remove them or send while connected"
+                .to_owned(),
+        });
+    }
+
+    // Read attachments and sanitize the HTML only for an immediate send. Reading
+    // up front means an unreadable or oversized attachment fails the command
+    // before any outbox row is written (like recipient validation).
+    let extras = if deferred {
+        MessageExtras::default()
+    } else {
+        MessageExtras {
+            html_body: sanitize_html_body(input.html_body.as_deref()),
+            attachments: read_attachments(input.attachments.clone()).await?,
+        }
+    };
 
     let record = store
         .outbox()
@@ -81,7 +108,38 @@ pub async fn send_message_impl(
             Some("the message could not be queued for sending".to_owned()),
         );
     }
-    submit_record(store, secrets, extra_roots, &account, &record).await
+    submit_record(store, secrets, extra_roots, &account, &record, extras).await
+}
+
+/// Sanitizes a composer-supplied HTML body to the allowlisted subset before it
+/// is sent (defense in depth over the editor's own client-side allowlist,
+/// ADR-0007). A blank or empty-after-sanitizing body yields `None` so the
+/// message stays text-only.
+fn sanitize_html_body(html: Option<&str>) -> Option<String> {
+    let raw = html?;
+    if raw.trim().is_empty() {
+        return None;
+    }
+    let cleaned = sanitize_message_html(raw).html;
+    (!cleaned.trim().is_empty()).then_some(cleaned)
+}
+
+/// Reads attachment bytes off the async runtime's blocking pool (`std::fs` is
+/// synchronous). Enforces the total size cap and sanitizes each filename.
+///
+/// # Errors
+///
+/// Propagates [`MailError::Configuration`] (over the size cap) or
+/// [`MailError::Filesystem`] (unreadable file) from [`load_attachments`].
+async fn read_attachments(paths: Vec<String>) -> Result<Vec<OutgoingAttachment>, MailError> {
+    if paths.is_empty() {
+        return Ok(Vec::new());
+    }
+    tokio::task::spawn_blocking(move || load_attachments(&paths))
+        .await
+        .map_err(|error| MailError::Filesystem {
+            message: format!("attachment read task failed: {error}"),
+        })?
 }
 
 /// Loads and validates the chosen sender identity, if any.

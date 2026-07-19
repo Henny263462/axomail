@@ -11,7 +11,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use axomail_core::{
     Account, AccountId, Address, EmailAddress, MailError, MailboxId, MailboxRole, MessageFlags,
-    OutgoingMailProvider, OutgoingMessage, UtcTimestamp,
+    OutgoingAttachment, OutgoingMailProvider, OutgoingMessage, UtcTimestamp,
 };
 use axomail_smtp::{SmtpConfig, SmtpProvider};
 use axomail_storage::{Identity, NewMessage, OutboxId, OutboxRecord, Store};
@@ -23,15 +23,34 @@ use crate::state::SharedSecretStore;
 /// Length at which the stored Sent-copy preview is truncated.
 const PREVIEW_LEN: usize = 200;
 
+/// Rich content that rides only on the immediate send path.
+///
+/// The durable outbox row is text-only (no migration this wave), so an HTML
+/// body and attachments are threaded in-memory into the one live submission
+/// rather than persisted. A retry (which rebuilds from the stored row) or a
+/// deferred send therefore uses [`MessageExtras::default`] — the plain-text
+/// alternative — never a silently stripped copy.
+#[derive(Debug, Default)]
+pub(super) struct MessageExtras {
+    /// Sanitized HTML alternative, or `None` for a text-only message.
+    pub html_body: Option<String>,
+    /// Attachments already read from disk (sanitized name + guessed type).
+    pub attachments: Vec<OutgoingAttachment>,
+}
+
 /// Submits one outbox row (already transitioned to `sending`) over SMTP and
 /// records the terminal state. Never propagates a send failure as an error:
 /// it is captured on the row and in the returned outcome.
+///
+/// `extras` carries the HTML alternative and attachments for a first,
+/// immediate send; retries pass [`MessageExtras::default`].
 pub(super) async fn submit_record(
     store: &Store,
     secrets: &SharedSecretStore,
     extra_roots: &[Vec<u8>],
     account: &Account,
     record: &OutboxRecord,
+    extras: MessageExtras,
 ) -> Result<SendOutcomeDto, MailError> {
     // Resolve the identity the row was queued under; a deleted identity nulls
     // the reference (ON DELETE SET NULL), so this falls back to the account.
@@ -39,7 +58,7 @@ pub(super) async fn submit_record(
         Some(id) => store.identities().get(id).await?,
         None => None,
     };
-    let message = match build_message(account, record, identity.as_ref()) {
+    let message = match build_message(account, record, identity.as_ref(), extras) {
         Ok(message) => message,
         Err(error) => return fail(store, record.id, error).await,
     };
@@ -83,14 +102,16 @@ async fn build_provider(
     SmtpProvider::new(config)
 }
 
-/// Assembles the outgoing message from the account, stored row, and chosen
-/// identity (text only per the composer contract; attachments and HTML come
-/// later). The identity, when present, supplies the From and Reply-To;
-/// otherwise the account's own address is used.
+/// Assembles the outgoing message from the account, stored row, chosen
+/// identity, and the immediate-send `extras` (HTML alternative + attachments).
+/// The identity, when present, supplies the From and Reply-To; otherwise the
+/// account's own address is used. The plain-text body always comes from the
+/// durable row.
 fn build_message(
     account: &Account,
     record: &OutboxRecord,
     identity: Option<&Identity>,
+    extras: MessageExtras,
 ) -> Result<OutgoingMessage, MailError> {
     let (from, reply_to) = sender_headers(account, identity)?;
     Ok(OutgoingMessage {
@@ -101,8 +122,8 @@ fn build_message(
         reply_to,
         subject: record.subject.clone(),
         text_body: record.body_text.clone(),
-        html_body: None,
-        attachments: Vec::new(),
+        html_body: extras.html_body,
+        attachments: extras.attachments,
     })
 }
 
