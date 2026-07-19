@@ -8,12 +8,18 @@
 
 use std::num::NonZeroU16;
 
-use axomail_core::{IncomingMailProvider, IncomingProtocol, MailError, ServerEndpoint};
+use axomail_core::{
+    Account, AccountId, IncomingMailProvider, IncomingProtocol, MailError, ServerEndpoint,
+};
 use axomail_imap::{ImapConfig, ImapProvider};
 use axomail_pop3::{Pop3Config, Pop3Provider};
 use axomail_smtp::{SmtpConfig, SmtpProvider};
+use axomail_storage::Store;
 
+use crate::commands::map_command_error;
+use crate::composition::resolve_credential;
 use crate::dto::{ConnectionTestResult, CreateAccountInput, IncomingInput, ServerInput};
+use crate::state::{AppState, SharedSecretStore};
 
 /// Builds a validated endpoint from a host and port, rejecting port zero.
 fn endpoint(host: &str, port: u16) -> Result<ServerEndpoint, MailError> {
@@ -126,4 +132,101 @@ pub async fn test_connection_impl(input: CreateAccountInput) -> ConnectionTestRe
 #[tauri::command]
 pub async fn test_connection(input: CreateAccountInput) -> Result<ConnectionTestResult, String> {
     Ok(test_connection_impl(input).await)
+}
+
+/// Probes an already-stored account's incoming server, resolving its
+/// credential (a keychain password, or a freshly refreshed OAuth2 access
+/// token) exactly as a real sync would.
+async fn probe_incoming_account(
+    account: &Account,
+    secrets: &SharedSecretStore,
+    extra_roots: &[Vec<u8>],
+) -> Result<(), MailError> {
+    let credential = resolve_credential(secrets, account, &account.incoming.credential).await?;
+    match account.incoming.protocol {
+        IncomingProtocol::Imap => {
+            let mut config = ImapConfig::with_credential(
+                account.incoming.endpoint.clone(),
+                account.incoming.security,
+                account.incoming.username.clone(),
+                credential,
+            );
+            config.extra_root_certs_der = extra_roots.to_vec();
+            let mut provider = ImapProvider::new(config);
+            provider.connect().await?;
+            let _ = provider.disconnect().await;
+            Ok(())
+        }
+        IncomingProtocol::Pop3 => {
+            let mut config = Pop3Config::with_credential(
+                account.incoming.endpoint.clone(),
+                account.incoming.security,
+                account.incoming.username.clone(),
+                credential,
+            );
+            config.extra_root_certs_der = extra_roots.to_vec();
+            config.delete_after_download = false;
+            let mut provider = Pop3Provider::new(config);
+            provider.connect().await?;
+            let _ = provider.disconnect().await;
+            Ok(())
+        }
+    }
+}
+
+/// Builds the SMTP provider for an already-stored account (validating the
+/// endpoint and resolving its outgoing credential). As for
+/// [`probe_outgoing`], no message is sent.
+async fn probe_outgoing_account(
+    account: &Account,
+    secrets: &SharedSecretStore,
+    extra_roots: &[Vec<u8>],
+) -> Result<(), MailError> {
+    let credential = resolve_credential(secrets, account, &account.outgoing.credential).await?;
+    let mut config = SmtpConfig::with_credential(
+        account.outgoing.endpoint.clone(),
+        account.outgoing.security,
+        account.outgoing.username.clone(),
+        credential,
+    );
+    config.extra_root_certs_der = extra_roots.to_vec();
+    let _provider = SmtpProvider::new(config)?;
+    Ok(())
+}
+
+/// Probes both servers of a stored account, resolving credentials from the
+/// keychain (refreshing an OAuth2 token when due).
+pub async fn test_account_connection_impl(
+    store: &Store,
+    secrets: &SharedSecretStore,
+    account_id: i64,
+    extra_roots: &[Vec<u8>],
+) -> Result<ConnectionTestResult, MailError> {
+    let account = store
+        .accounts()
+        .get(AccountId::new(account_id))
+        .await?
+        .ok_or_else(|| MailError::Configuration {
+            message: "no such account".to_owned(),
+        })?;
+    let incoming = probe_incoming_account(&account, secrets, extra_roots).await;
+    let outgoing = probe_outgoing_account(&account, secrets, extra_roots).await;
+    Ok(ConnectionTestResult {
+        incoming_ok: incoming.is_ok(),
+        incoming_error: incoming.err().map(|error| error.to_string()),
+        outgoing_ok: outgoing.is_ok(),
+        outgoing_error: outgoing.err().map(|error| error.to_string()),
+    })
+}
+
+/// Tests connectivity to a stored account's servers (used after OAuth2
+/// sign-in, and for re-testing a saved account).
+#[tauri::command]
+pub async fn test_account_connection(
+    state: tauri::State<'_, AppState>,
+    account_id: i64,
+) -> Result<ConnectionTestResult, String> {
+    test_account_connection_impl(state.store(), state.secrets(), account_id, &[])
+        .await
+        .map_err(map_command_error)
 }

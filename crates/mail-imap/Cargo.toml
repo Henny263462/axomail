@@ -22,6 +22,8 @@ tracing = { workspace = true }
 tokio = { workspace = true, features = ["test-util"] }
 rcgen = { workspace = true }
 tempfile = { workspace = true }
+# Decoding the XOAUTH2 SASL response in the scripted test server.
+base64 = { workspace = true }
 
 [lints]
 workspace = true

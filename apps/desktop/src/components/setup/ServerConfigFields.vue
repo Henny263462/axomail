@@ -12,6 +12,8 @@ const props = defineProps<{
   idPrefix: string;
   /** Accessible legend for the field group. */
   legend: string;
+  /** Hides the password input (OAuth2 accounts sign in via the browser). */
+  hidePassword?: boolean;
 }>();
 
 const model = defineModel<ServerDraft>({ required: true });
@@ -141,7 +143,10 @@ function onPassword(event: Event): void {
       >
     </div>
 
-    <div class="field">
+    <div
+      v-if="!hidePassword"
+      class="field"
+    >
       <label :for="`${idPrefix}-password`">Password</label>
       <input
         :id="`${idPrefix}-password`"

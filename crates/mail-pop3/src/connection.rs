@@ -9,8 +9,9 @@ use std::collections::HashSet;
 use std::sync::Arc;
 use std::time::Duration;
 
-use axomail_core::{ConnectionSecurity, MailError};
+use axomail_core::{ConnectionCredential, ConnectionSecurity, MailError};
 use rustls::ClientConfig;
+use tokio::io::{AsyncRead, AsyncWrite};
 use tokio::net::TcpStream;
 
 use crate::command;
@@ -113,13 +114,7 @@ async fn implicit_tls(
     let mut wire = Wire::new(tls);
     read_greeting(&mut wire, config.timeout).await?;
     let caps = Capabilities::from_atoms(command::capabilities(&mut wire, config.timeout).await?);
-    command::authenticate(
-        &mut wire,
-        &config.username,
-        &config.password,
-        config.timeout,
-    )
-    .await?;
+    authenticate(config, &mut wire, &caps).await?;
     tracing::debug!("POP3 session authenticated (implicit TLS)");
     Ok(Connected { wire, caps })
 }
@@ -154,15 +149,39 @@ async fn start_tls(
 
     let tls = with_deadline(config.timeout, handshake(tls_config, host, tcp)).await?;
     let mut wire = Wire::new(tls);
-    command::authenticate(
-        &mut wire,
-        &config.username,
-        &config.password,
-        config.timeout,
-    )
-    .await?;
+    authenticate(config, &mut wire, &caps).await?;
     tracing::debug!("POP3 session authenticated (STLS)");
     Ok(Connected { wire, caps })
+}
+
+/// Authenticates according to the configured credential.
+///
+/// Password accounts use `USER`/`PASS`. OAuth2 accounts use `AUTH XOAUTH2`;
+/// when the capability list is known and does not advertise `SASL`, the
+/// mechanism is rejected up front with a clear [`MailError::UnsupportedCapability`]
+/// rather than a blind attempt.
+async fn authenticate<S>(
+    config: &Pop3Config,
+    wire: &mut Wire<S>,
+    caps: &Capabilities,
+) -> Result<(), MailError>
+where
+    S: AsyncRead + AsyncWrite + Unpin + Send,
+{
+    match &config.credential {
+        ConnectionCredential::Password(password) => {
+            command::authenticate(wire, &config.username, password, config.timeout).await
+        }
+        ConnectionCredential::XOauth2 { access_token } => {
+            if caps.known() && !caps.has("SASL") {
+                return Err(MailError::UnsupportedCapability {
+                    capability: "SASL XOAUTH2".to_owned(),
+                });
+            }
+            command::authenticate_xoauth2(wire, &config.username, access_token, config.timeout)
+                .await
+        }
+    }
 }
 
 /// Resolves the host and opens a TCP connection to the first address that

@@ -279,6 +279,8 @@ where
         let upper = rest.to_ascii_uppercase();
         if upper.starts_with("LOGIN") {
             logged_in = handle_login(stream, tag, rest, spec).await?;
+        } else if upper.starts_with("AUTHENTICATE XOAUTH2") {
+            logged_in = handle_xoauth2(stream, tag, spec).await?;
         } else if upper.starts_with("CAPABILITY") {
             send_capability(stream, tag, spec).await?;
         } else if upper.starts_with("LIST") {
@@ -346,6 +348,49 @@ where
         .await?;
     }
     Ok(ok)
+}
+
+/// Handles `AUTHENTICATE XOAUTH2`: prompt with an empty continuation, read the
+/// base64 SASL initial response, and accept it when its bearer token matches
+/// `spec.password` (reused here as the expected access token).
+async fn handle_xoauth2<S>(stream: &mut BufReader<S>, tag: &str, spec: &Spec) -> io::Result<bool>
+where
+    S: AsyncRead + AsyncWrite + Unpin,
+{
+    send(stream, "+ \r\n").await?;
+    let Some(response) = read_line(stream).await? else {
+        return Ok(false);
+    };
+    let ok = xoauth2_bearer_token(&response).as_deref() == Some(spec.password.as_str());
+    if ok {
+        send(
+            stream,
+            &format!(
+                "{tag} OK [CAPABILITY {}] XOAUTH2 authenticated\r\n",
+                spec.capabilities
+            ),
+        )
+        .await?;
+    } else {
+        send(
+            stream,
+            &format!("{tag} NO [AUTHENTICATIONFAILED] token rejected\r\n"),
+        )
+        .await?;
+    }
+    Ok(ok)
+}
+
+/// Extracts the bearer token from a base64 XOAUTH2 SASL string
+/// (`user=..\x01auth=Bearer <token>\x01\x01`).
+fn xoauth2_bearer_token(base64_response: &str) -> Option<String> {
+    use base64::Engine;
+    let decoded = base64::engine::general_purpose::STANDARD
+        .decode(base64_response.trim())
+        .ok()?;
+    let text = String::from_utf8_lossy(&decoded);
+    text.split('\u{1}')
+        .find_map(|part| part.strip_prefix("auth=Bearer ").map(str::to_owned))
 }
 
 /// Sends a CAPABILITY response.

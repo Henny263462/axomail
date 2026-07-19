@@ -19,10 +19,15 @@ export interface MailboxSummary {
   unreadCount: number;
 }
 
+/** How an account authenticates to its servers. */
+export type AuthMechanism = "password" | "oauth2";
+
 export interface AccountSummary {
   id: number;
   displayName: string;
   email: string;
+  /** `password` or `oauth2`; drives whether "Sign in with browser" applies. */
+  authMechanism: AuthMechanism;
   mailboxes: MailboxSummary[];
 }
 
@@ -80,6 +85,31 @@ export interface OutgoingServerConfig {
   password: string;
 }
 
+/** A supported OAuth2 provider preset, or fully custom endpoints. */
+export type OAuthProvider = "gmail" | "microsoft" | "custom";
+
+/**
+ * OAuth2 configuration from the setup form. Only non-secret values: a
+ * provider preset (or custom), the user's own public client id, and optional
+ * endpoint/scope overrides. Tokens are never carried here — they are obtained
+ * by the separate browser sign-in and stored in the OS keychain.
+ */
+export interface OAuthInput {
+  provider: OAuthProvider;
+  clientId: string;
+  /** Required for `custom`; overrides a preset when present. */
+  authUrl?: string;
+  tokenUrl?: string;
+  scopes?: string[];
+}
+
+/** The authentication choice for a new account. */
+export interface AuthInput {
+  mechanism: AuthMechanism;
+  /** Present only when `mechanism` is `oauth2`. */
+  oauth?: OAuthInput;
+}
+
 /**
  * Payload for the `create_account` command. Mirrors the Rust
  * `CreateAccountInput` exactly (serde `camelCase`).
@@ -87,8 +117,16 @@ export interface OutgoingServerConfig {
 export interface CreateAccountInput {
   displayName: string;
   email: string;
+  auth: AuthInput;
   incoming: IncomingServerConfig;
   outgoing: OutgoingServerConfig;
+}
+
+/** Outcome of the OAuth2 browser sign-in (`oauth_authorize`). */
+export type OAuthAuthorizeStatus = "authorized" | "denied" | "timedOut";
+
+export interface OAuthAuthorizeResult {
+  status: OAuthAuthorizeStatus;
 }
 
 /**

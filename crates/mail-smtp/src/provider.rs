@@ -1,7 +1,8 @@
 //! The [`SmtpProvider`] adapter: connect, authenticate, submit one message.
 
 use axomail_core::{
-    ConnectionSecurity, MailError, OutgoingMailProvider, OutgoingMessage, SendResult,
+    ConnectionCredential, ConnectionSecurity, MailError, OutgoingMailProvider, OutgoingMessage,
+    SendResult,
 };
 use mail_send::smtp::AssertReply;
 use mail_send::smtp::message::Parameters;
@@ -48,16 +49,23 @@ impl SmtpProvider {
     /// our own connector, so mail-send's platform verifier and its
     /// `allow_invalid_certs` path are never involved.
     fn client_builder(&self, host: &str, port: u16) -> SmtpClientBuilder<String> {
+        // XOAUTH2 passes the raw access token as the SASL secret; mail-send
+        // builds the `user=..^Aauth=Bearer ..` string internally.
+        let credentials = match &self.config.credential {
+            ConnectionCredential::Password(password) => {
+                Credentials::new(self.config.username.clone(), password.clone())
+            }
+            ConnectionCredential::XOauth2 { access_token } => {
+                Credentials::new_xoauth2(self.config.username.clone(), access_token.clone())
+            }
+        };
         SmtpClientBuilder {
             addr: format!("{host}:{port}"),
             timeout: self.config.timeout,
             tls_connector: self.tls_connector.clone(),
             tls_hostname: host.to_owned(),
             tls_implicit: matches!(self.config.security, ConnectionSecurity::Tls),
-            credentials: Some(Credentials::new(
-                self.config.username.clone(),
-                self.config.password.clone(),
-            )),
+            credentials: Some(credentials),
             is_lmtp: false,
             say_ehlo: true,
             local_host: HELO_HOST.to_owned(),

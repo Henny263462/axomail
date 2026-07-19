@@ -15,8 +15,9 @@
 use std::sync::Arc;
 
 use axomail_core::{
-    Account, CredentialRef, IncomingMailProvider, IncomingProtocol, MailError, MailboxName,
-    MessageFlags, RawMessage, RemoteMailboxState, RemoteMessageId, SyncOutcome, SyncRequest,
+    Account, AccountAuth, ConnectionCredential, CredentialRef, IncomingMailProvider,
+    IncomingProtocol, MailError, MailboxName, MessageFlags, RawMessage, RemoteMailboxState,
+    RemoteMessageId, SyncOutcome, SyncRequest,
 };
 use axomail_imap::{ImapConfig, ImapProvider};
 use axomail_pop3::{Pop3Config, Pop3Provider};
@@ -128,16 +129,17 @@ impl AppProviderFactory {
 
 impl ProviderFactory<AnyIncomingProvider> for AppProviderFactory {
     async fn make(&self, account: &Account) -> Result<AnyIncomingProvider, MailError> {
-        let password = resolve_secret(&self.secrets, &account.incoming.credential).await?;
+        let credential =
+            resolve_credential(&self.secrets, account, &account.incoming.credential).await?;
         match account.incoming.protocol {
             IncomingProtocol::Imap => {
                 // Production trust: the webpki bundle only. `extra_root_certs_der`
                 // stays empty and there is no code path that weakens verification.
-                let config = ImapConfig::new(
+                let config = ImapConfig::with_credential(
                     account.incoming.endpoint.clone(),
                     account.incoming.security,
                     account.incoming.username.clone(),
-                    password,
+                    credential,
                 );
                 Ok(AnyIncomingProvider::Imap(ImapProvider::new(config)))
             }
@@ -146,11 +148,11 @@ impl ProviderFactory<AnyIncomingProvider> for AppProviderFactory {
                 // delete block; account setup never sets it.
                 let delete_after_download =
                     settings::pop3_delete_enabled(&self.store, account.id.value()).await?;
-                let mut config = Pop3Config::new(
+                let mut config = Pop3Config::with_credential(
                     account.incoming.endpoint.clone(),
                     account.incoming.security,
                     account.incoming.username.clone(),
-                    password,
+                    credential,
                 );
                 config.delete_after_download = delete_after_download;
                 let provider = Pop3Provider::new(config);
@@ -161,6 +163,32 @@ impl ProviderFactory<AnyIncomingProvider> for AppProviderFactory {
                 )))
             }
         }
+    }
+}
+
+/// Resolves the connection credential for one direction of an account.
+///
+/// Password accounts read their stored password from the keychain. OAuth2
+/// accounts load their token set and refresh it when due (rotating the stored
+/// refresh token), yielding a fresh access token for XOAUTH2. The secret is
+/// never logged or placed in an error.
+///
+/// # Errors
+///
+/// Returns [`MailError::Configuration`] if no secret/token is stored, plus any
+/// keychain, network, or authentication error from an OAuth refresh.
+pub(crate) async fn resolve_credential(
+    secrets: &SharedSecretStore,
+    account: &Account,
+    reference: &CredentialRef,
+) -> Result<ConnectionCredential, MailError> {
+    match &account.auth {
+        AccountAuth::Password => Ok(ConnectionCredential::password(
+            resolve_secret(secrets, reference).await?,
+        )),
+        AccountAuth::OAuth2(config) => Ok(ConnectionCredential::xoauth2(
+            crate::oauth::resolve_access_token(secrets, reference, config).await?,
+        )),
     }
 }
 

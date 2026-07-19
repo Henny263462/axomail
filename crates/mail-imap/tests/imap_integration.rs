@@ -28,6 +28,57 @@ fn config_for(server: &TestServer, security: ConnectionSecurity, password: &str)
     config
 }
 
+/// Builds an XOAUTH2 provider configuration that trusts the test server's
+/// cert.
+fn xoauth2_config_for(
+    server: &TestServer,
+    security: ConnectionSecurity,
+    access_token: &str,
+) -> ImapConfig {
+    let endpoint = ServerEndpoint::new(
+        server.host.clone(),
+        NonZeroU16::new(server.port).expect("nonzero port"),
+    )
+    .expect("valid endpoint");
+    let mut config = ImapConfig::new_xoauth2(endpoint, security, "user", access_token);
+    config.extra_root_certs_der = vec![server.cert_der.clone()];
+    config.timeout = Duration::from_secs(5);
+    config
+}
+
+#[tokio::test]
+async fn xoauth2_authenticate_succeeds_and_fetches_capabilities() {
+    // The scripted server accepts the token carried in `spec.password`.
+    let mut spec = Spec::base(TlsMode::Implicit);
+    spec.password = "ya29.the-access-token".to_owned();
+    let server = common::start(spec).await;
+    let mut provider = ImapProvider::new(xoauth2_config_for(
+        &server,
+        ConnectionSecurity::Tls,
+        "ya29.the-access-token",
+    ));
+
+    provider.connect().await.expect("xoauth2 connect");
+    provider.disconnect().await.expect("disconnect");
+
+    assert!(server.saw_command("AUTHENTICATE XOAUTH2"));
+}
+
+#[tokio::test]
+async fn xoauth2_wrong_token_maps_to_authentication() {
+    let mut spec = Spec::base(TlsMode::Implicit);
+    spec.password = "correct-token".to_owned();
+    let server = common::start(spec).await;
+    let mut provider = ImapProvider::new(xoauth2_config_for(
+        &server,
+        ConnectionSecurity::Tls,
+        "wrong-token",
+    ));
+
+    let error = provider.connect().await.expect_err("should reject token");
+    assert!(matches!(error, MailError::Authentication));
+}
+
 /// A sync request for INBOX with the given previous state and batch size.
 fn sync_request(state: MailboxSyncState, batch_size: u32) -> SyncRequest {
     SyncRequest {

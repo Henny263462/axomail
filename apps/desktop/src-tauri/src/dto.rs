@@ -21,18 +21,21 @@ mod compose;
 mod connection;
 mod detail;
 mod message;
+mod oauth;
 mod search;
 mod settings;
 mod sync_event;
 mod unified;
 
 pub use account::{
-    AccountSummaryDto, CreateAccountInput, IncomingInput, MailboxSummaryDto, ServerInput,
+    AccountSummaryDto, AuthInput, CreateAccountInput, IncomingInput, MailboxSummaryDto, OAuthInput,
+    ServerInput,
 };
 pub use compose::{ComposeInput, DraftDto, OutboxItemDto, SendOutcomeDto};
 pub use connection::ConnectionTestResult;
 pub use detail::{AttachmentMetaDto, MessageDetailDto, RecipientDto};
 pub use message::{MessageListItemDto, MessageListPageDto};
+pub use oauth::{OAuthAuthorizeResult, OAuthAuthorizeStatus};
 pub use search::SearchResultDto;
 pub use settings::{Pop3DeletePolicyDto, SettingsDto};
 pub use sync_event::SyncEventDto;

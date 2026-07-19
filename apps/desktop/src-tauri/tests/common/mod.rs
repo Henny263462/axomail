@@ -9,7 +9,9 @@ use axomail_core::{
     Address, ConnectionSecurity, EmailAddress, IncomingProtocol, MailboxId, MessageFlags,
     UtcTimestamp,
 };
-use axomail_desktop_lib::dto::{ComposeInput, CreateAccountInput, IncomingInput, ServerInput};
+use axomail_desktop_lib::dto::{
+    AuthInput, ComposeInput, CreateAccountInput, IncomingInput, ServerInput,
+};
 use axomail_desktop_lib::state::SharedSecretStore;
 use axomail_security::InMemorySecretStore;
 use axomail_storage::NewMessage;
@@ -68,6 +70,7 @@ pub fn valid_input() -> CreateAccountInput {
     CreateAccountInput {
         display_name: "Work".to_owned(),
         email: "klaus@theferbers.eu".to_owned(),
+        auth: AuthInput::default(),
         incoming: IncomingInput {
             protocol: IncomingProtocol::Imap,
             host: "imap.example.org".to_owned(),
@@ -84,6 +87,28 @@ pub fn valid_input() -> CreateAccountInput {
             password: "outgoing-secret".to_owned(),
         },
     }
+}
+
+/// A valid account-creation input that authenticates with OAuth2 (Gmail
+/// preset). No password is present; tokens are obtained later by the browser
+/// sign-in flow.
+pub fn oauth_account_input() -> CreateAccountInput {
+    use axomail_desktop_lib::dto::OAuthInput;
+    let mut input = valid_input();
+    input.auth = AuthInput {
+        mechanism: axomail_core::AuthMechanism::OAuth2,
+        oauth: Some(OAuthInput {
+            provider: axomail_core::OAuthProvider::Gmail,
+            client_id: "123.apps.googleusercontent.com".to_owned(),
+            auth_url: None,
+            token_url: None,
+            scopes: None,
+        }),
+    };
+    // Passwords are irrelevant for OAuth accounts and must not be stored.
+    input.incoming.password = String::new();
+    input.outgoing.password = String::new();
+    input
 }
 
 /// A message to insert directly through the storage layer for list tests.

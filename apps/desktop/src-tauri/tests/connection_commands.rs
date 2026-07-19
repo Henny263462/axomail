@@ -154,6 +154,7 @@ async fn probe_reports_directions_independently() {
     let input = CreateAccountInput {
         display_name: "Work".to_owned(),
         email: "klaus@theferbers.eu".to_owned(),
+        auth: axomail_desktop_lib::dto::AuthInput::default(),
         incoming: imap_input(server.port()),
         outgoing: smtp_input(2525),
     };

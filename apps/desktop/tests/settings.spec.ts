@@ -24,8 +24,20 @@ interface TauriGlobals {
 }
 
 const accounts: AccountSummary[] = [
-  { id: 1, displayName: "Ferber Mail", email: "klaus@theferbers.eu", mailboxes: [] },
-  { id: 2, displayName: "Legacy POP", email: "work@example.org", mailboxes: [] },
+  {
+    id: 1,
+    displayName: "Ferber Mail",
+    email: "klaus@theferbers.eu",
+    authMechanism: "password",
+    mailboxes: [],
+  },
+  {
+    id: 2,
+    displayName: "Legacy POP",
+    email: "work@example.org",
+    authMechanism: "password",
+    mailboxes: [],
+  },
 ];
 
 const settings: SettingsDto = {

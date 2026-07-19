@@ -14,7 +14,7 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use axomail_core::{
-    Account, AccountId, Address, ConnectionSecurity, CredentialRef, EmailAddress,
+    Account, AccountAuth, AccountId, Address, ConnectionSecurity, CredentialRef, EmailAddress,
     IncomingMailProvider, IncomingProtocol, IncomingServerConfig, MailError, MailboxId,
     MailboxName, MailboxRole, MessageFlags, OutgoingServerConfig, RawMessage, RemoteEnvelope,
     RemoteMailboxState, RemoteMessageId, ServerEndpoint, SyncOutcome, SyncRequest, UtcTimestamp,
@@ -347,6 +347,7 @@ fn sample_account() -> NewAccount {
     NewAccount {
         display_name: "Work".to_owned(),
         email: EmailAddress::parse("klaus@theferbers.eu").unwrap(),
+        auth: AccountAuth::Password,
         incoming: IncomingServerConfig {
             protocol: IncomingProtocol::Imap,
             endpoint: ServerEndpoint::new("imap.example.org", port(993)).unwrap(),

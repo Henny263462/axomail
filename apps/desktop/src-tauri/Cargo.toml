@@ -20,6 +20,7 @@ tauri-build = { workspace = true }
 [dependencies]
 tauri = { workspace = true }
 tauri-plugin-notification = { workspace = true }
+tauri-plugin-opener = { workspace = true }
 axomail-core = { workspace = true }
 axomail-storage = { workspace = true }
 axomail-security = { workspace = true }
@@ -32,6 +33,12 @@ tokio = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 tracing = { workspace = true }
+# OAuth2 / XOAUTH2 (ADR-0009): HTTP token exchange, PKCE, and the process-wide
+# rustls crypto provider installed at startup.
+reqwest = { workspace = true }
+base64 = { workspace = true }
+ring = { workspace = true }
+rustls = { workspace = true }
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["test-util"] }

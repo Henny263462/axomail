@@ -32,6 +32,7 @@ mod html;
 mod html_policy;
 mod keyring_store;
 mod memory_store;
+mod oauth_tokens;
 mod redact;
 mod secret_store;
 
@@ -40,5 +41,6 @@ pub use filename::sanitize_attachment_filename;
 pub use html::{SanitizedHtml, sanitize_message_html, sanitize_message_html_bytes};
 pub use keyring_store::KeyringSecretStore;
 pub use memory_store::InMemorySecretStore;
+pub use oauth_tokens::OAuthTokens;
 pub use redact::{redact_email, redact_secretlike};
 pub use secret_store::SecretStore;

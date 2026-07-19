@@ -71,6 +71,25 @@ futures = "0.3"
 # Test-only: self-signed certificates for the local TLS test servers.
 rcgen = "0.14.8"
 
+# OAuth2 / XOAUTH2 stack (ADR-0009). Versions verified against crates.io on
+# 2026-07-19. reqwest uses `rustls-no-provider` so it reuses the process-wide
+# ring CryptoProvider installed at startup (no aws-lc-rs, no native-tls); only
+# the JSON body support is pulled in beyond the TLS core.
+reqwest = { version = "0.13.4", default-features = false, features = [
+    "rustls-no-provider",
+    "json",
+    "form",
+] }
+# base64 for PKCE verifier/challenge and the POP3 XOAUTH2 SASL line.
+base64 = "0.22.1"
+# ring supplies both the CSPRNG (PKCE verifier + CSRF state) and SHA-256 (the
+# PKCE S256 challenge). It is already the rustls crypto provider in the tree,
+# so this adds no new graph dependency. Version pinned to the resolved one.
+ring = "0.17.14"
+# System-browser opener for the OAuth2 consent step; scoped to https in the
+# desktop capability set.
+tauri-plugin-opener = "2.5.4"
+
 # Internal crates. Directory names follow the architecture layout; package
 # names carry the `axomail-` prefix to avoid clashes with public crates
 # (e.g. the external `mail-parser` crate). See ADR-0002.

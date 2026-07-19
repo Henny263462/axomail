@@ -2,7 +2,7 @@
 
 use std::time::Duration;
 
-use axomail_core::{ConnectionSecurity, ServerEndpoint};
+use axomail_core::{ConnectionCredential, ConnectionSecurity, ServerEndpoint};
 
 /// Default deadline applied to every individual network operation.
 pub const DEFAULT_TIMEOUT: Duration = Duration::from_secs(30);
@@ -18,10 +18,11 @@ pub struct Pop3Config {
     pub endpoint: ServerEndpoint,
     /// Whether the transport is implicit TLS or an `STLS` upgrade.
     pub security: ConnectionSecurity,
-    /// Login name presented to `USER`.
+    /// Login name presented to `USER` or the `XOAUTH2` `user=` field.
     pub username: String,
-    /// Password presented to `PASS`.
-    pub password: String,
+    /// Authentication material: a password (`USER`/`PASS`) or an OAuth2 access
+    /// token (`AUTH XOAUTH2`).
+    pub credential: ConnectionCredential,
     /// Deadline applied to each network operation
     /// ([`DEFAULT_TIMEOUT`] is a sensible value).
     pub timeout: Duration,
@@ -50,8 +51,8 @@ pub struct Pop3Config {
 }
 
 impl Pop3Config {
-    /// Builds a configuration with the default per-operation timeout, no
-    /// extra trust anchors, and server-side deletion disabled.
+    /// Builds a password configuration with the default per-operation timeout,
+    /// no extra trust anchors, and server-side deletion disabled.
     #[must_use]
     pub fn new(
         endpoint: ServerEndpoint,
@@ -59,11 +60,43 @@ impl Pop3Config {
         username: impl Into<String>,
         password: impl Into<String>,
     ) -> Self {
+        Self::with_credential(
+            endpoint,
+            security,
+            username,
+            ConnectionCredential::password(password.into()),
+        )
+    }
+
+    /// Builds an OAuth2 (`AUTH XOAUTH2`) configuration from an access token.
+    #[must_use]
+    pub fn new_xoauth2(
+        endpoint: ServerEndpoint,
+        security: ConnectionSecurity,
+        username: impl Into<String>,
+        access_token: impl Into<String>,
+    ) -> Self {
+        Self::with_credential(
+            endpoint,
+            security,
+            username,
+            ConnectionCredential::xoauth2(access_token.into()),
+        )
+    }
+
+    /// Builds a configuration from an explicit credential.
+    #[must_use]
+    pub fn with_credential(
+        endpoint: ServerEndpoint,
+        security: ConnectionSecurity,
+        username: impl Into<String>,
+        credential: ConnectionCredential,
+    ) -> Self {
         Self {
             endpoint,
             security,
             username: username.into(),
-            password: password.into(),
+            credential,
             timeout: DEFAULT_TIMEOUT,
             extra_root_certs_der: Vec::new(),
             delete_after_download: false,
@@ -72,13 +105,13 @@ impl Pop3Config {
 }
 
 impl std::fmt::Debug for Pop3Config {
-    /// Debug output deliberately omits the password.
+    /// Debug output deliberately omits the credential (which redacts itself).
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Pop3Config")
             .field("endpoint", &self.endpoint)
             .field("security", &self.security)
             .field("username", &self.username)
-            .field("password", &"<redacted>")
+            .field("credential", &self.credential)
             .field("timeout", &self.timeout)
             .field("extra_root_certs_der", &self.extra_root_certs_der.len())
             .field("delete_after_download", &self.delete_after_download)

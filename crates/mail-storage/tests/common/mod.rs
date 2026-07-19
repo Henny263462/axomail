@@ -6,7 +6,7 @@
 use std::num::NonZeroU16;
 
 use axomail_core::{
-    Address, ConnectionSecurity, CredentialRef, EmailAddress, IncomingProtocol,
+    AccountAuth, Address, ConnectionSecurity, CredentialRef, EmailAddress, IncomingProtocol,
     IncomingServerConfig, MailboxName, MailboxRole, MessageFlags, OutgoingServerConfig,
     RemoteEnvelope, RemoteMessageId, ServerEndpoint, UtcTimestamp,
 };
@@ -19,6 +19,7 @@ pub fn sample_account(display_name: &str, email: &str) -> NewAccount {
     NewAccount {
         display_name: display_name.to_owned(),
         email: EmailAddress::parse(email).unwrap(),
+        auth: AccountAuth::Password,
         incoming: IncomingServerConfig {
             protocol: IncomingProtocol::Imap,
             endpoint: ServerEndpoint::new("imap.example.org", port(993)).unwrap(),
@@ -29,6 +30,37 @@ pub fn sample_account(display_name: &str, email: &str) -> NewAccount {
         outgoing: OutgoingServerConfig {
             endpoint: ServerEndpoint::new("smtp.example.org", port(465)).unwrap(),
             security: ConnectionSecurity::StartTls,
+            username: email.to_owned(),
+            credential: CredentialRef::new("axomail/account/outgoing"),
+        },
+    }
+}
+
+/// Builds a valid OAuth2 account fixture. The endpoints and scopes mirror a
+/// Gmail-style configuration; no secret material is present (tokens live in
+/// the keychain, never in the row).
+pub fn sample_oauth_account(display_name: &str, email: &str) -> NewAccount {
+    use axomail_core::{HttpsUrl, OAuthClientId, OAuthConfig, OAuthScopes};
+    let port = |value: u16| NonZeroU16::new(value).unwrap();
+    NewAccount {
+        display_name: display_name.to_owned(),
+        email: EmailAddress::parse(email).unwrap(),
+        auth: AccountAuth::OAuth2(OAuthConfig {
+            client_id: OAuthClientId::parse("123.apps.googleusercontent.com").unwrap(),
+            auth_url: HttpsUrl::parse("https://accounts.google.com/o/oauth2/v2/auth").unwrap(),
+            token_url: HttpsUrl::parse("https://oauth2.googleapis.com/token").unwrap(),
+            scopes: OAuthScopes::new(vec!["https://mail.google.com/".to_owned()]).unwrap(),
+        }),
+        incoming: IncomingServerConfig {
+            protocol: IncomingProtocol::Imap,
+            endpoint: ServerEndpoint::new("imap.gmail.com", port(993)).unwrap(),
+            security: ConnectionSecurity::Tls,
+            username: email.to_owned(),
+            credential: CredentialRef::new("axomail/account/incoming"),
+        },
+        outgoing: OutgoingServerConfig {
+            endpoint: ServerEndpoint::new("smtp.gmail.com", port(465)).unwrap(),
+            security: ConnectionSecurity::Tls,
             username: email.to_owned(),
             credential: CredentialRef::new("axomail/account/outgoing"),
         },
