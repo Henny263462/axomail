@@ -20,6 +20,7 @@ mod account;
 mod compose;
 mod connection;
 mod detail;
+mod identity;
 mod jobs;
 mod message;
 mod search;
@@ -35,6 +36,7 @@ pub use account::{
 pub use compose::{ComposeInput, DraftDto, OutboxItemDto, SendOutcomeDto};
 pub use connection::ConnectionTestResult;
 pub use detail::{AttachmentMetaDto, MessageDetailDto, RecipientDto, ScamFlagDto};
+pub use identity::{IdentityDto, IdentityInput};
 pub use jobs::SyncJobDto;
 pub use message::{MessageListItemDto, MessageListPageDto};
 pub use search::SearchResultDto;

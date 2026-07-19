@@ -8,7 +8,10 @@ use axomail_core::{
     MailboxName, MailboxRole, OutgoingServerConfig, ServerEndpoint,
 };
 use axomail_security::{Direction, credential_ref_for_account};
-use axomail_storage::{AccountUpdate, NewAccount, NewMailbox, Store};
+use axomail_storage::{
+    AccountUpdate, ArchiveGranularity, ForwardMode, IdentityFields, NewAccount, NewIdentity,
+    NewMailbox, ReplyPosition, SignaturePlacement, Store,
+};
 
 use crate::commands::map_command_error;
 use crate::commands::messages::count_unread;
@@ -215,11 +218,40 @@ async fn finish_account(
         });
     }
     let mailboxes = create_default_mailboxes(store, account.id).await?;
+    seed_default_identity(store, account).await?;
     let summaries = mailboxes
         .iter()
         .map(|mailbox| MailboxSummaryDto::from_domain(mailbox, 0))
         .collect::<Result<Vec<_>, _>>()?;
     AccountSummaryDto::new(account, summaries)
+}
+
+/// Seeds the account's default sender identity from its own address and
+/// display name, so a new account can compose immediately.
+async fn seed_default_identity(store: &Store, account: &Account) -> Result<(), MailError> {
+    store
+        .identities()
+        .insert(&NewIdentity {
+            account: account.id,
+            fields: IdentityFields {
+                email: account.email.as_str().to_owned(),
+                display_name: account.display_name.clone(),
+                reply_to: None,
+                signature_text: None,
+                signature_placement: SignaturePlacement::BelowQuote,
+                reply_position: ReplyPosition::Below,
+                forward_mode: ForwardMode::Inline,
+                archive_granularity: ArchiveGranularity::Flat,
+                sent_dest: None,
+                drafts_dest: None,
+                templates_dest: None,
+                archive_dest: None,
+            },
+            make_default: true,
+            sort_position: 0,
+        })
+        .await?;
+    Ok(())
 }
 
 /// Predicts the id the next inserted account row will receive.

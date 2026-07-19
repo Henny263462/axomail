@@ -15,6 +15,11 @@ use super::checked_id;
 pub struct ComposeInput {
     /// Account the message is sent from.
     pub account_id: i64,
+    /// Sender identity chosen in the From picker, if any. When present it
+    /// drives the From/Reply-To headers; when absent the account address is
+    /// used.
+    #[serde(default)]
+    pub identity_id: Option<i64>,
     /// Primary recipients.
     pub to: Vec<String>,
     /// Carbon-copy recipients.
@@ -25,6 +30,11 @@ pub struct ComposeInput {
     pub subject: String,
     /// Plain-text body.
     pub text_body: String,
+    /// Unix second at which to send a "send later" message. When present and
+    /// in the future, the message is queued and withheld until then rather
+    /// than submitted immediately.
+    #[serde(default)]
+    pub scheduled_at_unix: Option<i64>,
 }
 
 /// A stored draft, as listed by `list_drafts`.
@@ -88,6 +98,11 @@ pub struct OutboxItemDto {
     pub attempts: i64,
     /// Redacted last failure reason, if any.
     pub last_error: Option<String>,
+    /// Identity the message will be sent under, if any.
+    pub identity_id: Option<i64>,
+    /// Unix second a scheduled ("send later") message is withheld until, or
+    /// `null` for an immediately-eligible row.
+    pub scheduled_unix: Option<i64>,
     /// Last-updated timestamp (Unix seconds).
     pub updated_unix: i64,
 }
@@ -97,8 +112,8 @@ impl OutboxItemDto {
     ///
     /// # Errors
     ///
-    /// Returns [`MailError::Configuration`] if the outbox or account id is
-    /// out of the safe integer range.
+    /// Returns [`MailError::Configuration`] if the outbox, account, or
+    /// identity id is out of the safe integer range.
     pub fn from_record(record: OutboxRecord) -> Result<Self, MailError> {
         Ok(Self {
             id: checked_id(record.id.value())?,
@@ -108,6 +123,11 @@ impl OutboxItemDto {
             state: state_str(record.state),
             attempts: record.attempts,
             last_error: record.last_error,
+            identity_id: record
+                .identity
+                .map(|id| checked_id(id.value()))
+                .transpose()?,
+            scheduled_unix: record.next_attempt_unix,
             updated_unix: record.updated_unix,
         })
     }
@@ -128,7 +148,7 @@ fn summarize(recipients: &[String]) -> String {
     recipients.join(", ")
 }
 
-/// Result of a send or retry attempt.
+/// Result of a send, retry, or schedule attempt.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SendOutcomeDto {
@@ -138,10 +158,13 @@ pub struct SendOutcomeDto {
     pub sent: bool,
     /// Redacted failure reason when `sent` is false.
     pub error: Option<String>,
+    /// When set, the message was not sent now but queued for this Unix second
+    /// (a "send later" outcome); `sent` is false and `error` is `None`.
+    pub scheduled_at_unix: Option<i64>,
 }
 
 impl SendOutcomeDto {
-    /// Builds a send-outcome DTO, validating the outbox id.
+    /// Builds an immediate send-outcome DTO, validating the outbox id.
     ///
     /// # Errors
     ///
@@ -152,6 +175,22 @@ impl SendOutcomeDto {
             outbox_id: checked_id(outbox_id)?,
             sent,
             error,
+            scheduled_at_unix: None,
+        })
+    }
+
+    /// Builds a "scheduled for later" outcome, validating the outbox id.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`MailError::Configuration`] if the outbox id is out of the
+    /// safe integer range.
+    pub fn scheduled(outbox_id: i64, at_unix: i64) -> Result<Self, MailError> {
+        Ok(Self {
+            outbox_id: checked_id(outbox_id)?,
+            sent: false,
+            error: None,
+            scheduled_at_unix: Some(at_unix),
         })
     }
 }

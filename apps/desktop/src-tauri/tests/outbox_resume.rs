@@ -41,11 +41,13 @@ fn new_outbox(account: AccountId, subject: &str) -> NewOutbox {
     NewOutbox {
         account,
         draft_id: None,
+        identity_id: None,
         subject: subject.to_owned(),
         body_text: "body".to_owned(),
         to: vec!["bob@example.org".to_owned()],
         cc: Vec::new(),
         bcc: Vec::new(),
+        next_attempt_unix: None,
     }
 }
 

@@ -39,6 +39,7 @@ const composer = computed(
     v-if="dialogs.isOpen('composer')"
     :account-id="composer.accountId"
     :draft="composer.draft"
+    :accounts="accounts"
     @close="dialogs.close('composer')"
     @sent="emit('composerSent', $event)"
     @saved="emit('composerSaved')"

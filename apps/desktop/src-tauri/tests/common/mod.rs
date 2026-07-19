@@ -55,11 +55,13 @@ pub fn pop3_account_input(incoming_port: u16) -> CreateAccountInput {
 pub fn compose_input(account_id: i64, to: &[&str], subject: &str) -> ComposeInput {
     ComposeInput {
         account_id,
+        identity_id: None,
         to: to.iter().map(|value| (*value).to_owned()).collect(),
         cc: Vec::new(),
         bcc: Vec::new(),
         subject: subject.to_owned(),
         text_body: "Hello from the axomail composer test.".to_owned(),
+        scheduled_at_unix: None,
     }
 }
 

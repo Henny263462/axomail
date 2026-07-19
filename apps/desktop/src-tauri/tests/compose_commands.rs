@@ -168,11 +168,13 @@ async fn retry_outbox_sends_queued_row_then_guards_a_sent_row() {
         .create(&NewOutbox {
             account: AccountId::new(summary.id),
             draft_id: None,
+            identity_id: None,
             subject: "Queued draft".to_owned(),
             body_text: "body".to_owned(),
             to: vec!["bob@example.org".to_owned()],
             cc: Vec::new(),
             bcc: Vec::new(),
+            next_attempt_unix: None,
         })
         .await
         .unwrap();

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { formatScheduleTime } from "../../lib/sendLater";
 import type { OutboxItemDto, OutboxState } from "../../types/mail";
 import EmptyState from "../common/EmptyState.vue";
 
@@ -8,6 +9,8 @@ defineProps<{
 
 const emit = defineEmits<{
   retry: [outboxId: number];
+  "send-now": [outboxId: number];
+  "cancel-schedule": [outboxId: number];
 }>();
 
 const STATE_LABEL: Record<OutboxState, string> = {
@@ -16,6 +19,20 @@ const STATE_LABEL: Record<OutboxState, string> = {
   sent: "Sent",
   failed: "Failed",
 };
+
+/** True when a pending row is scheduled to be sent at a future time. */
+function isScheduled(item: OutboxItemDto): boolean {
+  return (
+    item.state === "pending" &&
+    item.scheduledUnix != null &&
+    item.scheduledUnix > Math.floor(Date.now() / 1000)
+  );
+}
+
+/** Localized scheduled-send time for a row, or an empty string. */
+function scheduleLabel(item: OutboxItemDto): string {
+  return item.scheduledUnix != null ? formatScheduleTime(item.scheduledUnix) : "";
+}
 </script>
 
 <template>
@@ -56,6 +73,31 @@ const STATE_LABEL: Record<OutboxState, string> = {
         >
           {{ item.lastError }}
         </p>
+        <span
+          v-if="isScheduled(item)"
+          class="scheduled"
+        >
+          Scheduled for {{ scheduleLabel(item) }}
+        </span>
+        <div
+          v-if="isScheduled(item)"
+          class="schedule-actions"
+        >
+          <button
+            type="button"
+            class="retry"
+            @click="emit('send-now', item.id)"
+          >
+            Send now
+          </button>
+          <button
+            type="button"
+            class="retry"
+            @click="emit('cancel-schedule', item.id)"
+          >
+            Cancel schedule
+          </button>
+        </div>
         <button
           v-if="item.state === 'failed'"
           type="button"
@@ -133,6 +175,18 @@ const STATE_LABEL: Record<OutboxState, string> = {
 .attempts {
   font-size: var(--text-xs);
   color: var(--color-text-tertiary);
+}
+
+.scheduled {
+  font-size: var(--text-xs);
+  font-weight: var(--weight-medium);
+  color: var(--color-accent);
+}
+
+.schedule-actions {
+  display: flex;
+  gap: var(--space-2);
+  margin-top: var(--space-1);
 }
 
 .last-error {

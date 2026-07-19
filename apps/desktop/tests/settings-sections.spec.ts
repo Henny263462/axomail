@@ -72,6 +72,7 @@ describe("settings section registry", () => {
       "sync-interval",
       "appearance",
       "pop3-delete",
+      "identities",
       "accounts",
     ]);
   });
