@@ -45,6 +45,7 @@ function listItem(over: Partial<MessageListItemModel> = {}): MessageListItemMode
     seen: false,
     flagged: false,
     preview: null,
+    tags: [],
     ...over,
   };
 }

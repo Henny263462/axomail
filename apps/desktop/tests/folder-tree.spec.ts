@@ -1,4 +1,4 @@
-import { mount } from "@vue/test-utils";
+import { flushPromises, mount } from "@vue/test-utils";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
@@ -213,5 +213,20 @@ describe("FolderTree", () => {
       .find((button) => button.text().includes("Refresh"));
     await refresh?.trigger("click");
     expect(refreshFoldersMock).toHaveBeenCalledWith(1);
+  });
+
+  it("opens the offline properties dialog from the menu", async () => {
+    const wrapper = mountTree();
+    await openMenuFor(wrapper, "Work");
+    const propsItem = wrapper
+      .findAll(".menu button")
+      .find((button) => button.text() === "Folder properties…");
+    expect(propsItem).toBeDefined();
+    await propsItem?.trigger("click");
+    await flushPromises();
+    // The dialog teleports to body and names the mailbox in its title.
+    const dialog = document.body.querySelector('[role="dialog"]');
+    expect(dialog?.textContent).toContain("Offline availability");
+    wrapper.unmount();
   });
 });

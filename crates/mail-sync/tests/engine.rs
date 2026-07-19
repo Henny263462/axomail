@@ -861,7 +861,10 @@ async fn recover_resumes_all_kinds_not_just_mailbox_sync() {
     let state = wait_for_job_state(&store, seeded.id, JobState::Succeeded).await;
     assert_eq!(state, JobState::Succeeded);
     let resumed = store.sync_jobs().get(seeded.id).await.unwrap().unwrap();
-    assert_eq!(resumed.error, None, "an empty-queue replay is not a failure");
+    assert_eq!(
+        resumed.error, None,
+        "an empty-queue replay is not a failure"
+    );
 }
 
 // ---------------------------------------------------------------------------

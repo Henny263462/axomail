@@ -18,6 +18,7 @@ import {
   setFolderSubscribed,
 } from "../../api/folders";
 import type { AccountSummary, MailboxSummary } from "../../types/mail";
+import FolderPropertiesDialog from "../offline/FolderPropertiesDialog.vue";
 import FolderDialog from "./FolderDialog.vue";
 import FolderNode from "./FolderNode.vue";
 import { buildFolderTree, leafName } from "./folderTree";
@@ -53,6 +54,9 @@ type DialogState =
 const dialog = ref<DialogState | null>(null);
 const busy = ref(false);
 const errorMessage = ref("");
+
+/** Folder whose offline-availability properties dialog is open, if any. */
+const propertiesFolder = ref<MailboxSummary | null>(null);
 
 function toggle(id: number): void {
   if (collapsedIds.has(id)) collapsedIds.delete(id);
@@ -98,6 +102,11 @@ async function menuToggleSubscribe(): Promise<void> {
   closeMenu();
   if (folder === null) return;
   await run(() => setFolderSubscribed(folder.id, folder.subscribed === false));
+}
+function menuProperties(): void {
+  const folder = menuFolder.value;
+  closeMenu();
+  if (folder !== null) propertiesFolder.value = folder;
 }
 
 const dialogTitle = computed(() => {
@@ -237,6 +246,13 @@ async function run(op: () => Promise<unknown>, fromDialog = false): Promise<void
         <button
           type="button"
           role="menuitem"
+          @click="menuProperties"
+        >
+          Folder properties…
+        </button>
+        <button
+          type="button"
+          role="menuitem"
           class="danger"
           @click="menuDelete"
         >
@@ -244,6 +260,15 @@ async function run(op: () => Promise<unknown>, fromDialog = false): Promise<void
         </button>
       </div>
     </template>
+
+    <Teleport to="body">
+      <FolderPropertiesDialog
+        v-if="propertiesFolder !== null"
+        :mailbox-id="propertiesFolder.id"
+        :mailbox-name="propertiesFolder.name"
+        @close="propertiesFolder = null"
+      />
+    </Teleport>
 
     <FolderDialog
       v-if="dialog !== null && dialog.kind !== 'delete'"
