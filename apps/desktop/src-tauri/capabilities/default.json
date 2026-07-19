@@ -1,7 +1,14 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Minimal capability set for the main window: core Tauri primitives plus notification:default. The notification permission is the sole addition, required so a finished background/manual sync can raise ONE aggregate 'N new messages' OS notification (counts only, never subjects or senders). No shell, filesystem, network, or opener permissions.",
+  "description": "Minimal capability set for the main window. Grants core Tauri primitives, notification:default (one aggregate 'N new messages' OS notification after a background/manual sync; counts only, never subjects or senders), and a single scoped opener permission: opener:allow-open-url restricted to `https://*`, used to launch the OAuth2 consent screen in the system browser (RFC 8252 external agent). No path opening (open_path), no reveal-in-dir, no mailto/tel/http scheme, and no shell, filesystem, or arbitrary-network permissions.",
   "windows": ["main"],
-  "permissions": ["core:default", "notification:default"]
+  "permissions": [
+    "core:default",
+    "notification:default",
+    {
+      "identifier": "opener:allow-open-url",
+      "allow": [{ "url": "https://*" }]
+    }
+  ]
 }

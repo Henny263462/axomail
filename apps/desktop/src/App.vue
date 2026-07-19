@@ -11,17 +11,17 @@ import {
 import { listMessages, markMessageSeen } from "./api/messages";
 import { syncAccount } from "./api/sync";
 import { listUnifiedInbox } from "./api/unified";
-import ComposerDialog from "./components/compose/ComposerDialog.vue";
 import EmptyState from "./components/common/EmptyState.vue";
 import AppShell from "./components/layout/AppShell.vue";
+import DialogHost from "./components/layout/DialogHost.vue";
+import type { AppDialogMap } from "./components/layout/dialogs";
 import DraftListPane from "./components/list/DraftListPane.vue";
 import MailListRegion from "./components/list/MailListRegion.vue";
 import OutboxListPane from "./components/list/OutboxListPane.vue";
 import MessageViewPane from "./components/message/MessageViewPane.vue";
-import SettingsDialog from "./components/settings/SettingsDialog.vue";
-import AccountSetupDialog from "./components/setup/AccountSetupDialog.vue";
 import SidebarPane from "./components/sidebar/SidebarPane.vue";
 import type { SidebarView } from "./components/sidebar/view";
+import { useDialogs } from "./composables/useDialogs";
 import { useSyncStatus } from "./composables/useSyncStatus";
 import type {
   AccountSummary,
@@ -45,11 +45,9 @@ const selectedMailboxId = ref<number | null>(null);
 const selectedMessageId = ref<number | null>(null);
 const selectedDraftId = ref<number | null>(null);
 const activeView = ref<SidebarView>("mailbox");
-const setupOpen = ref(false);
-const settingsOpen = ref(false);
-const composerOpen = ref(false);
-const composerDraft = ref<DraftDto | null>(null);
-const composerAccountId = ref(0);
+
+// Open-state + payload for every app-level dialog; DialogHost mounts them.
+const dialogs = useDialogs<AppDialogMap>();
 
 // dev-fixtures: sample envelopes are held here so mailbox selection can
 // render them without a backend. Empty (and unused) in every other mode.
@@ -209,24 +207,8 @@ function decrementUnread(mailboxId: number): void {
   }
 }
 
-function openSetup(): void {
-  setupOpen.value = true;
-}
-
-function closeSetup(): void {
-  setupOpen.value = false;
-}
-
-function openSettings(): void {
-  settingsOpen.value = true;
-}
-
-function closeSettings(): void {
-  settingsOpen.value = false;
-}
-
 async function onAccountCreated(account: AccountSummary): Promise<void> {
-  setupOpen.value = false;
+  dialogs.close("setup");
   await loadAccounts();
   const inbox =
     account.mailboxes.find((m) => m.role === "inbox") ?? account.mailboxes[0];
@@ -236,27 +218,18 @@ async function onAccountCreated(account: AccountSummary): Promise<void> {
 function openCompose(): void {
   const id = composeAccountId.value;
   if (id === null) return;
-  composerAccountId.value = id;
-  composerDraft.value = null;
-  composerOpen.value = true;
+  dialogs.open("composer", { accountId: id, draft: null });
 }
 
 function openDraft(draftId: number): void {
   const draft = drafts.value.find((d) => d.id === draftId);
   if (draft === undefined) return;
   selectedDraftId.value = draftId;
-  composerAccountId.value = draft.accountId;
-  composerDraft.value = draft;
-  composerOpen.value = true;
-}
-
-function closeComposer(): void {
-  composerOpen.value = false;
-  composerDraft.value = null;
+  dialogs.open("composer", { accountId: draft.accountId, draft });
 }
 
 async function onComposerSent(payload: { draftId: number | null }): Promise<void> {
-  closeComposer();
+  dialogs.close("composer");
   // A draft that was sent is removed client-side (send then delete).
   if (payload.draftId !== null) await deleteDraft(payload.draftId);
   if (activeView.value === "drafts") await loadDrafts();
@@ -265,10 +238,6 @@ async function onComposerSent(payload: { draftId: number | null }): Promise<void
 
 async function onComposerSaved(): Promise<void> {
   if (activeView.value === "drafts") await loadDrafts();
-}
-
-async function onSyncAccount(accountId: number): Promise<void> {
-  await syncAccount(accountId);
 }
 
 async function onRetryOutbox(outboxId: number): Promise<void> {
@@ -301,7 +270,7 @@ function onSyncEvent(event: SyncEventDto): void {
     ref="shell"
     :status-error="syncError"
     @dismiss-status-error="dismissError"
-    @open-settings="openSettings"
+    @open-settings="dialogs.open('settings')"
   >
     <template #sidebar>
       <SidebarPane
@@ -311,9 +280,9 @@ function onSyncEvent(event: SyncEventDto): void {
         :syncing-account-ids="syncingAccountIds"
         @select-mailbox="selectMailbox"
         @select-unified="selectUnified"
-        @add-account="openSetup"
+        @add-account="dialogs.open('setup')"
         @compose="openCompose"
-        @sync-account="onSyncAccount"
+        @sync-account="syncAccount"
         @select-drafts="selectDrafts"
         @select-outbox="selectOutbox"
       />
@@ -358,22 +327,11 @@ function onSyncEvent(event: SyncEventDto): void {
       />
     </template>
   </AppShell>
-  <AccountSetupDialog
-    v-if="setupOpen"
-    @close="closeSetup"
-    @created="onAccountCreated"
-  />
-  <ComposerDialog
-    v-if="composerOpen"
-    :account-id="composerAccountId"
-    :draft="composerDraft"
-    @close="closeComposer"
-    @sent="onComposerSent"
-    @saved="onComposerSaved"
-  />
-  <SettingsDialog
-    v-if="settingsOpen"
+  <DialogHost
+    :dialogs="dialogs"
     :accounts="accounts"
-    @close="closeSettings"
+    @account-created="onAccountCreated"
+    @composer-sent="onComposerSent"
+    @composer-saved="onComposerSaved"
   />
 </template>

@@ -1,21 +1,15 @@
 <script setup lang="ts">
-import { onMounted, ref } from "vue";
+import { onMounted, reactive, ref } from "vue";
 
-import {
-  getSettings,
-  setPop3DeletePolicy,
-  updateSettings,
-} from "../../api/settings";
+import { getSettings, updateSettings } from "../../api/settings";
 import { isTauri } from "../../lib/tauri";
 import type {
   AccountSummary,
   Pop3DeletePolicyDto,
   SettingsDto,
 } from "../../types/mail";
-
-/** Exact warning shown beside every POP3 server-deletion toggle. */
-const DELETE_WARNING =
-  "Deletes mail from the server after download. This cannot be undone.";
+import { messageFrom, type SettingsSectionContext } from "./context";
+import { settingsSections } from "./sections";
 
 const props = defineProps<{
   /** Accounts, used to label each POP3 delete-policy toggle. */
@@ -26,17 +20,47 @@ const emit = defineEmits<{
   close: [];
 }>();
 
-const notificationsEnabled = ref(false);
-const syncIntervalMinutes = ref(5);
-const policies = ref<Pop3DeletePolicyDto[]>([]);
-
 type LoadState = "loading" | "ready" | "unavailable";
 const state = ref<LoadState>("loading");
 const saving = ref(false);
 const errorMessage = ref("");
 const statusMessage = ref("");
-
 const root = ref<HTMLElement | null>(null);
+
+// The two batch-saved general fields plus the loaded POP3 snapshot. The
+// backend ignores the echoed policies (see update_settings), so keeping the
+// loaded copy here is enough to satisfy the DTO shape on save.
+const form = reactive({ notificationsEnabled: false, syncIntervalMinutes: 5 });
+const loadedPolicies = ref<Pop3DeletePolicyDto[]>([]);
+
+// A stable, read-through context (getters keep reactivity without exposing a
+// mutable prop). Sections read the fields and push edits via the callbacks.
+const context: SettingsSectionContext = {
+  get accounts() {
+    return props.accounts;
+  },
+  get initialPolicies() {
+    return loadedPolicies.value;
+  },
+  get notificationsEnabled() {
+    return form.notificationsEnabled;
+  },
+  get syncIntervalMinutes() {
+    return form.syncIntervalMinutes;
+  },
+  setNotificationsEnabled(value) {
+    form.notificationsEnabled = value;
+  },
+  setSyncIntervalMinutes(value) {
+    form.syncIntervalMinutes = value;
+  },
+  reportError(message) {
+    errorMessage.value = message;
+  },
+  reportStatus(message) {
+    statusMessage.value = message;
+  },
+};
 
 onMounted(async () => {
   const settings = await getSettings();
@@ -44,9 +68,11 @@ onMounted(async () => {
     state.value = "unavailable";
     return;
   }
-  notificationsEnabled.value = settings.notificationsEnabled;
-  syncIntervalMinutes.value = Math.max(1, settings.syncIntervalMinutes);
-  policies.value = settings.pop3DeletePolicies.map((policy) => ({ ...policy }));
+  form.notificationsEnabled = settings.notificationsEnabled;
+  form.syncIntervalMinutes = Math.max(1, settings.syncIntervalMinutes);
+  loadedPolicies.value = settings.pop3DeletePolicies.map((policy) => ({
+    ...policy,
+  }));
   state.value = "ready";
 });
 
@@ -83,50 +109,12 @@ function onKeydown(event: KeyboardEvent): void {
   }
 }
 
-function accountName(accountId: number): string {
-  const account = props.accounts.find((item) => item.id === accountId);
-  return account?.displayName ?? `Account ${accountId}`;
-}
-
-function messageFrom(error: unknown): string {
-  if (typeof error === "string") return error;
-  if (error instanceof Error) return error.message;
-  return "Could not save settings.";
-}
-
 function currentSettings(): SettingsDto {
   return {
-    notificationsEnabled: notificationsEnabled.value,
-    syncIntervalMinutes: Math.max(1, Math.floor(syncIntervalMinutes.value || 1)),
-    pop3DeletePolicies: policies.value.map((policy) => ({ ...policy })),
+    notificationsEnabled: form.notificationsEnabled,
+    syncIntervalMinutes: Math.max(1, Math.floor(form.syncIntervalMinutes || 1)),
+    pop3DeletePolicies: loadedPolicies.value.map((policy) => ({ ...policy })),
   };
-}
-
-/**
- * Flips one account's POP3 delete policy through the dedicated command — the
- * user-visible second guard. On failure the checkbox reverts and the error is
- * announced; local state changes only after the backend accepts it.
- */
-async function onTogglePolicy(
-  policy: Pop3DeletePolicyDto,
-  event: Event,
-): Promise<void> {
-  const next = (event.target as HTMLInputElement).checked;
-  statusMessage.value = "";
-  if (!isTauri()) {
-    (event.target as HTMLInputElement).checked = policy.enabled;
-    errorMessage.value =
-      "Changing the delete policy needs the desktop app; it is unavailable in the browser preview.";
-    return;
-  }
-  try {
-    await setPop3DeletePolicy(policy.accountId, next);
-    policy.enabled = next;
-    errorMessage.value = "";
-  } catch (error) {
-    (event.target as HTMLInputElement).checked = policy.enabled;
-    errorMessage.value = messageFrom(error);
-  }
 }
 
 async function onSave(): Promise<void> {
@@ -190,50 +178,12 @@ async function onSave(): Promise<void> {
         class="form"
         @submit.prevent="onSave"
       >
-        <label class="toggle">
-          <input
-            id="settings-notifications"
-            v-model="notificationsEnabled"
-            type="checkbox"
-          >
-          <span>Show desktop notifications for new mail</span>
-        </label>
-
-        <div class="field">
-          <label for="settings-interval">Sync interval (minutes)</label>
-          <input
-            id="settings-interval"
-            v-model.number="syncIntervalMinutes"
-            type="number"
-            inputmode="numeric"
-            min="1"
-            step="1"
-          >
-        </div>
-
-        <fieldset
-          v-if="policies.length > 0"
-          class="group"
-        >
-          <legend class="legend">
-            POP3 server deletion
-          </legend>
-          <p class="warning">
-            {{ DELETE_WARNING }}
-          </p>
-          <label
-            v-for="policy in policies"
-            :key="policy.accountId"
-            class="toggle"
-          >
-            <input
-              type="checkbox"
-              :checked="policy.enabled"
-              @change="onTogglePolicy(policy, $event)"
-            >
-            <span>{{ accountName(policy.accountId) }}</span>
-          </label>
-        </fieldset>
+        <component
+          :is="section.component"
+          v-for="section in settingsSections"
+          :key="section.id"
+          :context="context"
+        />
 
         <p
           class="error"
@@ -309,64 +259,6 @@ async function onSave(): Promise<void> {
   display: flex;
   flex-direction: column;
   gap: var(--space-4);
-}
-
-.toggle {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  font-size: var(--text-sm);
-  color: var(--color-text);
-}
-
-.field {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-1);
-}
-
-.field label {
-  font-size: var(--text-xs);
-  font-weight: var(--weight-medium);
-  color: var(--color-text-secondary);
-}
-
-.field input {
-  font: inherit;
-  font-size: var(--text-sm);
-  color: var(--color-text);
-  background: var(--color-bg);
-  border: 1px solid var(--color-border-strong);
-  border-radius: var(--radius-sm);
-  padding: var(--space-1) var(--space-2);
-  max-width: 8rem;
-}
-
-.field input:focus-visible {
-  border-color: var(--color-accent);
-}
-
-.group {
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-  padding: var(--space-3);
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-}
-
-.legend {
-  font-size: var(--text-xs);
-  font-weight: var(--weight-semibold);
-  color: var(--color-text-tertiary);
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  padding: 0 var(--space-1);
-}
-
-.warning {
-  font-size: var(--text-xs);
-  color: var(--color-danger);
 }
 
 .error {

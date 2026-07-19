@@ -71,6 +71,21 @@ futures = "0.3"
 # Test-only: self-signed certificates for the local TLS test servers.
 rcgen = "0.14.8"
 
+# OAuth2 / autoconfig prerequisites (Wave 1 Stage 0, ADR-0009). Versions
+# verified against crates.io on 2026-07-19.
+# HTTPS client for the OAuth2 token exchange (Track 1.2) and later ISPDB
+# autoconfig (5.3). `rustls-no-provider` selects rustls without bundling a
+# crypto provider, so the process installs `ring` as the default
+# `CryptoProvider` and reqwest reuses the workspace rustls 0.23 / ring stack —
+# no aws-lc-rs, no native-tls. It shares the same rustls-platform-verifier
+# already pulled by mail-send (SMTP). reqwest 0.13.4 also matches the version
+# tauri already resolves, so no duplicate reqwest enters the lock.
+reqwest = { version = "0.13.4", default-features = false, features = ["rustls-no-provider", "json"] }
+# XOAUTH2 SASL string construction for IMAP/SMTP (Track 1.2).
+base64 = "0.22.1"
+# Opens the OAuth2 consent URL in the system browser (RFC 8252 external agent).
+tauri-plugin-opener = "2.5.4"
+
 # Internal crates. Directory names follow the architecture layout; package
 # names carry the `axomail-` prefix to avoid clashes with public crates
 # (e.g. the external `mail-parser` crate). See ADR-0002.

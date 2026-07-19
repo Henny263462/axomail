@@ -45,6 +45,10 @@ const SYNC_EVENT: &str = "axomail://sync";
 pub fn run() {
     let outcome = tauri::Builder::default()
         .plugin(tauri_plugin_notification::init())
+        // Opens the OAuth2 consent URL in the system browser (ADR-0009). The
+        // capability scopes this to `https://*` only — no path opening or
+        // reveal-in-dir.
+        .plugin(tauri_plugin_opener::init())
         .setup(|app| {
             let data_dir = match app.path().app_data_dir() {
                 Ok(dir) => dir,
