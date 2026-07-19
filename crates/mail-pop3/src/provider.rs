@@ -122,6 +122,13 @@ impl IncomingMailProvider for Pop3Provider {
         })
     }
 
+    async fn select_mailbox(&mut self, _mailbox: &MailboxName) -> Result<(), MailError> {
+        // POP3 exposes a single implicit mailbox and has no SELECT.
+        Err(MailError::UnsupportedCapability {
+            capability: "mailbox selection (POP3 is download-only)".to_owned(),
+        })
+    }
+
     async fn store_flags(
         &mut self,
         _id: &RemoteMessageId,

@@ -44,6 +44,8 @@ const settings: SettingsDto = {
   notificationsEnabled: false,
   syncIntervalMinutes: 5,
   theme: "system",
+  autoMarkReadEnabled: true,
+  autoMarkReadDelayMs: 0,
   pop3DeletePolicies: [{ accountId: 2, enabled: false }],
 };
 
@@ -98,6 +100,8 @@ describe("SettingsDialog", () => {
       notificationsEnabled: true,
       syncIntervalMinutes: 15,
       theme: "system",
+      autoMarkReadEnabled: true,
+      autoMarkReadDelayMs: 0,
       pop3DeletePolicies: [{ accountId: 2, enabled: false }],
     });
     expect(wrapper.emitted("close")).toHaveLength(1);

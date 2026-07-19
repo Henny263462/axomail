@@ -20,8 +20,14 @@ pub struct SyncEventDto {
     pub job_id: i64,
     /// Mailbox the event concerns, when applicable.
     pub mailbox_id: Option<i64>,
+    /// Account the event concerns (write-back `opsReplayed` events).
+    pub account_id: Option<i64>,
     /// New messages ingested (batch and finish events).
     pub new_messages: Option<u64>,
+    /// Operations replayed to the server (`opsReplayed` events).
+    pub replayed: Option<u64>,
+    /// Operations parked as failed (`opsReplayed` events).
+    pub failed: Option<u64>,
     /// Terminating error class (failure events).
     pub error_class: Option<&'static str>,
     /// Redacted, user-safe message (failure events).
@@ -62,6 +68,18 @@ impl SyncEventDto {
                 dto.new_messages = Some(summary.new_messages);
                 dto
             }
+            SyncEvent::OpsReplayed {
+                job_id,
+                account_id,
+                replayed,
+                failed,
+            } => {
+                let mut dto = Self::base("opsReplayed", job_id.value())?;
+                dto.account_id = Some(checked_id(account_id.value())?);
+                dto.replayed = Some(*replayed);
+                dto.failed = Some(*failed);
+                dto
+            }
             SyncEvent::JobCancelled { job_id } => Self::base("jobCancelled", job_id.value())?,
             SyncEvent::JobFailed {
                 job_id,
@@ -82,7 +100,10 @@ impl SyncEventDto {
             kind,
             job_id: checked_id(job_id)?,
             mailbox_id: None,
+            account_id: None,
             new_messages: None,
+            replayed: None,
+            failed: None,
             error_class: None,
             message: None,
         })

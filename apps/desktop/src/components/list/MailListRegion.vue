@@ -33,6 +33,8 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   select: [messageId: number];
+  toggleFlag: [messageId: number];
+  markAllRead: [];
 }>();
 
 const { query, results, active, searching, clear } = useSearch();
@@ -64,12 +66,15 @@ watch(
       :accounts="accounts"
       :selected-message-id="selectedMessageId"
       @select="emit('select', $event)"
+      @toggle-flag="emit('toggleFlag', $event)"
     />
     <MessageListPane
       v-else
       :messages="messages"
       :selected-message-id="selectedMessageId"
       @select="emit('select', $event)"
+      @toggle-flag="emit('toggleFlag', $event)"
+      @mark-all-read="emit('markAllRead')"
     />
   </div>
 </template>

@@ -92,7 +92,7 @@ where
     }
 
     let policy = resolve_remote_policy(store, &parsed, allow_remote).await?;
-    MessageDetailDto::from_parsed(message_id, &parsed, policy)
+    MessageDetailDto::from_parsed(message_id, &parsed, policy, envelope.flags.flagged)
 }
 
 /// Decides the remote-content policy for this render: an explicit

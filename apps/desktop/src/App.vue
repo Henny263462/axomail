@@ -11,7 +11,7 @@ import {
   sendOutboxNow,
 } from "./api/compose";
 import { cancelAllSyncJobs } from "./api/jobs";
-import { listMessages, markMessageSeen } from "./api/messages";
+import { listMessages } from "./api/messages";
 import { getSettings } from "./api/settings";
 import { syncAccount } from "./api/sync";
 import { listUnifiedInbox } from "./api/unified";
@@ -26,6 +26,7 @@ import MessageViewPane from "./components/message/MessageViewPane.vue";
 import SidebarPane from "./components/sidebar/SidebarPane.vue";
 import type { SidebarView } from "./components/sidebar/view";
 import { useDialogs } from "./composables/useDialogs";
+import { useMessageActions } from "./composables/useMessageActions";
 import { useSyncStatus } from "./composables/useSyncStatus";
 import { reconcileTheme } from "./composables/useTheme";
 import type {
@@ -53,6 +54,14 @@ const activeView = ref<SidebarView>("mailbox");
 
 // Open-state + payload for every app-level dialog; DialogHost mounts them.
 const dialogs = useDialogs<AppDialogMap>();
+
+// Optimistic star / auto-read / mark-all-read, operating on the lists above.
+const messageActions = useMessageActions({
+  messages,
+  unifiedItems,
+  accounts,
+  selectedMessageId,
+});
 
 // dev-fixtures: sample envelopes are held here so mailbox selection can
 // render them without a backend. Empty (and unused) in every other mode.
@@ -126,9 +135,14 @@ onMounted(loadAccounts);
  */
 async function syncTheme(): Promise<void> {
   const settings = await getSettings();
+  if (settings === null) return;
   // Reconcile (not set): if the user already picked a theme in Settings while
   // this slow read was in flight, their choice must stand — not be stomped.
-  if (settings !== null) reconcileTheme(settings.theme);
+  reconcileTheme(settings.theme);
+  messageActions.configureAutoRead(
+    settings.autoMarkReadEnabled,
+    settings.autoMarkReadDelayMs,
+  );
 }
 
 onMounted(syncTheme);
@@ -220,28 +234,15 @@ async function selectOutbox(): Promise<void> {
 function onSelectMessage(messageId: number): void {
   selectedMessageId.value = messageId;
   shell.value?.showPane("message");
-  // The selected id may come from the mailbox list, the unified inbox, or a
-  // search result; only the first two carry a seen flag to update optimistically.
-  const message =
-    messages.value.find((m) => m.id === messageId) ??
-    unifiedItems.value.find((m) => m.id === messageId);
-  if (message !== undefined && !message.seen) {
-    // Optimistic: reflect the read state immediately. In browser preview
-    // markMessageSeen resolves null with nothing to persist; that is fine.
-    message.seen = true;
-    decrementUnread(message.mailboxId);
-    void markMessageSeen(messageId, true);
-  }
+  // Auto-mark-read (immediate or after the configured delay) is owned by the
+  // message-actions composable; it no-ops for a search hit not in the lists.
+  messageActions.scheduleAutoRead(messageId);
 }
 
-/** Keeps the sidebar unread badge in step with an optimistic read. */
-function decrementUnread(mailboxId: number): void {
-  for (const account of accounts.value) {
-    const mailbox = account.mailboxes.find((m) => m.id === mailboxId);
-    if (mailbox !== undefined) {
-      mailbox.unreadCount = Math.max(0, mailbox.unreadCount - 1);
-      return;
-    }
+/** Marks every unread message in the open mailbox read (list header action). */
+function onMarkAllRead(): void {
+  if (selectedMailboxId.value !== null) {
+    void messageActions.markAllRead(selectedMailboxId.value);
   }
 }
 
@@ -369,12 +370,15 @@ function onSyncEvent(event: SyncEventDto): void {
         :selected-message-id="selectedMessageId"
         :selected-mailbox-id="selectedMailboxId"
         @select="onSelectMessage"
+        @toggle-flag="messageActions.toggleStar"
+        @mark-all-read="onMarkAllRead"
       />
     </template>
     <template #message>
       <MessageViewPane
         v-if="messageView"
         :message-id="viewedMessageId"
+        @flag-changed="messageActions.syncStar($event.messageId, $event.flagged)"
       />
       <EmptyState
         v-else-if="activeView === 'drafts'"

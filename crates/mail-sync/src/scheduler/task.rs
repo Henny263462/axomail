@@ -174,7 +174,9 @@ fn handle_event(
             // without touching the account's backoff schedule.
             jobs.remove(job_id);
         }
-        SyncEvent::JobStarted { .. } | SyncEvent::BatchIngested { .. } => {}
+        SyncEvent::JobStarted { .. }
+        | SyncEvent::BatchIngested { .. }
+        | SyncEvent::OpsReplayed { .. } => {}
     }
 }
 

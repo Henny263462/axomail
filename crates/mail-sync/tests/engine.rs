@@ -795,19 +795,13 @@ async fn recover_resumes_all_kinds_not_just_mailbox_sync() {
 
     let _engine = SyncEngine::start(store.clone(), FakeFactory::new(world), test_config());
 
-    // Recovery resumes it and the placeholder drives it to a terminal state.
-    let state = wait_for_job_state(&store, seeded.id, JobState::Failed).await;
-    assert_eq!(state, JobState::Failed);
+    // Recovery resumes it (not just MailboxSync) and the real write-back
+    // executor drains the account's empty queue, reaching Succeeded — proof the
+    // resume filter is gone and the OpReplay executor runs to completion.
+    let state = wait_for_job_state(&store, seeded.id, JobState::Succeeded).await;
+    assert_eq!(state, JobState::Succeeded);
     let resumed = store.sync_jobs().get(seeded.id).await.unwrap().unwrap();
-    assert!(
-        resumed
-            .error
-            .as_deref()
-            .unwrap_or_default()
-            .contains("not yet implemented"),
-        "resumed OpReplay ran the placeholder executor, got {:?}",
-        resumed.error
-    );
+    assert_eq!(resumed.error, None, "an empty-queue replay is not a failure");
 }
 
 // ---------------------------------------------------------------------------
@@ -910,6 +904,7 @@ fn event_kind(event: &SyncEvent) -> &'static str {
         SyncEvent::JobStarted { .. } => "started",
         SyncEvent::BatchIngested { .. } => "batch",
         SyncEvent::JobFinished { .. } => "finished",
+        SyncEvent::OpsReplayed { .. } => "opsReplayed",
         SyncEvent::JobCancelled { .. } => "cancelled",
         SyncEvent::JobFailed { .. } => "failed",
     }

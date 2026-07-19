@@ -11,6 +11,7 @@ import type { MessageDetailDto } from "../src/types/mail";
 vi.mock("../src/api/messages", () => ({
   getMessageDetail: vi.fn(),
   setRemoteContentAllowed: vi.fn(),
+  setMessageFlagged: vi.fn(),
 }));
 
 const getMessageDetailMock = vi.mocked(getMessageDetail);
@@ -24,6 +25,7 @@ const htmlDetail: MessageDetailDto = {
   to: [{ name: "Klaus", address: "klaus@theferbers.eu" }],
   cc: [{ name: null, address: "cc@example.org" }],
   dateUnix: 1_752_790_000,
+  flagged: false,
   textBody: "Plain text version of the update.",
   sanitizedHtml: '<p>Hello <a href="https://example.org">link</a></p>',
   remoteBlockedCount: 3,

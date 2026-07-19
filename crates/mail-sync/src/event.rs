@@ -92,6 +92,21 @@ pub enum SyncEvent {
         /// Aggregate progress.
         summary: SyncJobSummary,
     },
+    /// One write-back (`OpReplay`) drain finished, reporting how many queued
+    /// operations were replayed to the server and how many were parked as
+    /// failed. Emitted before the job's terminal [`Self::JobFinished`]; it
+    /// carries the op counts the generic summary does not (`OpReplay` jobs
+    /// ingest no messages, so their `JobFinished` summary is all zeros).
+    OpsReplayed {
+        /// Persisted job id.
+        job_id: SyncJobId,
+        /// Account whose queue was drained.
+        account_id: AccountId,
+        /// Operations successfully replayed to the server this drain.
+        replayed: u64,
+        /// Operations parked as failed (poison ops) this drain.
+        failed: u64,
+    },
     /// A job was cancelled cooperatively before completion.
     ///
     /// This is a distinct terminal state from [`Self::JobFailed`]: a

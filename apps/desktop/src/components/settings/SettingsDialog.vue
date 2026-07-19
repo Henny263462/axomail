@@ -43,10 +43,14 @@ const form = reactive<{
   notificationsEnabled: boolean;
   syncIntervalMinutes: number;
   theme: ThemePreference;
+  autoMarkReadEnabled: boolean;
+  autoMarkReadDelayMs: number;
 }>({
   notificationsEnabled: false,
   syncIntervalMinutes: 5,
   theme: activeTheme.value,
+  autoMarkReadEnabled: true,
+  autoMarkReadDelayMs: 0,
 });
 const loadedPolicies = ref<Pop3DeletePolicyDto[]>([]);
 // The last persisted theme; the revert baseline for an unsaved live preview.
@@ -70,11 +74,21 @@ const context: SettingsSectionContext = {
   get theme() {
     return form.theme;
   },
+  get autoMarkReadEnabled() {
+    return form.autoMarkReadEnabled;
+  },
+  get autoMarkReadDelayMs() {
+    return form.autoMarkReadDelayMs;
+  },
   setNotificationsEnabled(value) {
     form.notificationsEnabled = value;
   },
   setSyncIntervalMinutes(value) {
     form.syncIntervalMinutes = value;
+  },
+  setAutoMarkRead(enabled, delayMs) {
+    form.autoMarkReadEnabled = enabled;
+    form.autoMarkReadDelayMs = Math.max(0, delayMs);
   },
   setTheme(value) {
     form.theme = value;
@@ -100,6 +114,8 @@ onMounted(async () => {
   form.notificationsEnabled = settings.notificationsEnabled;
   form.syncIntervalMinutes = Math.max(1, settings.syncIntervalMinutes);
   form.theme = settings.theme;
+  form.autoMarkReadEnabled = settings.autoMarkReadEnabled;
+  form.autoMarkReadDelayMs = Math.max(0, settings.autoMarkReadDelayMs);
   savedTheme.value = settings.theme;
   loadedPolicies.value = settings.pop3DeletePolicies.map((policy) => ({
     ...policy,
@@ -149,6 +165,8 @@ function currentSettings(): SettingsDto {
     notificationsEnabled: form.notificationsEnabled,
     syncIntervalMinutes: Math.max(1, Math.floor(form.syncIntervalMinutes || 1)),
     theme: form.theme,
+    autoMarkReadEnabled: form.autoMarkReadEnabled,
+    autoMarkReadDelayMs: Math.max(0, Math.floor(form.autoMarkReadDelayMs || 0)),
     pop3DeletePolicies: loadedPolicies.value.map((policy) => ({ ...policy })),
   };
 }

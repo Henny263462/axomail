@@ -29,10 +29,16 @@ export interface SettingsSectionContext {
   readonly syncIntervalMinutes: number;
   /** Current color-theme preference (batch-saved; previewed live on change). */
   readonly theme: ThemePreference;
+  /** Whether displayed messages are auto-marked read (batch-saved). */
+  readonly autoMarkReadEnabled: boolean;
+  /** Delay before auto-marking a displayed message read, ms (batch-saved). */
+  readonly autoMarkReadDelayMs: number;
   /** Stages a new notifications value for the shared Save. */
   setNotificationsEnabled(value: boolean): void;
   /** Stages a new sync-interval value for the shared Save. */
   setSyncIntervalMinutes(value: number): void;
+  /** Stages the auto-mark-read flag and delay for the shared Save. */
+  setAutoMarkRead(enabled: boolean, delayMs: number): void;
   /**
    * Stages a new theme for the shared Save and applies it immediately as a
    * live preview; the dialog reverts the preview if the user cancels.

@@ -97,6 +97,8 @@ export interface MessageDetailDto {
   cc: RecipientDto[];
   /** Unix seconds (UTC); null when the date header was absent. */
   dateUnix: number | null;
+  /** Whether the message is starred (authoritative state for the pane star). */
+  flagged: boolean;
   textBody: string | null;
   /** Sanitized HTML for the sandboxed iframe, or null when absent. */
   sanitizedHtml: string | null;
@@ -235,6 +237,10 @@ export interface SettingsDto {
   notificationsEnabled: boolean;
   syncIntervalMinutes: number;
   theme: ThemePreference;
+  /** Whether a displayed message is marked read automatically. */
+  autoMarkReadEnabled: boolean;
+  /** Delay before auto-marking a displayed message read (ms; 0 = immediate). */
+  autoMarkReadDelayMs: number;
   pop3DeletePolicies: Pop3DeletePolicyDto[];
 }
 
@@ -244,6 +250,7 @@ export type SyncEventKind =
   | "jobStarted"
   | "batchIngested"
   | "jobFinished"
+  | "opsReplayed"
   | "jobCancelled"
   | "jobFailed";
 
@@ -256,7 +263,13 @@ export interface SyncEventDto {
   kind: SyncEventKind;
   jobId: number;
   mailboxId: number | null;
+  /** Account the event concerns (write-back `opsReplayed` events). */
+  accountId: number | null;
   newMessages: number | null;
+  /** Operations replayed to the server (`opsReplayed` events). */
+  replayed: number | null;
+  /** Operations parked as failed (`opsReplayed` events). */
+  failed: number | null;
   errorClass: string | null;
   message: string | null;
 }

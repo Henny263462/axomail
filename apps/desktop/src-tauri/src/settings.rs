@@ -27,6 +27,10 @@ const KEY_NOTIFICATIONS: &str = "notifications_enabled";
 const KEY_SYNC_INTERVAL: &str = "sync_interval_minutes";
 /// Preferred application color theme.
 const KEY_THEME: &str = "theme";
+/// Whether a message is marked read automatically when it is displayed.
+const KEY_AUTO_MARK_READ: &str = "auto_mark_read_enabled";
+/// Delay before auto-marking a displayed message read, in milliseconds.
+const KEY_AUTO_MARK_READ_DELAY: &str = "auto_mark_read_delay_ms";
 /// Prefix of the per-account POP3 server-deletion policy key.
 const KEY_POP3_DELETE_PREFIX: &str = "pop3_delete_policy.";
 
@@ -36,6 +40,18 @@ const DEFAULT_NOTIFICATIONS: bool = true;
 pub const DEFAULT_SYNC_INTERVAL_MINUTES: u32 = 10;
 /// Hard floor on the polling interval; short-interval polling is a non-goal.
 pub const MIN_SYNC_INTERVAL_MINUTES: u32 = 1;
+/// Auto-mark-read is on by default (mirrors the pre-existing mark-on-open UX).
+const DEFAULT_AUTO_MARK_READ: bool = true;
+/// Default auto-mark-read delay: immediate (0 ms) on display.
+pub const DEFAULT_AUTO_MARK_READ_DELAY_MS: u32 = 0;
+/// Ceiling on the auto-mark-read delay (30 s); longer values are pointless.
+pub const MAX_AUTO_MARK_READ_DELAY_MS: u32 = 30_000;
+
+/// Clamps a requested auto-mark-read delay to the supported ceiling.
+#[must_use]
+pub fn clamp_auto_mark_read_delay(delay_ms: u32) -> u32 {
+    delay_ms.min(MAX_AUTO_MARK_READ_DELAY_MS)
+}
 
 /// Raises a requested interval to the one-minute floor.
 #[must_use]
@@ -91,6 +107,56 @@ pub async fn theme(store: &Store) -> Result<ThemePreference, MailError> {
         .map_or(ThemePreference::default(), |value| {
             ThemePreference::from_key(&value)
         }))
+}
+
+/// Reads whether displayed messages are auto-marked read (default `true`).
+///
+/// # Errors
+///
+/// Returns [`MailError::Database`] on any query failure.
+pub async fn auto_mark_read_enabled(store: &Store) -> Result<bool, MailError> {
+    Ok(store
+        .settings()
+        .get(KEY_AUTO_MARK_READ)
+        .await?
+        .map_or(DEFAULT_AUTO_MARK_READ, |value| value == "true"))
+}
+
+/// Reads the auto-mark-read delay in milliseconds, clamped to the ceiling
+/// (default [`DEFAULT_AUTO_MARK_READ_DELAY_MS`]).
+///
+/// # Errors
+///
+/// Returns [`MailError::Database`] on any query failure.
+pub async fn auto_mark_read_delay_ms(store: &Store) -> Result<u32, MailError> {
+    let stored = store.settings().get(KEY_AUTO_MARK_READ_DELAY).await?;
+    let delay = stored
+        .and_then(|value| value.parse::<u32>().ok())
+        .unwrap_or(DEFAULT_AUTO_MARK_READ_DELAY_MS);
+    Ok(clamp_auto_mark_read_delay(delay))
+}
+
+/// Persists the auto-mark-read flag and its (clamped) delay together.
+///
+/// # Errors
+///
+/// Returns [`MailError::Database`] on any query failure.
+pub async fn set_auto_mark_read(
+    store: &Store,
+    enabled: bool,
+    delay_ms: u32,
+) -> Result<(), MailError> {
+    store
+        .settings()
+        .set(KEY_AUTO_MARK_READ, bool_str(enabled))
+        .await?;
+    store
+        .settings()
+        .set(
+            KEY_AUTO_MARK_READ_DELAY,
+            &clamp_auto_mark_read_delay(delay_ms).to_string(),
+        )
+        .await
 }
 
 /// Reads a single account's POP3 server-deletion policy (default `false`).

@@ -38,6 +38,8 @@ fn settings_dto(notifications: bool, interval: u32) -> SettingsDto {
         notifications_enabled: notifications,
         sync_interval_minutes: interval,
         theme: ThemePreference::System,
+        auto_mark_read_enabled: true,
+        auto_mark_read_delay_ms: 0,
         pop3_delete_policies: Vec::new(),
     }
 }
@@ -55,7 +57,29 @@ async fn defaults_are_returned_when_nothing_is_stored() {
         ThemePreference::System,
         "theme defaults to system"
     );
+    assert!(got.auto_mark_read_enabled, "auto-mark-read default on");
+    assert_eq!(got.auto_mark_read_delay_ms, 0, "immediate by default");
     assert!(got.pop3_delete_policies.is_empty());
+}
+
+#[tokio::test]
+async fn update_round_trips_and_clamps_the_auto_mark_read_setting() {
+    let store = Store::open_in_memory().await.unwrap();
+    let (_concrete, secrets) = secret_stores();
+    let scheduler = scheduler_for(&store, &secrets);
+
+    let mut dto = settings_dto(true, 10);
+    dto.auto_mark_read_enabled = false;
+    // A wildly large delay is clamped to the ceiling on write.
+    dto.auto_mark_read_delay_ms = 10_000_000;
+    update_settings_impl(&store, &scheduler, dto).await.unwrap();
+
+    let got = get_settings_impl(&store).await.unwrap();
+    assert!(!got.auto_mark_read_enabled);
+    assert_eq!(
+        got.auto_mark_read_delay_ms,
+        axomail_desktop_lib::settings::MAX_AUTO_MARK_READ_DELAY_MS,
+    );
 }
 
 #[tokio::test]
@@ -167,6 +191,8 @@ async fn delete_policy_is_set_only_by_the_dedicated_command() {
         notifications_enabled: true,
         sync_interval_minutes: 10,
         theme: ThemePreference::System,
+        auto_mark_read_enabled: true,
+        auto_mark_read_delay_ms: 0,
         pop3_delete_policies: vec![Pop3DeletePolicyDto::new(pop.id, false).unwrap()],
     };
     update_settings_impl(&store, &scheduler, dto).await.unwrap();

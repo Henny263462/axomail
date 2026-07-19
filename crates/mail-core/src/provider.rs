@@ -44,6 +44,20 @@ pub trait IncomingMailProvider: Send {
         id: &RemoteMessageId,
     ) -> impl Future<Output = Result<RawMessage, MailError>> + Send;
 
+    /// Selects `mailbox` as the target of subsequent per-message operations.
+    ///
+    /// The per-message ops (`store_flags`, `move_message`, `delete_message`)
+    /// act on the mailbox the session most recently selected. `sync` selects
+    /// implicitly, but the write-back queue replays ops for messages the engine
+    /// is not currently syncing, so it selects explicitly through this method
+    /// first. On IMAP this issues `SELECT` and records the mailbox's
+    /// `UIDVALIDITY`; a protocol without server-side folders (POP3) returns
+    /// [`MailError::UnsupportedCapability`].
+    fn select_mailbox(
+        &mut self,
+        mailbox: &MailboxName,
+    ) -> impl Future<Output = Result<(), MailError>> + Send;
+
     /// Applies an additive flag change to a message on the server.
     ///
     /// The `delta` names only the flags and keywords to add (`STORE +FLAGS`)
@@ -110,6 +124,10 @@ mod tests {
             Err(MailError::Cancelled)
         }
 
+        async fn select_mailbox(&mut self, _mailbox: &MailboxName) -> Result<(), MailError> {
+            Err(MailError::Cancelled)
+        }
+
         async fn store_flags(
             &mut self,
             _id: &RemoteMessageId,
@@ -156,6 +174,7 @@ mod tests {
             state: MailboxSyncState::default(),
             batch_size: 100,
         }));
+        assert_send_future(provider.select_mailbox(&MailboxName::new("INBOX")));
         let delta = FlagDelta::default();
         assert_send_future(provider.store_flags(
             &RemoteMessageId::Imap {

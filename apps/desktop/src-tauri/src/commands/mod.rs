@@ -22,6 +22,7 @@ pub mod search;
 pub mod settings;
 pub mod sync;
 pub mod unified;
+pub mod writeback;
 
 use axomail_core::MailError;
 

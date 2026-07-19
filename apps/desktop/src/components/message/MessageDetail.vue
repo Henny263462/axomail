@@ -12,6 +12,7 @@ const props = defineProps<{
 const emit = defineEmits<{
   (event: "show-remote-once"): void;
   (event: "always-allow-remote", sender: string): void;
+  (event: "toggle-star"): void;
 }>();
 
 const toLine = computed(() => formatRecipients(props.detail.to));
@@ -34,9 +35,21 @@ function alwaysAllow(): void {
 <template>
   <article class="detail">
     <header class="header">
-      <h1 class="subject">
-        {{ detail.subject ?? "(no subject)" }}
-      </h1>
+      <div class="subject-row">
+        <h1 class="subject">
+          {{ detail.subject ?? "(no subject)" }}
+        </h1>
+        <button
+          type="button"
+          class="star"
+          :class="{ on: detail.flagged }"
+          :aria-pressed="detail.flagged"
+          :aria-label="detail.flagged ? 'Remove star' : 'Add star'"
+          @click="emit('toggle-star')"
+        >
+          <span aria-hidden="true">{{ detail.flagged ? "★" : "☆" }}</span>
+        </button>
+      </div>
       <p class="from">
         <span class="from-name">{{ detail.fromName || detail.fromAddress }}</span>
         <span class="from-address">&lt;{{ detail.fromAddress }}&gt;</span>
@@ -141,10 +154,39 @@ function alwaysAllow(): void {
   padding-bottom: var(--space-3);
 }
 
+.subject-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
 .subject {
   font-size: var(--text-lg);
   font-weight: var(--weight-semibold);
   letter-spacing: -0.01em;
+}
+
+.star {
+  flex-shrink: 0;
+  font-size: var(--text-lg);
+  line-height: 1;
+  color: var(--color-text-tertiary);
+  transition: color var(--transition-fast);
+}
+
+.star:hover {
+  color: var(--color-text-secondary);
+}
+
+.star.on {
+  color: var(--color-accent);
+}
+
+.star:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
 }
 
 .from {

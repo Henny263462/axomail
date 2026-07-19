@@ -27,6 +27,8 @@ pub async fn get_settings_impl(store: &Store) -> Result<SettingsDto, MailError> 
     let notifications_enabled = settings::notifications_enabled(store).await?;
     let sync_interval_minutes = settings::sync_interval_minutes(store).await?;
     let theme = settings::theme(store).await?;
+    let auto_mark_read_enabled = settings::auto_mark_read_enabled(store).await?;
+    let auto_mark_read_delay_ms = settings::auto_mark_read_delay_ms(store).await?;
 
     let mut pop3_delete_policies = Vec::new();
     for account in store.accounts().list().await? {
@@ -40,6 +42,8 @@ pub async fn get_settings_impl(store: &Store) -> Result<SettingsDto, MailError> 
         notifications_enabled,
         sync_interval_minutes,
         theme,
+        auto_mark_read_enabled,
+        auto_mark_read_delay_ms,
         pop3_delete_policies,
     })
 }
@@ -60,6 +64,12 @@ pub async fn update_settings_impl(
 ) -> Result<(), MailError> {
     settings::set_notifications_enabled(store, input.notifications_enabled).await?;
     settings::set_theme(store, input.theme).await?;
+    settings::set_auto_mark_read(
+        store,
+        input.auto_mark_read_enabled,
+        input.auto_mark_read_delay_ms,
+    )
+    .await?;
     let interval = settings::set_sync_interval_minutes(store, input.sync_interval_minutes).await?;
     // Relaunch the scheduler so the new interval takes effect (its interval is
     // fixed at construction) and the target set is refreshed.

@@ -13,6 +13,29 @@ use crate::connection::Connected;
 use crate::convert::flag_set_to_imap_list;
 use crate::error::{map_imap_error, with_deadline};
 
+/// Selects `encoded_name` (already modified UTF-7 encoded) and returns its
+/// `UIDVALIDITY`.
+///
+/// Used by the write-back queue to target a mailbox before replaying its
+/// per-message ops, independently of a full sync pass.
+pub(crate) async fn select(
+    connected: &mut Connected,
+    encoded_name: &str,
+    timeout: Duration,
+) -> Result<u32, MailError> {
+    with_deadline(timeout, async {
+        let mailbox = connected
+            .session
+            .select(encoded_name)
+            .await
+            .map_err(|err| map_imap_error(&err))?;
+        mailbox.uid_validity.ok_or_else(|| MailError::Protocol {
+            message: "the server did not report UIDVALIDITY on SELECT".to_owned(),
+        })
+    })
+    .await
+}
+
 /// Fetches the complete raw bytes of one message.
 ///
 /// Uses `BODY.PEEK[]` rather than `BODY[]` so that reading a message never
