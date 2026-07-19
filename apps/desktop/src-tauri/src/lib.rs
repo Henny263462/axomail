@@ -72,9 +72,13 @@ pub fn run() {
             };
             let secrets: SharedSecretStore = Arc::new(KeyringSecretStore::new());
             // Build inside the async runtime: starting the engine spawns Tokio
-            // tasks, which need an entered runtime context here in setup.
-            let state =
-                tauri::async_runtime::block_on(async { AppState::new(store, secrets, data_dir) });
+            // tasks, which need an entered runtime context here in setup. The
+            // persisted Work Offline flag seeds the engine before it recovers
+            // pending jobs, so an offline client never syncs on restart.
+            let state = tauri::async_runtime::block_on(async {
+                let offline = settings::work_offline(&store).await.unwrap_or(false);
+                AppState::new(store, secrets, data_dir, offline)
+            });
             let notifier = TauriNotifier::new(app.handle().clone());
             forward_sync_events(app.handle().clone(), &state, notifier);
             let startup_state = state.clone();
@@ -120,6 +124,12 @@ pub fn run() {
             commands::settings::get_settings,
             commands::settings::update_settings,
             commands::settings::set_pop3_delete_policy,
+            commands::offline::set_work_offline,
+            commands::offline::get_work_offline,
+            commands::offline::get_mailbox_offline_policy,
+            commands::offline::set_mailbox_offline_policy,
+            commands::offline::download_mailbox_now,
+            commands::offline::cleanup_offline_cache,
         ])
         .run(tauri::generate_context!());
 

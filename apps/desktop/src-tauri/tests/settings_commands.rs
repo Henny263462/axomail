@@ -5,6 +5,7 @@
 mod common;
 
 use std::sync::Arc;
+use std::sync::atomic::AtomicBool;
 
 use axomail_core::MailError;
 use axomail_desktop_lib::commands::accounts::create_account_impl;
@@ -29,7 +30,7 @@ fn scheduler_for(store: &Store, secrets: &SharedSecretStore) -> SchedulerControl
         factory,
         SyncConfig::default(),
     ));
-    SchedulerControl::new(engine, store.clone())
+    SchedulerControl::new(engine, store.clone(), Arc::new(AtomicBool::new(false)))
 }
 
 /// A settings DTO with no POP3 policies and the default theme.

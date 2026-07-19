@@ -29,10 +29,12 @@ mod ingest;
 mod mailboxes;
 mod message_rows;
 mod messages;
+mod offline;
 mod outbox;
 mod pagination;
 mod pending_ops;
 mod pop3_uidl;
+mod raw_store;
 mod remote_content;
 mod search;
 mod settings;
@@ -49,6 +51,7 @@ pub use identity_prefs::{ArchiveGranularity, ForwardMode, ReplyPosition, Signatu
 pub use ingest::{IngestRepo, IngestSummary};
 pub use mailboxes::{MailboxRepo, NewMailbox};
 pub use messages::{MessageRepo, NewMessage};
+pub use offline::{DownloadCandidate, DownloadPlan, OfflineMode, OfflinePolicy, OfflinePolicyRepo};
 pub use outbox::{NewOutbox, OutboxId, OutboxRecord, OutboxRepo, OutboxState};
 pub use pagination::{MessageCursor, MessagePage};
 pub use pending_ops::{
@@ -56,6 +59,7 @@ pub use pending_ops::{
     PendingOpsRepo,
 };
 pub use pop3_uidl::Pop3UidlRepo;
+pub use raw_store::{raw_message_path, read_raw, remove_raw, write_raw_atomically};
 pub use remote_content::RemoteContentRepo;
 pub use search::{SearchHit, SearchRepo};
 pub use settings::SettingsRepo;

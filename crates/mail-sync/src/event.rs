@@ -45,6 +45,8 @@ pub struct SyncJobSummary {
     pub removed_messages: u64,
     /// Number of sync passes applied.
     pub batches: u64,
+    /// Raw message bodies downloaded for offline availability this job.
+    pub bodies_cached: u64,
 }
 
 impl SyncJobSummary {

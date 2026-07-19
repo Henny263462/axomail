@@ -115,7 +115,7 @@ impl MessageRow {
 }
 
 /// Reconstructs a [`RemoteMessageId`] from its stored columns.
-fn decode_remote_id(
+pub(crate) fn decode_remote_id(
     kind: Option<&str>,
     uid: Option<i64>,
     uid_validity: Option<i64>,

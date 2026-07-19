@@ -30,6 +30,7 @@ use crate::identities::IdentityRepo;
 use crate::ingest::IngestRepo;
 use crate::mailboxes::MailboxRepo;
 use crate::messages::MessageRepo;
+use crate::offline::OfflinePolicyRepo;
 use crate::outbox::OutboxRepo;
 use crate::pending_ops::PendingOpsRepo;
 use crate::pop3_uidl::Pop3UidlRepo;
@@ -182,6 +183,12 @@ impl Store {
     #[must_use]
     pub fn outbox(&self) -> OutboxRepo<'_> {
         OutboxRepo::new(&self.pool)
+    }
+
+    /// The per-mailbox offline-policy and raw-body bookkeeping repository.
+    #[must_use]
+    pub fn offline(&self) -> OfflinePolicyRepo<'_> {
+        OfflinePolicyRepo::new(&self.pool)
     }
 
     /// The offline operation-queue (write-back) repository.

@@ -5,6 +5,8 @@
 //! and spawns a worker. On startup the dispatcher first requeues jobs a
 //! crash left `running` and resumes everything still `pending`.
 
+use std::path::Path;
+use std::sync::atomic::AtomicBool;
 use std::sync::{Arc, Mutex};
 
 use axomail_core::{AccountId, IncomingMailProvider, MailError, MailboxId};
@@ -19,6 +21,23 @@ use crate::factory::ProviderFactory;
 use crate::job::{SyncMailbox, WorkRequest};
 use crate::shared::Shared;
 use crate::worker::run_job;
+
+/// Optional wiring the composition root supplies to [`SyncEngine::start_with_options`].
+///
+/// Both fields default to "off": no shared offline flag and no raw-body store,
+/// which is exactly what the plain [`SyncEngine::start`] and the crate's own
+/// tests want. The desktop app opts in to both so mailbox sync can pre-download
+/// bodies for offline reading and honour a global Work Offline toggle.
+#[derive(Clone, Default)]
+pub struct EngineOptions {
+    /// Shared "work offline" flag; when set, workers claim no jobs. Shared with
+    /// the app so the status-bar toggle and the scheduler observe one source of
+    /// truth. Defaults to a private, always-online flag.
+    pub offline: Arc<AtomicBool>,
+    /// Root under which raw bodies are cached (`<raw_root>/raw/<id>.eml`).
+    /// `None` disables sync-time offline body download.
+    pub raw_root: Option<Arc<Path>>,
+}
 
 /// A running synchronization engine.
 ///
@@ -49,7 +68,19 @@ where
     /// serving enqueue requests.
     #[must_use]
     pub fn start(store: Store, factory: F, config: SyncConfig) -> Self {
-        let shared = Shared::new(store, factory, config);
+        Self::start_with_options(store, factory, config, EngineOptions::default())
+    }
+
+    /// Starts the engine with explicit [`EngineOptions`] (offline flag and raw
+    /// body store). [`Self::start`] is this with defaults.
+    #[must_use]
+    pub fn start_with_options(
+        store: Store,
+        factory: F,
+        config: SyncConfig,
+        options: EngineOptions,
+    ) -> Self {
+        let shared = Shared::new(store, factory, config, options.offline, options.raw_root);
         let (commands, command_rx) = mpsc::channel(config.command_buffer.max(1));
         let workers = Arc::new(Mutex::new(Vec::new()));
         let dispatcher = tokio::spawn(dispatch(
@@ -117,6 +148,27 @@ where
     pub fn cancel_all(&self) {
         self.shared.cancel_all();
     }
+
+    /// Sets the engine's Work Offline state.
+    ///
+    /// While offline the engine claims no jobs: a spawned worker returns
+    /// without touching its pending row (see the claim-time gate in
+    /// [`crate::worker::run_job`]). Returning online re-spawns every job that
+    /// stayed pending, so queued work resumes automatically. Cheap and
+    /// idempotent; safe to call from a command handler.
+    pub fn set_offline(&self, offline: bool) {
+        let was_offline = self.shared.set_offline(offline);
+        if was_offline && !offline {
+            // Online transition: wake the dispatcher to resume pending jobs.
+            self.shared.resume.notify_one();
+        }
+    }
+
+    /// Whether the engine is currently working offline.
+    #[must_use]
+    pub fn is_offline(&self) -> bool {
+        self.shared.is_offline()
+    }
 }
 
 impl<P, F> Drop for SyncEngine<P, F>
@@ -151,11 +203,52 @@ async fn dispatch<P, F>(
         tracing::error!(error = %error, "sync engine startup recovery failed");
     }
 
-    while let Some(request) = commands.recv().await {
-        if let Err(error) = enqueue_job(&shared, &workers, request).await {
-            tracing::error!(error = %error, "failed to enqueue sync job");
+    loop {
+        tokio::select! {
+            biased;
+            // An online transition wakes us to resume anything left pending
+            // while offline. Checked first so a burst of enqueues cannot
+            // starve resumption.
+            () = shared.resume.notified() => {
+                if let Err(error) = resume_pending(&shared, &workers).await {
+                    tracing::error!(error = %error, "failed to resume pending jobs after going online");
+                }
+            }
+            request = commands.recv() => match request {
+                Some(request) => {
+                    if let Err(error) = enqueue_job(&shared, &workers, request).await {
+                        tracing::error!(error = %error, "failed to enqueue sync job");
+                    }
+                }
+                // The engine handle was dropped: stop serving.
+                None => break,
+            },
         }
     }
+}
+
+/// Re-spawns a worker for every job still `pending`, used when the engine
+/// returns online. Workers that were spawned while offline have already exited
+/// at the claim-time gate, so their rows have no live worker; a fresh worker
+/// claims each (double-spawns are harmless — the atomic claim lets only one
+/// win). Never requeues `running` rows.
+async fn resume_pending<P, F>(
+    shared: &Arc<Shared<P, F>>,
+    workers: &Arc<Mutex<Vec<JoinHandle<()>>>>,
+) -> Result<(), MailError>
+where
+    P: IncomingMailProvider + 'static,
+    F: ProviderFactory<P>,
+{
+    let pending = shared
+        .store
+        .sync_jobs()
+        .list_by_state(JobState::Pending)
+        .await?;
+    for job in pending {
+        spawn_worker(shared, workers, job);
+    }
+    Ok(())
 }
 
 /// Requeues crash-orphaned `running` jobs and resumes every `pending` one,

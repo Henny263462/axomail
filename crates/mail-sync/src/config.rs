@@ -19,6 +19,10 @@ pub struct SyncConfig {
     pub network_timeout: Duration,
     /// Maximum envelopes requested per sync pass.
     pub batch_size: u32,
+    /// Maximum raw message bodies downloaded for offline availability in a
+    /// single mailbox-sync job. A larger backlog progresses over subsequent
+    /// passes, keeping any one job bounded.
+    pub offline_download_batch: u32,
     /// Maximum transient failures tolerated within a single job before it
     /// is failed.
     pub max_attempts: u32,
@@ -38,6 +42,7 @@ impl Default for SyncConfig {
             max_parallel_jobs: 2,
             network_timeout: Duration::from_secs(30),
             batch_size: 200,
+            offline_download_batch: 25,
             max_attempts: 4,
             backoff_base: Duration::from_secs(2),
             backoff_cap: Duration::from_secs(300),

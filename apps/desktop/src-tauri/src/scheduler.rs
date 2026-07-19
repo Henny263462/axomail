@@ -10,6 +10,7 @@
 //! Targets are always "every account's inbox-role mailbox": the scheduler
 //! keeps inboxes fresh; other folders sync on demand.
 
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, PoisonError};
 use std::time::Duration;
 
@@ -30,22 +31,29 @@ pub struct SchedulerControl {
     engine: Arc<AppSyncEngine>,
     store: Store,
     inner: Mutex<Option<BackgroundScheduler>>,
+    /// Global Work Offline flag (shared with [`AppState`](crate::state::AppState)
+    /// and the engine). The scheduler is paused while it is set so no polls are
+    /// enqueued offline; the engine gate is the ultimate guarantee regardless.
+    offline: Arc<AtomicBool>,
 }
 
 impl SchedulerControl {
     /// Creates a control that will drive `engine`, reading targets from
     /// `store`. No scheduler runs until [`launch`](Self::launch) is called.
     #[must_use]
-    pub fn new(engine: Arc<AppSyncEngine>, store: Store) -> Self {
+    pub fn new(engine: Arc<AppSyncEngine>, store: Store, offline: Arc<AtomicBool>) -> Self {
         Self {
             engine,
             store,
             inner: Mutex::new(None),
+            offline,
         }
     }
 
     /// Starts (or restarts) the scheduler at `interval_minutes`, targeting
-    /// every account's inbox. Any previous scheduler is stopped.
+    /// every account's inbox. Any previous scheduler is stopped. If the app is
+    /// currently offline the fresh scheduler starts paused, so relaunching for
+    /// an interval change never resumes polling behind the offline toggle.
     ///
     /// # Errors
     ///
@@ -57,9 +65,24 @@ impl SchedulerControl {
             first_delay: FIRST_DELAY,
         };
         let scheduler = BackgroundScheduler::start(Arc::clone(&self.engine), config, targets);
+        if self.offline.load(Ordering::SeqCst) {
+            scheduler.pause();
+        }
         // Replacing drops the previous handle, whose `Drop` stops its task.
         *lock(&self.inner) = Some(scheduler);
         Ok(())
+    }
+
+    /// Pauses or resumes background polling to match the Work Offline toggle.
+    /// A no-op when no scheduler has been launched yet.
+    pub fn set_offline(&self, offline: bool) {
+        if let Some(scheduler) = lock(&self.inner).as_ref() {
+            if offline {
+                scheduler.pause();
+            } else {
+                scheduler.resume();
+            }
+        }
     }
 
     /// Recomputes the target set and pushes it into the running scheduler.

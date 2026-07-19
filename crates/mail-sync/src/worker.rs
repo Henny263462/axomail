@@ -10,6 +10,7 @@
 //! seams the Wave 2 tracks drop their real executors into.
 
 mod mailbox_sync;
+mod offline_download;
 
 use std::sync::Arc;
 
@@ -28,6 +29,15 @@ where
     P: IncomingMailProvider + 'static,
     F: ProviderFactory<P>,
 {
+    // Work Offline gate: never claim a job while offline. The row stays
+    // `pending` and is re-spawned when the engine returns online (see
+    // `SyncEngine::set_offline`). Checked before any lock so an offline engine
+    // does no work and holds no resources.
+    if shared.is_offline() {
+        shared.take_cancel(job.id);
+        return;
+    }
+
     // Every kind is account-scoped; the mailbox (if any) is resolved by the
     // per-kind executor. A row without an account is a corruption, not work.
     let Some(account_id) = job.account_id else {

@@ -40,7 +40,7 @@ mod shared;
 mod worker;
 
 pub use config::SyncConfig;
-pub use engine::SyncEngine;
+pub use engine::{EngineOptions, SyncEngine};
 pub use event::{SyncErrorClass, SyncEvent, SyncJobSummary};
 pub use factory::ProviderFactory;
 pub use job::{SyncMailbox, WorkRequest};

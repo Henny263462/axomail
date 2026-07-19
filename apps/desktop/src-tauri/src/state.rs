@@ -8,10 +8,11 @@
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use axomail_security::SecretStore;
 use axomail_storage::Store;
-use axomail_sync::{SyncConfig, SyncEngine};
+use axomail_sync::{EngineOptions, SyncConfig, SyncEngine};
 
 use crate::composition::{AnyIncomingProvider, AppProviderFactory};
 use crate::scheduler::SchedulerControl;
@@ -37,6 +38,10 @@ pub struct AppState {
     engine: Arc<AppSyncEngine>,
     scheduler: Arc<SchedulerControl>,
     raw_root: PathBuf,
+    /// Global Work Offline flag, shared with the sync engine (which gates job
+    /// claims on it) and the scheduler. `set_work_offline` flips it through the
+    /// engine so an online transition resumes queued work.
+    offline: Arc<AtomicBool>,
 }
 
 impl AppState {
@@ -48,14 +53,33 @@ impl AppState {
     /// but not launched; call [`SchedulerControl::launch`] from the setup
     /// hook once the persisted interval is known.
     #[must_use]
-    pub fn new(store: Store, secrets: SharedSecretStore, raw_root: PathBuf) -> Self {
+    pub fn new(
+        store: Store,
+        secrets: SharedSecretStore,
+        raw_root: PathBuf,
+        initial_offline: bool,
+    ) -> Self {
         let factory = AppProviderFactory::new(Arc::clone(&secrets), store.clone());
-        let engine = Arc::new(SyncEngine::start(
+        // Seed the offline flag from the persisted setting before the engine's
+        // dispatcher runs crash recovery, so a client that quit offline never
+        // claims jobs on restart until the user goes back online.
+        let offline = Arc::new(AtomicBool::new(initial_offline));
+        // The engine caches raw bodies under `<raw_root>/raw/<id>.eml` for
+        // offline reading, and shares the offline flag so job claims are gated.
+        let engine = Arc::new(SyncEngine::start_with_options(
             store.clone(),
             factory.clone(),
             SyncConfig::default(),
+            EngineOptions {
+                offline: Arc::clone(&offline),
+                raw_root: Some(Arc::from(raw_root.clone().into_boxed_path())),
+            },
         ));
-        let scheduler = Arc::new(SchedulerControl::new(Arc::clone(&engine), store.clone()));
+        let scheduler = Arc::new(SchedulerControl::new(
+            Arc::clone(&engine),
+            store.clone(),
+            Arc::clone(&offline),
+        ));
         Self {
             store,
             secrets,
@@ -63,6 +87,7 @@ impl AppState {
             engine,
             scheduler,
             raw_root,
+            offline,
         }
     }
 
@@ -101,5 +126,12 @@ impl AppState {
     #[must_use]
     pub fn raw_root(&self) -> &Path {
         &self.raw_root
+    }
+
+    /// Whether the app is currently working offline (reads local, queues
+    /// writes/sends). Shared with the sync engine and scheduler.
+    #[must_use]
+    pub fn is_offline(&self) -> bool {
+        self.offline.load(Ordering::SeqCst)
     }
 }

@@ -8,6 +8,7 @@
 //! | `notifications_enabled` | `"true"`/`"false"` | `true` |
 //! | `sync_interval_minutes` | decimal integer, clamped `>= 1` | `10` |
 //! | `theme` | `"system"`/`"light"`/`"dark"` | `system` |
+//! | `work_offline` | `"true"`/`"false"` | `false` |
 //! | `pop3_delete_policy.<accountId>` | `"true"`/`"false"` | `false` |
 //!
 //! The POP3 delete policy is the second of the two guards against POP3's
@@ -27,6 +28,8 @@ const KEY_NOTIFICATIONS: &str = "notifications_enabled";
 const KEY_SYNC_INTERVAL: &str = "sync_interval_minutes";
 /// Preferred application color theme.
 const KEY_THEME: &str = "theme";
+/// Whether the app is in Work Offline mode (no network jobs; queue writes).
+const KEY_WORK_OFFLINE: &str = "work_offline";
 /// Prefix of the per-account POP3 server-deletion policy key.
 const KEY_POP3_DELETE_PREFIX: &str = "pop3_delete_policy.";
 
@@ -91,6 +94,31 @@ pub async fn theme(store: &Store) -> Result<ThemePreference, MailError> {
         .map_or(ThemePreference::default(), |value| {
             ThemePreference::from_key(&value)
         }))
+}
+
+/// Reads whether the app is in Work Offline mode (default `false`).
+///
+/// # Errors
+///
+/// Returns [`MailError::Database`] on any query failure.
+pub async fn work_offline(store: &Store) -> Result<bool, MailError> {
+    Ok(store
+        .settings()
+        .get(KEY_WORK_OFFLINE)
+        .await?
+        .is_some_and(|value| value == "true"))
+}
+
+/// Persists the Work Offline mode flag.
+///
+/// # Errors
+///
+/// Returns [`MailError::Database`] on any query failure.
+pub async fn set_work_offline(store: &Store, offline: bool) -> Result<(), MailError> {
+    store
+        .settings()
+        .set(KEY_WORK_OFFLINE, bool_str(offline))
+        .await
 }
 
 /// Reads a single account's POP3 server-deletion policy (default `false`).

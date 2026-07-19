@@ -128,7 +128,7 @@ where
 {
     let net = shared.config.network_timeout;
     let mut provider = guarded(token, net, shared.factory.make(account)).await?;
-    let outcome = pump(
+    let mut outcome = pump(
         shared,
         job_id,
         mailbox_id,
@@ -137,6 +137,19 @@ where
         token,
     )
     .await;
+    // With the envelope sync applied and the connection still open, download
+    // the policy-covered raw bodies for offline reading (bounded per pass).
+    // A body-download hiccup must not fail an otherwise successful sync, but a
+    // cancellation still propagates.
+    if let Ok(summary) = &mut outcome {
+        match super::offline_download::run(shared, mailbox_id, &mut provider, token).await {
+            Ok(cached) => summary.bodies_cached += cached,
+            Err(MailError::Cancelled) => outcome = Err(MailError::Cancelled),
+            Err(error) => {
+                tracing::warn!(error = %error, "offline body download pass failed");
+            }
+        }
+    }
     // Close the session regardless of how the pass loop ended.
     let _ = guarded(token, net, provider.disconnect()).await;
     outcome

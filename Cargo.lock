@@ -474,10 +474,12 @@ name = "axomail-sync"
 version = "0.1.0"
 dependencies = [
  "axomail-core",
+ "axomail-parser",
  "axomail-storage",
  "futures",
  "serde",
  "serde_json",
+ "tempfile",
  "tokio",
  "tokio-util",
  "tracing",

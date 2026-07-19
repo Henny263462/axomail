@@ -7,8 +7,7 @@
 //! `axomail-parser` and any HTML body is sanitized by `axomail-security`
 //! before it is placed in the DTO (ADR-0007).
 
-use std::path::{Path, PathBuf};
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::path::Path;
 
 use axomail_core::{
     Account, IncomingMailProvider, MailError, Mailbox, MailboxId, MessageId, RemoteMessageId,
@@ -16,8 +15,15 @@ use axomail_core::{
 };
 use axomail_parser::parse_message;
 use axomail_security::RemoteContentPolicy;
-use axomail_storage::Store;
+use axomail_storage::{Store, read_raw, write_raw_atomically};
 use axomail_sync::ProviderFactory;
+
+// The raw-cache path helper now lives in the storage crate's raw store, shared
+// with the sync-time offline download so the `<raw_root>/raw/<id>.eml` layout
+// has a single source of truth. Re-exported here so existing callers
+// (`account_secrets`, the account-cleanup tests) keep resolving it under
+// `commands::detail::raw_message_path`.
+pub use axomail_storage::raw_message_path;
 
 use crate::commands::map_command_error;
 use crate::dto::MessageDetailDto;
@@ -60,7 +66,7 @@ where
         })?;
 
     let path = raw_message_path(raw_root, message_id);
-    let bytes = match read_cached(&path).await? {
+    let bytes = match read_raw(&path).await? {
         Some(bytes) => bytes,
         None => {
             fetch_and_cache(store, factory, &envelope.remote_id, envelope.mailbox, &path).await?
@@ -153,7 +159,7 @@ where
         })?;
 
     let bytes = fetch_raw(store, factory, &account, &mailbox, remote_id).await?;
-    cache_atomically(path, &bytes).await?;
+    write_raw_atomically(path, &bytes).await?;
     Ok(bytes)
 }
 
@@ -188,57 +194,6 @@ where
     let result = fetch.await;
     let _ = provider.disconnect().await;
     Ok(result?.bytes)
-}
-
-/// Path of the cached raw message for `message_id`
-/// (`<raw_root>/raw/<message_id>.eml`).
-///
-/// This is the single source of truth for the raw-cache layout: the on-demand
-/// body fetch here writes it, and account deletion
-/// ([`crate::commands::accounts`]) reads it to clean up orphaned files.
-#[must_use]
-pub fn raw_message_path(raw_root: &Path, message_id: i64) -> PathBuf {
-    raw_root.join("raw").join(format!("{message_id}.eml"))
-}
-
-/// Reads the cached bytes, returning `None` when the file is absent.
-async fn read_cached(path: &Path) -> Result<Option<Vec<u8>>, MailError> {
-    match tokio::fs::read(path).await {
-        Ok(bytes) => Ok(Some(bytes)),
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
-        Err(error) => Err(MailError::Filesystem {
-            message: format!("reading cached message: {}", error.kind()),
-        }),
-    }
-}
-
-/// Writes `bytes` to `path` atomically: create the directory, write a temp
-/// file in it, flush, then rename over the target.
-async fn cache_atomically(path: &Path, bytes: &[u8]) -> Result<(), MailError> {
-    let parent = path.parent().ok_or_else(|| MailError::Filesystem {
-        message: "raw cache path has no parent directory".to_owned(),
-    })?;
-    tokio::fs::create_dir_all(parent)
-        .await
-        .map_err(|error| MailError::Filesystem {
-            message: format!("creating raw cache directory: {}", error.kind()),
-        })?;
-
-    let nanos = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|d| d.as_nanos())
-        .unwrap_or(0);
-    let temp = path.with_extension(format!("eml.{nanos}.tmp"));
-    tokio::fs::write(&temp, bytes)
-        .await
-        .map_err(|error| MailError::Filesystem {
-            message: format!("writing raw cache: {}", error.kind()),
-        })?;
-    tokio::fs::rename(&temp, path)
-        .await
-        .map_err(|error| MailError::Filesystem {
-            message: format!("finalizing raw cache: {}", error.kind()),
-        })
 }
 
 /// Loads the full detail of a message for the reading pane.

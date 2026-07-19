@@ -153,8 +153,13 @@ async function submit(input: ComposeInput): Promise<void> {
         "Sending needs the desktop app; it is unavailable in the browser preview.";
       return;
     }
-    // A scheduled message never leaves now, but it did leave the composer.
-    if (outcome.sent || (outcome.scheduledAtUnix ?? null) !== null) {
+    // A scheduled or offline-queued message never leaves now, but it did leave
+    // the composer: it waits in the outbox (offline sends flush on reconnect).
+    if (
+      outcome.sent ||
+      (outcome.scheduledAtUnix ?? null) !== null ||
+      outcome.queuedOffline === true
+    ) {
       emit("sent", { draftId: draftId.value });
       return;
     }

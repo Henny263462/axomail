@@ -8,7 +8,7 @@
  * Selection emits a plain message id in every mode, so the host opens the
  * detail exactly as it does for a normal mailbox.
  */
-import { watch } from "vue";
+import { computed, ref, watch } from "vue";
 
 import { useSearch } from "../../composables/useSearch";
 import type {
@@ -16,6 +16,7 @@ import type {
   MessageListItem,
   UnifiedItemDto,
 } from "../../types/mail";
+import FolderPropertiesDialog from "../offline/FolderPropertiesDialog.vue";
 import MessageListPane from "./MessageListPane.vue";
 import SearchBox from "./SearchBox.vue";
 import SearchResultsPane from "./SearchResultsPane.vue";
@@ -41,16 +42,53 @@ const { query, results, active, searching, clear } = useSearch();
 // unified inbox: any change of the shown list resets the search.
 watch(
   () => [props.view, props.selectedMailboxId],
-  () => clear(),
+  () => {
+    clear();
+    // Never leave the properties dialog open over a different folder.
+    showFolderProps.value = false;
+  },
 );
+
+// The folder-properties (offline availability) dialog for the shown mailbox.
+// Opened from this region's own affordance, deliberately separate from the
+// sidebar's folder context menu.
+const showFolderProps = ref(false);
+
+/** Whether a single real mailbox is shown (properties apply only then). */
+const showFolderButton = computed(
+  () => props.view === "mailbox" && props.selectedMailboxId !== null,
+);
+
+/** Display name of the shown mailbox, resolved from the account tree. */
+const selectedMailboxName = computed(() => {
+  for (const account of props.accounts) {
+    const mailbox = account.mailboxes.find(
+      (m) => m.id === props.selectedMailboxId,
+    );
+    if (mailbox !== undefined) return mailbox.name;
+  }
+  return "";
+});
 </script>
 
 <template>
   <div class="region">
-    <SearchBox
-      v-model="query"
-      @escape="clear"
-    />
+    <div class="toolbar">
+      <SearchBox
+        v-model="query"
+        @escape="clear"
+      />
+      <button
+        v-if="showFolderButton"
+        type="button"
+        class="folder-props"
+        aria-label="Folder offline availability"
+        title="Offline availability"
+        @click="showFolderProps = true"
+      >
+        Offline…
+      </button>
+    </div>
     <SearchResultsPane
       v-if="active"
       :results="results"
@@ -71,6 +109,14 @@ watch(
       :selected-message-id="selectedMessageId"
       @select="emit('select', $event)"
     />
+    <Teleport to="body">
+      <FolderPropertiesDialog
+        v-if="showFolderProps && selectedMailboxId !== null"
+        :mailbox-id="selectedMailboxId"
+        :mailbox-name="selectedMailboxName"
+        @close="showFolderProps = false"
+      />
+    </Teleport>
   </div>
 </template>
 
@@ -85,5 +131,32 @@ watch(
 .region > :last-child {
   flex: 1;
   min-height: 0;
+}
+
+.toolbar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex: none;
+}
+
+.toolbar > :first-child {
+  flex: 1;
+  min-width: 0;
+}
+
+.folder-props {
+  flex: none;
+  font-size: var(--text-xs);
+  color: var(--color-text-secondary);
+  padding: var(--space-1) var(--space-2);
+  margin-right: var(--space-2);
+  border-radius: var(--radius-sm);
+  transition: background var(--transition-fast);
+}
+
+.folder-props:hover {
+  background: var(--color-bg-hover);
+  color: var(--color-text);
 }
 </style>
