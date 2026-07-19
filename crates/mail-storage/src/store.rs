@@ -26,6 +26,7 @@ use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions, S
 use crate::accounts::AccountRepo;
 use crate::drafts::DraftRepo;
 use crate::error_map::{map_migrate, map_sqlx};
+use crate::identities::IdentityRepo;
 use crate::ingest::IngestRepo;
 use crate::mailboxes::MailboxRepo;
 use crate::messages::MessageRepo;
@@ -167,6 +168,12 @@ impl Store {
     #[must_use]
     pub fn drafts(&self) -> DraftRepo<'_> {
         DraftRepo::new(&self.pool)
+    }
+
+    /// The per-account sender-identity repository.
+    #[must_use]
+    pub fn identities(&self) -> IdentityRepo<'_> {
+        IdentityRepo::new(&self.pool)
     }
 
     /// The outgoing send-queue (outbox) repository.

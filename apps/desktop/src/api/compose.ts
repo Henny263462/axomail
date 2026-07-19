@@ -60,3 +60,24 @@ export function retryOutbox(
 ): Promise<SendOutcomeDto | null> {
   return safeInvoke<SendOutcomeDto>("retry_outbox", { outboxId });
 }
+
+/**
+ * Sends a scheduled (or queued) outbox item immediately, clearing any pending
+ * "send later" schedule first. Resolves to `null` in the browser preview.
+ */
+export function sendOutboxNow(
+  outboxId: number,
+): Promise<SendOutcomeDto | null> {
+  return safeInvoke<SendOutcomeDto>("send_outbox_now", { outboxId });
+}
+
+/**
+ * Cancels a scheduled send, returning its content to a new draft and removing
+ * the outbox row. Resolves to the new draft id, or `null` in the browser
+ * preview.
+ */
+export function cancelScheduledSend(
+  outboxId: number,
+): Promise<number | null> {
+  return safeInvoke<number>("cancel_scheduled_send", { outboxId });
+}

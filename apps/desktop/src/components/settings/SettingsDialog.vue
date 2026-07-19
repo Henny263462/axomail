@@ -12,6 +12,7 @@ import type {
   Pop3DeletePolicyDto,
   SettingsDto,
 } from "../../types/mail";
+import IdentitiesSection from "./IdentitiesSection.vue";
 
 /** Exact warning shown beside every POP3 server-deletion toggle. */
 const DELETE_WARNING =
@@ -267,6 +268,9 @@ async function onSave(): Promise<void> {
           </button>
         </div>
       </form>
+
+      <hr class="divider">
+      <IdentitiesSection :accounts="accounts" />
     </div>
   </div>
 </template>
@@ -286,11 +290,17 @@ async function onSave(): Promise<void> {
 
 .dialog {
   width: 100%;
-  max-width: 460px;
+  max-width: 520px;
   background: var(--color-bg);
   border: 1px solid var(--color-border-strong);
   border-radius: var(--radius-lg);
   padding: var(--space-5);
+}
+
+.divider {
+  margin: var(--space-4) 0;
+  border: none;
+  border-top: 1px solid var(--color-border);
 }
 
 .title {

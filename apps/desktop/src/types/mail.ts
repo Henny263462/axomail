@@ -140,17 +140,75 @@ export interface MessageDetailDto {
   attachments: AttachmentMetaDto[];
 }
 
+/** Where a signature sits relative to quoted text in a reply. */
+export type SignaturePlacement = "below_quote" | "above_quote";
+
+/** Whether a reply body is typed above or below the quote. */
+export type ReplyPosition = "above" | "below";
+
+/** How a forwarded message carries the original. */
+export type ForwardMode = "inline" | "attachment";
+
+/** Archive sub-folder granularity. */
+export type ArchiveGranularity = "flat" | "yearly" | "monthly";
+
+/** One sender identity, as returned by `list_identities`. */
+export interface IdentityDto {
+  id: number;
+  accountId: number;
+  email: string;
+  displayName: string;
+  replyTo: string | null;
+  signatureText: string | null;
+  signaturePlacement: SignaturePlacement;
+  replyPosition: ReplyPosition;
+  forwardMode: ForwardMode;
+  archiveGranularity: ArchiveGranularity;
+  isDefault: boolean;
+  sortPosition: number;
+  sentDest: number | null;
+  draftsDest: number | null;
+  templatesDest: number | null;
+  archiveDest: number | null;
+}
+
+/**
+ * Payload for `create_identity`/`update_identity`. Mirrors the Rust
+ * `IdentityInput` (serde `camelCase`); mailbox destinations are optional and
+ * consumed by a later wave.
+ */
+export interface IdentityInput {
+  accountId: number;
+  email: string;
+  displayName: string;
+  replyTo: string | null;
+  signatureText: string | null;
+  signaturePlacement: SignaturePlacement;
+  replyPosition: ReplyPosition;
+  forwardMode: ForwardMode;
+  archiveGranularity: ArchiveGranularity;
+  makeDefault: boolean;
+  sentDest?: number | null;
+  draftsDest?: number | null;
+  templatesDest?: number | null;
+  archiveDest?: number | null;
+}
+
 /**
  * Payload for `send_message` and `save_draft`. Recipient lists are already
  * split and trimmed by the composer before crossing the IPC boundary.
  */
 export interface ComposeInput {
   accountId: number;
+  /** Chosen sender identity; drives From/Reply-To when present. */
+  identityId?: number | null;
   to: string[];
   cc: string[];
   bcc: string[];
   subject: string;
   textBody: string;
+  /** Unix second to send at, for a "send later" message. */
+  scheduledAtUnix?: number | null;
 }
 
 /** A saved draft, as returned by `list_drafts`. */
@@ -177,17 +235,25 @@ export interface OutboxItemDto {
   state: OutboxState;
   attempts: number;
   lastError: string | null;
+  /** Identity the message will be sent under, if any. */
+  identityId?: number | null;
+  /** Unix second a scheduled ("send later") message is withheld until. */
+  scheduledUnix?: number | null;
   updatedUnix: number;
 }
 
 /**
- * Outcome of a send or retry attempt. `sent` is true only when the message
- * left the machine; otherwise it sits in the outbox and `error` explains why.
+ * Outcome of a send, retry, or schedule attempt. `sent` is true only when the
+ * message left the machine; otherwise it sits in the outbox and `error`
+ * explains why — unless `scheduledAtUnix` is set, meaning it was queued for
+ * later (no error).
  */
 export interface SendOutcomeDto {
   outboxId: number;
   sent: boolean;
   error: string | null;
+  /** When set, the message was queued to send at this Unix second. */
+  scheduledAtUnix?: number | null;
 }
 
 /**

@@ -3,10 +3,12 @@ import { computed, onMounted, ref } from "vue";
 
 import { listAccounts } from "./api/accounts";
 import {
+  cancelScheduledSend,
   deleteDraft,
   listDrafts,
   listOutbox,
   retryOutbox,
+  sendOutboxNow,
 } from "./api/compose";
 import { listMessages, markMessageSeen } from "./api/messages";
 import { syncAccount } from "./api/sync";
@@ -276,6 +278,18 @@ async function onRetryOutbox(outboxId: number): Promise<void> {
   await loadOutbox();
 }
 
+async function onSendOutboxNow(outboxId: number): Promise<void> {
+  await sendOutboxNow(outboxId);
+  await loadOutbox();
+}
+
+async function onCancelSchedule(outboxId: number): Promise<void> {
+  await cancelScheduledSend(outboxId);
+  // The message becomes a draft, so both lists may have changed.
+  await loadOutbox();
+  if (activeView.value === "drafts") await loadDrafts();
+}
+
 /** Reacts to sync events after {@link useSyncStatus} updates its own state. */
 function onSyncEvent(event: SyncEventDto): void {
   if (event.kind === "batchIngested") {
@@ -329,6 +343,8 @@ function onSyncEvent(event: SyncEventDto): void {
         v-else-if="activeView === 'outbox'"
         :items="outbox"
         @retry="onRetryOutbox"
+        @send-now="onSendOutboxNow"
+        @cancel-schedule="onCancelSchedule"
       />
       <MailListRegion
         v-else
@@ -367,6 +383,7 @@ function onSyncEvent(event: SyncEventDto): void {
     v-if="composerOpen"
     :account-id="composerAccountId"
     :draft="composerDraft"
+    :accounts="accounts"
     @close="closeComposer"
     @sent="onComposerSent"
     @saved="onComposerSaved"

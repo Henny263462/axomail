@@ -13,6 +13,7 @@ use sqlx::SqlitePool;
 use crate::address_json::{decode_addresses, encode_addresses};
 use crate::drafts::DraftId;
 use crate::error_map::map_sqlx;
+use crate::identities::IdentityId;
 
 /// Identifier of a persisted [`OutboxRecord`] row.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
@@ -85,6 +86,9 @@ pub struct NewOutbox {
     pub account: AccountId,
     /// Draft this message originated from, if any.
     pub draft_id: Option<DraftId>,
+    /// Sender identity the message is submitted under, if any. When absent,
+    /// the send path falls back to the account's own address.
+    pub identity_id: Option<IdentityId>,
     /// Subject line.
     pub subject: String,
     /// Plain-text body.
@@ -95,6 +99,10 @@ pub struct NewOutbox {
     pub cc: Vec<String>,
     /// Blind-carbon-copy recipients as address strings.
     pub bcc: Vec<String>,
+    /// Earliest Unix second at which the worker may submit this row. `None`
+    /// means "as soon as possible"; a future value defers a "send later"
+    /// message until that instant.
+    pub next_attempt_unix: Option<i64>,
 }
 
 /// A persisted outbox row.
@@ -104,6 +112,8 @@ pub struct OutboxRecord {
     pub id: OutboxId,
     /// Owning account.
     pub account: AccountId,
+    /// Sender identity the message is submitted under, if any.
+    pub identity: Option<IdentityId>,
     /// Subject line.
     pub subject: String,
     /// Plain-text body.
@@ -120,13 +130,17 @@ pub struct OutboxRecord {
     pub attempts: i64,
     /// Redacted last failure reason, if any.
     pub last_error: Option<String>,
+    /// Earliest Unix second at which the worker may submit this row; a future
+    /// value marks a scheduled "send later" message.
+    pub next_attempt_unix: Option<i64>,
     /// Last-updated timestamp (Unix seconds).
     pub updated_unix: i64,
 }
 
 /// Columns selected when reading an outbox row, in [`OutboxRow`] order.
-const OUTBOX_COLUMNS: &str = "id, account_id, subject, body_text, \
-    to_json, cc_json, bcc_json, state, attempts, last_error, updated_at_unix";
+const OUTBOX_COLUMNS: &str = "id, account_id, identity_id, subject, body_text, \
+    to_json, cc_json, bcc_json, state, attempts, last_error, \
+    next_attempt_unix, updated_at_unix";
 
 /// Repository over the `outbox` table.
 #[derive(Debug)]
@@ -149,17 +163,21 @@ impl<'a> OutboxRepo<'a> {
         let cc_json = encode_addresses(&new.cc)?;
         let bcc_json = encode_addresses(&new.bcc)?;
         let row = sqlx::query_as::<_, OutboxRow>(sqlx::AssertSqlSafe(format!(
-            "INSERT INTO outbox (account_id, draft_id, subject, body_text, to_json, cc_json, bcc_json)
-             VALUES (?, ?, ?, ?, ?, ?, ?)
+            "INSERT INTO outbox
+                 (account_id, draft_id, identity_id, subject, body_text,
+                  to_json, cc_json, bcc_json, next_attempt_unix)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
              RETURNING {OUTBOX_COLUMNS}"
         )))
         .bind(new.account.value())
         .bind(new.draft_id.map(DraftId::value))
+        .bind(new.identity_id.map(IdentityId::value))
         .bind(new.subject.as_str())
         .bind(new.body_text.as_str())
         .bind(to_json)
         .bind(cc_json)
         .bind(bcc_json)
+        .bind(new.next_attempt_unix)
         .fetch_one(self.pool)
         .await
         .map_err(|error| map_sqlx("create_outbox", error))?;
@@ -244,12 +262,15 @@ impl<'a> OutboxRepo<'a> {
         row.map(OutboxRow::into_record).transpose()
     }
 
-    /// Lists the rows still `queued` (never yet submitted), oldest first.
+    /// Lists the `queued` rows that are **due** now (never yet submitted),
+    /// oldest first.
     ///
-    /// Added for startup resume: after crash recovery the app re-sends every
-    /// row a previous run left `queued`, in the order they were enqueued.
-    /// `failed` rows are deliberately excluded — they are retried only on the
-    /// user's explicit request — as are `sending`/`sent` rows.
+    /// A row scheduled for later — `next_attempt_unix` set to a future
+    /// instant — is excluded until that instant passes: this time guard is
+    /// what keeps the outbox worker and the startup resume from sending a
+    /// "send later" message early. Rows with no schedule (`NULL`) are always
+    /// due. `failed` rows are excluded (retried only on explicit request), as
+    /// are `sending`/`sent` rows.
     ///
     /// # Errors
     ///
@@ -257,7 +278,9 @@ impl<'a> OutboxRepo<'a> {
     /// row cannot be decoded.
     pub async fn list_queued(&self) -> Result<Vec<OutboxRecord>, MailError> {
         let rows = sqlx::query_as::<_, OutboxRow>(sqlx::AssertSqlSafe(format!(
-            "SELECT {OUTBOX_COLUMNS} FROM outbox WHERE state = 'queued' \
+            "SELECT {OUTBOX_COLUMNS} FROM outbox \
+             WHERE state = 'queued' \
+               AND (next_attempt_unix IS NULL OR next_attempt_unix <= unixepoch()) \
              ORDER BY created_at_unix ASC, id ASC"
         )))
         .fetch_all(self.pool)
@@ -265,6 +288,39 @@ impl<'a> OutboxRepo<'a> {
         .map_err(|error| map_sqlx("list_queued_outbox", error))?;
 
         rows.into_iter().map(OutboxRow::into_record).collect()
+    }
+
+    /// Removes an outbox row. Used when a scheduled message is cancelled back
+    /// to a draft. Returns `true` if a row was removed.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`MailError::Database`] on any query failure.
+    pub async fn delete(&self, id: OutboxId) -> Result<bool, MailError> {
+        let result = sqlx::query("DELETE FROM outbox WHERE id = ?")
+            .bind(id.value())
+            .execute(self.pool)
+            .await
+            .map_err(|error| map_sqlx("delete_outbox", error))?;
+        Ok(result.rows_affected() > 0)
+    }
+
+    /// Clears any pending schedule on a row, making it immediately due. Used
+    /// by "send now" on a scheduled message. Returns `true` if a row changed.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`MailError::Database`] on any query failure.
+    pub async fn clear_schedule(&self, id: OutboxId) -> Result<bool, MailError> {
+        let result = sqlx::query(
+            "UPDATE outbox SET next_attempt_unix = NULL, updated_at_unix = unixepoch() \
+             WHERE id = ? AND state = 'queued'",
+        )
+        .bind(id.value())
+        .execute(self.pool)
+        .await
+        .map_err(|error| map_sqlx("clear_outbox_schedule", error))?;
+        Ok(result.rows_affected() > 0)
     }
 
     /// Recovers rows a crashed process left in `sending`.
@@ -317,6 +373,7 @@ the message may or may not have been sent — verify before retrying',
 struct OutboxRow {
     id: i64,
     account_id: i64,
+    identity_id: Option<i64>,
     subject: String,
     body_text: String,
     to_json: String,
@@ -325,6 +382,7 @@ struct OutboxRow {
     state: String,
     attempts: i64,
     last_error: Option<String>,
+    next_attempt_unix: Option<i64>,
     updated_at_unix: i64,
 }
 
@@ -333,6 +391,7 @@ impl OutboxRow {
         Ok(OutboxRecord {
             id: OutboxId::new(self.id),
             account: AccountId::new(self.account_id),
+            identity: self.identity_id.map(IdentityId::new),
             subject: self.subject,
             body_text: self.body_text,
             to: decode_addresses(&self.to_json)?,
@@ -341,6 +400,7 @@ impl OutboxRow {
             state: OutboxState::parse(&self.state)?,
             attempts: self.attempts,
             last_error: self.last_error,
+            next_attempt_unix: self.next_attempt_unix,
             updated_unix: self.updated_at_unix,
         })
     }

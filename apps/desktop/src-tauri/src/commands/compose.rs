@@ -14,7 +14,9 @@ use axomail_core::{
     OutgoingMailProvider, OutgoingMessage, UtcTimestamp,
 };
 use axomail_smtp::{SmtpConfig, SmtpProvider};
-use axomail_storage::{NewMessage, NewOutbox, OutboxId, OutboxRecord, OutboxState, Store};
+use axomail_storage::{
+    Identity, IdentityId, NewMessage, NewOutbox, OutboxId, OutboxRecord, OutboxState, Store,
+};
 
 use crate::commands::map_command_error;
 use crate::composition::resolve_secret;
@@ -55,19 +57,31 @@ pub async fn send_message_impl(
     parse_addresses(&input.bcc)?;
 
     let account = load_account(store, input.account_id).await?;
+    let identity = resolve_identity(store, &account, input.identity_id).await?;
+    // A schedule strictly in the future defers the send; a past/now instant is
+    // treated as "send now".
+    let scheduled = input.scheduled_at_unix.filter(|&at| at > now_unix());
 
     let record = store
         .outbox()
         .create(&NewOutbox {
             account: account.id,
             draft_id: None,
+            identity_id: identity.as_ref().map(|id| id.id),
             subject: input.subject,
             body_text: input.text_body,
             to: input.to,
             cc: input.cc,
             bcc: input.bcc,
+            next_attempt_unix: scheduled,
         })
         .await?;
+
+    // A scheduled message waits in the outbox; the worker's time guard keeps it
+    // from being submitted until it is due.
+    if let Some(at) = scheduled {
+        return SendOutcomeDto::scheduled(record.id.value(), at);
+    }
 
     // A freshly created row is `queued`, so this transition always succeeds.
     if !store.outbox().begin_send(record.id).await? {
@@ -78,6 +92,37 @@ pub async fn send_message_impl(
         );
     }
     submit_record(store, secrets, extra_roots, &account, &record).await
+}
+
+/// Loads and validates the chosen sender identity, if any.
+///
+/// Returns `Ok(None)` when no identity was selected (the account address is
+/// used). Errors if the identity does not exist or belongs to another account.
+///
+/// # Errors
+///
+/// Returns [`MailError::Configuration`] for an unknown or mismatched identity.
+async fn resolve_identity(
+    store: &Store,
+    account: &Account,
+    identity_id: Option<i64>,
+) -> Result<Option<Identity>, MailError> {
+    let Some(identity_id) = identity_id else {
+        return Ok(None);
+    };
+    let identity = store
+        .identities()
+        .get(IdentityId::new(identity_id))
+        .await?
+        .ok_or_else(|| MailError::Configuration {
+            message: "the message references an identity that does not exist".to_owned(),
+        })?;
+    if identity.account != account.id {
+        return Err(MailError::Configuration {
+            message: "the chosen identity does not belong to the sending account".to_owned(),
+        });
+    }
+    Ok(Some(identity))
 }
 
 /// Retries a previously queued or failed outbox row.
@@ -147,7 +192,13 @@ async fn submit_record(
     account: &Account,
     record: &OutboxRecord,
 ) -> Result<SendOutcomeDto, MailError> {
-    let message = match build_message(account, record) {
+    // Resolve the identity the row was queued under; a deleted identity nulls
+    // the reference (ON DELETE SET NULL), so this falls back to the account.
+    let identity = match record.identity {
+        Some(id) => store.identities().get(id).await?,
+        None => None,
+    };
+    let message = match build_message(account, record, identity.as_ref()) {
         Ok(message) => message,
         Err(error) => return fail(store, record.id, error).await,
     };
@@ -191,23 +242,54 @@ async fn build_provider(
     SmtpProvider::new(config)
 }
 
-/// Assembles the outgoing message from the account and stored row (text
-/// only per the composer contract; attachments and HTML come later).
-fn build_message(account: &Account, record: &OutboxRecord) -> Result<OutgoingMessage, MailError> {
+/// Assembles the outgoing message from the account, stored row, and chosen
+/// identity (text only per the composer contract; attachments and HTML come
+/// later). The identity, when present, supplies the From and Reply-To;
+/// otherwise the account's own address is used.
+fn build_message(
+    account: &Account,
+    record: &OutboxRecord,
+    identity: Option<&Identity>,
+) -> Result<OutgoingMessage, MailError> {
+    let (from, reply_to) = sender_headers(account, identity)?;
     Ok(OutgoingMessage {
-        from: Address {
-            display_name: Some(account.display_name.clone()),
-            email: account.email.clone(),
-        },
+        from,
         to: parse_addresses(&record.to)?,
         cc: parse_addresses(&record.cc)?,
         bcc: parse_addresses(&record.bcc)?,
-        reply_to: None,
+        reply_to,
         subject: record.subject.clone(),
         text_body: record.body_text.clone(),
         html_body: None,
         attachments: Vec::new(),
     })
+}
+
+/// Derives the From address and optional Reply-To for a message, preferring the
+/// chosen identity over the account's own address.
+fn sender_headers(
+    account: &Account,
+    identity: Option<&Identity>,
+) -> Result<(Address, Option<Address>), MailError> {
+    let Some(identity) = identity else {
+        let from = Address {
+            display_name: Some(account.display_name.clone()),
+            email: account.email.clone(),
+        };
+        return Ok((from, None));
+    };
+    let from = Address {
+        display_name: (!identity.fields.display_name.is_empty())
+            .then(|| identity.fields.display_name.clone()),
+        email: EmailAddress::parse(&identity.fields.email)?,
+    };
+    let reply_to = match identity.fields.reply_to.as_deref() {
+        Some(value) if !value.trim().is_empty() => {
+            Some(Address::from_email(EmailAddress::parse(value.trim())?))
+        }
+        _ => None,
+    };
+    Ok((from, reply_to))
 }
 
 /// Files a local copy of a sent message in the account's Sent mailbox.

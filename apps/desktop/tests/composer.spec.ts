@@ -2,16 +2,44 @@ import { flushPromises, mount, type VueWrapper } from "@vue/test-utils";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { saveDraft, sendMessage } from "../src/api/compose";
+import { listIdentities } from "../src/api/identities";
 import ComposerDialog from "../src/components/compose/ComposerDialog.vue";
-import type { DraftDto } from "../src/types/mail";
+import type { DraftDto, IdentityDto } from "../src/types/mail";
 
 vi.mock("../src/api/compose", () => ({
   sendMessage: vi.fn(),
   saveDraft: vi.fn(),
 }));
+vi.mock("../src/api/identities", () => ({
+  listIdentities: vi.fn(),
+}));
 
 const sendMessageMock = vi.mocked(sendMessage);
 const saveDraftMock = vi.mocked(saveDraft);
+const listIdentitiesMock = vi.mocked(listIdentities);
+
+/** Builds an identity DTO with sensible defaults for the picker tests. */
+function identity(over: Partial<IdentityDto>): IdentityDto {
+  return {
+    id: 1,
+    accountId: 42,
+    email: "klaus@example.org",
+    displayName: "",
+    replyTo: null,
+    signatureText: null,
+    signaturePlacement: "below_quote",
+    replyPosition: "below",
+    forwardMode: "inline",
+    archiveGranularity: "flat",
+    isDefault: false,
+    sortPosition: 0,
+    sentDest: null,
+    draftsDest: null,
+    templatesDest: null,
+    archiveDest: null,
+    ...over,
+  };
+}
 
 function saveDraftButton(wrapper: VueWrapper) {
   const button = wrapper
@@ -25,6 +53,9 @@ beforeEach(() => {
   vi.clearAllMocks();
   sendMessageMock.mockResolvedValue({ outboxId: 1, sent: true, error: null });
   saveDraftMock.mockResolvedValue(88);
+  // No identities by default: the From picker stays hidden and the compose
+  // payload carries no identityId, matching the pre-identity contract.
+  listIdentitiesMock.mockResolvedValue(null);
 });
 
 describe("ComposerDialog send", () => {
@@ -133,5 +164,76 @@ describe("ComposerDialog drafts", () => {
       expect.objectContaining({ accountId: 7, to: ["new@example.org"] }),
       null,
     );
+  });
+});
+
+describe("ComposerDialog identities", () => {
+  it("preselects the default identity and sends under it", async () => {
+    listIdentitiesMock.mockResolvedValue([
+      identity({ id: 7, isDefault: true, email: "klaus@example.org" }),
+      identity({ id: 8, email: "sales@example.org" }),
+    ]);
+    const wrapper = mount(ComposerDialog, { props: { accountId: 42 } });
+    await flushPromises();
+
+    // The From picker is shown with the default selected.
+    expect(
+      (wrapper.get("#compose-from").element as HTMLSelectElement).value,
+    ).toBe("7");
+
+    await wrapper.get("#compose-to").setValue("a@x.com");
+    await wrapper.get("form").trigger("submit");
+    await flushPromises();
+
+    expect(sendMessageMock).toHaveBeenCalledWith(
+      expect.objectContaining({ accountId: 42, identityId: 7 }),
+    );
+  });
+
+  it("switches identity through the From picker", async () => {
+    listIdentitiesMock.mockResolvedValue([
+      identity({ id: 7, isDefault: true }),
+      identity({ id: 8, accountId: 99, email: "other@example.org" }),
+    ]);
+    const wrapper = mount(ComposerDialog, { props: { accountId: 42 } });
+    await flushPromises();
+
+    await wrapper.get("#compose-from").setValue("8");
+    await wrapper.get("#compose-to").setValue("a@x.com");
+    await wrapper.get("form").trigger("submit");
+    await flushPromises();
+
+    // The chosen identity carries its own account across.
+    expect(sendMessageMock).toHaveBeenCalledWith(
+      expect.objectContaining({ identityId: 8, accountId: 99 }),
+    );
+  });
+
+  it("inserts the default identity's signature into a new message", async () => {
+    listIdentitiesMock.mockResolvedValue([
+      identity({ id: 7, isDefault: true, signatureText: "Cheers,\nKlaus" }),
+    ]);
+    const wrapper = mount(ComposerDialog, { props: { accountId: 42 } });
+    await flushPromises();
+
+    const body = wrapper.get("#compose-body").element as HTMLTextAreaElement;
+    expect(body.value).toContain("-- \nCheers,\nKlaus");
+  });
+});
+
+describe("ComposerDialog send later", () => {
+  it("schedules the message through the send-later menu", async () => {
+    const wrapper = mount(ComposerDialog, { props: { accountId: 42 } });
+    await flushPromises();
+    await wrapper.get("#compose-to").setValue("a@x.com");
+
+    await wrapper.get('button[aria-label="Send later"]').trigger("click");
+    await wrapper.findAll("button.menu-item")[0]?.trigger("click");
+    await flushPromises();
+
+    expect(sendMessageMock).toHaveBeenCalledWith(
+      expect.objectContaining({ scheduledAtUnix: expect.any(Number) }),
+    );
+    expect(wrapper.emitted("sent")).toBeTruthy();
   });
 });
