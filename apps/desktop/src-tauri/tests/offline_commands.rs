@@ -170,7 +170,8 @@ async fn offline_send_queues_in_the_outbox_without_submitting() {
     let input = compose_input(account, &["dest@example.org"], "While offline");
     let outcome = send_message_impl(&store, &secrets, &[], input, true)
         .await
-        .unwrap();
+        .unwrap()
+        .outcome;
     assert!(outcome.queued_offline);
     assert!(!outcome.sent);
     assert!(outcome.error.is_none());

@@ -3,8 +3,8 @@
 use std::collections::HashSet;
 
 use axomail_core::{
-    FlagDelta, IncomingMailProvider, MailError, MailboxName, MailboxRole, RawMessage,
-    RemoteMailbox, RemoteMailboxState, RemoteMessageId, SyncOutcome, SyncRequest,
+    AppendOutcome, FlagDelta, FlagSet, IncomingMailProvider, MailError, MailboxName, MailboxRole,
+    RawMessage, RemoteMailbox, RemoteMailboxState, RemoteMessageId, SyncOutcome, SyncRequest,
 };
 
 use crate::command;
@@ -168,6 +168,18 @@ impl IncomingMailProvider for Pop3Provider {
         // `DELE` only marks the message; it is committed by `QUIT` in
         // `disconnect`.
         command::dele(connected.wire(), number, timeout).await
+    }
+
+    async fn append_message(
+        &mut self,
+        _mailbox: &MailboxName,
+        _flags: &FlagSet,
+        _raw: &[u8],
+    ) -> Result<AppendOutcome, MailError> {
+        // POP3 is download-only: there is no server mailbox to append into.
+        Err(MailError::UnsupportedCapability {
+            capability: "server-side append (POP3 is download-only)".to_owned(),
+        })
     }
 
     async fn create_mailbox(&mut self, _path: &MailboxName) -> Result<(), MailError> {

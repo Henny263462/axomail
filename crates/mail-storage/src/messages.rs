@@ -365,6 +365,39 @@ impl<'a> MessageRepo<'a> {
         .map_err(|error| map_sqlx("backfill_threading", error))?;
         Ok(result.rows_affected() > 0)
     }
+
+    /// Adopts a server identity onto a local-only message (one with no
+    /// `remote_id` yet), so a later sync recognizes the server copy as already
+    /// stored instead of double-filing it. Used after an IMAP `APPEND` files a
+    /// Sent copy: the resolved UID is recorded, and the ingest unique index over
+    /// `(mailbox_id, remote_uid_validity, remote_uid)` then skips re-inserting
+    /// it. Guarded to `remote_kind IS NULL` rows so it never overwrites a
+    /// genuine remote identity. Returns whether a row was updated.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`MailError::Database`] on any query failure.
+    pub async fn adopt_remote_id(
+        &self,
+        id: MessageId,
+        remote_id: &RemoteMessageId,
+    ) -> Result<bool, MailError> {
+        let remote = RemoteColumns::from_remote_id(Some(remote_id));
+        let result = sqlx::query(
+            "UPDATE messages
+                 SET remote_kind = ?, remote_uid = ?, remote_uid_validity = ?, remote_uidl = ?
+             WHERE id = ? AND remote_kind IS NULL",
+        )
+        .bind(remote.kind)
+        .bind(remote.uid)
+        .bind(remote.uid_validity)
+        .bind(remote.uidl.as_deref())
+        .bind(id.value())
+        .execute(self.pool)
+        .await
+        .map_err(|error| map_sqlx("adopt_remote_id", error))?;
+        Ok(result.rows_affected() > 0)
+    }
 }
 
 /// Inserts one kind of recipient list within an open transaction,

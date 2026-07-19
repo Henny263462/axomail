@@ -90,7 +90,8 @@ async fn send_message_happy_path_files_sent_copy_and_captures_data() {
     let input = compose_input(summary.id, &["bob@example.org"], "Meeting notes");
     let outcome = send_message_impl(&store, &secrets, &roots, input, false)
         .await
-        .unwrap();
+        .unwrap()
+        .outcome;
 
     assert!(outcome.sent, "send should succeed");
     assert!(outcome.error.is_none());
@@ -132,7 +133,8 @@ async fn send_message_permanent_failure_marks_failed_without_duplicate() {
     let input = compose_input(summary.id, &["bob@example.org"], "Undeliverable");
     let outcome = send_message_impl(&store, &secrets, &roots, input, false)
         .await
-        .unwrap();
+        .unwrap()
+        .outcome;
 
     assert!(!outcome.sent);
     let error = outcome.error.expect("failure carries a reason");
@@ -198,7 +200,8 @@ async fn retry_outbox_sends_queued_row_then_guards_a_sent_row() {
 
     let outcome = retry_outbox_impl(&store, &secrets, &roots, record.id.value())
         .await
-        .unwrap();
+        .unwrap()
+        .outcome;
     assert!(outcome.sent);
 
     let got = store.outbox().get(record.id).await.unwrap().unwrap();
@@ -208,7 +211,8 @@ async fn retry_outbox_sends_queued_row_then_guards_a_sent_row() {
     // Retrying a sent row reports success but does not resubmit.
     let again = retry_outbox_impl(&store, &secrets, &roots, record.id.value())
         .await
-        .unwrap();
+        .unwrap()
+        .outcome;
     assert!(again.sent);
     let after = store.outbox().get(record.id).await.unwrap().unwrap();
     assert_eq!(after.attempts, 1, "a sent row must not be resubmitted");

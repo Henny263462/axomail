@@ -8,7 +8,7 @@
 use axomail_core::MailError;
 use axomail_storage::{NewDraft, OutboxId, Store};
 
-use crate::commands::compose::retry_outbox_impl;
+use crate::commands::compose::{Submission, retry_outbox_impl, spawn_sent_copy_append};
 use crate::commands::map_command_error;
 use crate::dto::{SendOutcomeDto, checked_id};
 use crate::state::{AppState, SharedSecretStore};
@@ -28,7 +28,7 @@ pub async fn send_outbox_now_impl(
     secrets: &SharedSecretStore,
     extra_roots: &[Vec<u8>],
     outbox_id: i64,
-) -> Result<SendOutcomeDto, MailError> {
+) -> Result<Submission, MailError> {
     store
         .outbox()
         .clear_schedule(OutboxId::new(outbox_id))
@@ -88,14 +88,21 @@ pub async fn cancel_scheduled_send_impl(store: &Store, outbox_id: i64) -> Result
 }
 
 /// Sends a scheduled or queued outbox item immediately.
+///
+/// As with the composer's send, a successful send that resolved a server Sent
+/// folder uploads the Sent copy on a background task.
 #[tauri::command]
 pub async fn send_outbox_now(
     state: tauri::State<'_, AppState>,
     outbox_id: i64,
 ) -> Result<SendOutcomeDto, String> {
-    send_outbox_now_impl(state.store(), state.secrets(), &[], outbox_id)
+    let submission = send_outbox_now_impl(state.store(), state.secrets(), &[], outbox_id)
         .await
-        .map_err(map_command_error)
+        .map_err(map_command_error)?;
+    if let Some(plan) = submission.sent_copy {
+        spawn_sent_copy_append(state.store(), state.factory(), plan);
+    }
+    Ok(submission.outcome)
 }
 
 /// Cancels a scheduled send, moving the message back to a draft.

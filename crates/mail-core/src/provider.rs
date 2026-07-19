@@ -13,10 +13,11 @@
 
 use crate::error::MailError;
 use crate::id::RemoteMessageId;
-use crate::keyword::FlagDelta;
+use crate::keyword::{FlagDelta, FlagSet};
 use crate::mailbox::MailboxName;
 use crate::provider_types::{
-    OutgoingMessage, RawMessage, RemoteMailboxState, SendResult, SyncOutcome, SyncRequest,
+    AppendOutcome, OutgoingMessage, RawMessage, RemoteMailboxState, SendResult, SyncOutcome,
+    SyncRequest,
 };
 
 /// A source of incoming mail (IMAP or POP3).
@@ -82,6 +83,24 @@ pub trait IncomingMailProvider: Send {
         &mut self,
         id: &RemoteMessageId,
     ) -> impl Future<Output = Result<(), MailError>> + Send;
+
+    /// Appends `raw` (a complete RFC 5322 message) to `mailbox` on the server,
+    /// tagged with `flags` (e.g. `\Seen` for a Sent copy, `\Draft` for a saved
+    /// draft).
+    ///
+    /// `mailbox` is the decoded full server path of the target folder; the
+    /// adapter re-encodes it for the wire. This is plain RFC 3501 `APPEND`
+    /// (capability-agnostic) and does not require the mailbox to be selected.
+    /// The returned [`AppendOutcome`] carries the appended message's server
+    /// identity when the adapter could resolve it, so the caller can adopt the
+    /// server copy onto its local record. Protocols without server-side folders
+    /// (POP3) return [`MailError::UnsupportedCapability`].
+    fn append_message(
+        &mut self,
+        mailbox: &MailboxName,
+        flags: &FlagSet,
+        raw: &[u8],
+    ) -> impl Future<Output = Result<AppendOutcome, MailError>> + Send;
 
     /// Creates a mailbox (folder) on the server at the given full path.
     ///
@@ -180,6 +199,15 @@ mod tests {
             Err(MailError::Cancelled)
         }
 
+        async fn append_message(
+            &mut self,
+            _mailbox: &MailboxName,
+            _flags: &FlagSet,
+            _raw: &[u8],
+        ) -> Result<AppendOutcome, MailError> {
+            Err(MailError::Cancelled)
+        }
+
         async fn create_mailbox(&mut self, _path: &MailboxName) -> Result<(), MailError> {
             Err(MailError::Cancelled)
         }
@@ -240,6 +268,8 @@ mod tests {
             },
             &delta,
         ));
+        let flags = FlagSet::default();
+        assert_send_future(provider.append_message(&MailboxName::new("Sent"), &flags, b"raw"));
         assert_send_future(provider.disconnect());
     }
 

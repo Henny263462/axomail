@@ -9,7 +9,7 @@ use axomail_core::{
 };
 use axomail_storage::{MessageCursor, MessagePage, NewPendingOp, PendingOpKind, Store};
 use common::{
-    pop3_envelope_with_threading, sample_account, sample_mailbox, sample_message,
+    pop3_envelope_with_threading, remote_envelope, sample_account, sample_mailbox, sample_message,
     sample_oauth_account,
 };
 
@@ -481,6 +481,80 @@ async fn threading_identity_round_trips_through_ingest() {
         ]
     );
     assert_eq!(stored.parent_id(), Some("mid-1@example.org"));
+}
+
+/// After an IMAP `APPEND` files a Sent copy, adopting the appended UID onto the
+/// local row must make a later sync of that folder recognize the server copy as
+/// already stored, so the mailbox is not double-filed.
+#[tokio::test]
+async fn adopting_the_appended_uid_prevents_a_double_file_on_sync() {
+    let store = Store::open_in_memory().await.unwrap();
+    let account = store
+        .accounts()
+        .insert(&sample_account("Work", "klaus@theferbers.eu"))
+        .await
+        .unwrap();
+    let sent = store
+        .mailboxes()
+        .upsert(&sample_mailbox(account.id, "Sent"))
+        .await
+        .unwrap();
+
+    // A locally filed Sent copy: no remote identity yet.
+    let local = store
+        .messages()
+        .insert(&sample_message(sent.id, "My sent message", Some(1)))
+        .await
+        .unwrap();
+    assert!(local.remote_id.is_none());
+
+    // Adopt the UID the server assigned the appended copy.
+    let appended = RemoteMessageId::Imap {
+        uid: 1000,
+        uid_validity: 1,
+    };
+    assert!(
+        store
+            .messages()
+            .adopt_remote_id(local.id, &appended)
+            .await
+            .unwrap(),
+        "the local-only row must adopt the server identity"
+    );
+    // Adopting again is refused: the row is no longer local-only.
+    assert!(
+        !store
+            .messages()
+            .adopt_remote_id(local.id, &appended)
+            .await
+            .unwrap()
+    );
+
+    // The next sync of the Sent folder reports that same UID as a new envelope.
+    let outcome = SyncOutcome {
+        uid_validity: Some(1),
+        highest_uid: Some(1000),
+        highest_modseq: None,
+        has_more: false,
+        new_envelopes: vec![remote_envelope(1000, 1, "My sent message")],
+        flag_updates: Vec::new(),
+        removed: Vec::new(),
+        present_remote_ids: None,
+    };
+    let summary = store.ingest().apply(sent.id, &outcome).await.unwrap();
+    assert_eq!(
+        summary.inserted, 0,
+        "the adopted copy must not be re-inserted"
+    );
+
+    // Exactly one Sent message remains: the adopted local copy, now with a UID.
+    let page = store.messages().list_page(sent.id, None, 10).await.unwrap();
+    assert_eq!(
+        page.items.len(),
+        1,
+        "the Sent folder must not be double-filed"
+    );
+    assert_eq!(page.items[0].remote_id, Some(appended));
 }
 
 /// A sync pass must not overwrite a message's local flags while a write-back op

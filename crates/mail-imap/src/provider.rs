@@ -1,14 +1,15 @@
 //! The [`ImapProvider`] adapter implementing [`IncomingMailProvider`].
 
 use axomail_core::{
-    FlagDelta, IncomingMailProvider, MailError, MailboxName, RawMessage, RemoteMailboxState,
-    RemoteMessageId, SyncOutcome, SyncRequest,
+    AppendOutcome, FlagDelta, FlagSet, IncomingMailProvider, MailError, MailboxName, RawMessage,
+    RemoteMailboxState, RemoteMessageId, SyncOutcome, SyncRequest,
 };
 
 use crate::config::ImapConfig;
 use crate::connection::{self, Connected};
+use crate::convert::flag_set_to_imap_list;
 use crate::error::{map_imap_error, with_deadline};
-use crate::{discover, folder_ops, message_ops, sync, utf7};
+use crate::{append, discover, folder_ops, message_ops, sync, utf7};
 
 /// Records which mailbox the session currently has selected, so that
 /// per-message operations can validate the caller's message identity.
@@ -150,6 +151,34 @@ impl IncomingMailProvider for ImapProvider {
         let timeout = self.config.timeout;
         let connected = self.require_session()?;
         message_ops::delete(connected, uid, timeout).await
+    }
+
+    async fn append_message(
+        &mut self,
+        mailbox: &MailboxName,
+        flags: &FlagSet,
+        raw: &[u8],
+    ) -> Result<AppendOutcome, MailError> {
+        let timeout = self.config.timeout;
+        let encoded = utf7::encode(mailbox.as_str());
+        let flag_list = (!flags.is_empty()).then(|| flag_set_to_imap_list(flags));
+        let message_id = append::parse_message_id(raw);
+        let connected = self.require_session()?;
+        let remote_id = append::append(
+            connected,
+            &encoded,
+            flag_list.as_deref(),
+            raw,
+            message_id.as_deref(),
+            timeout,
+        )
+        .await?;
+        // UID resolution selects the target mailbox; reflect that so a later
+        // per-message op on this session resolves against the right validity.
+        if let Some(RemoteMessageId::Imap { uid_validity, .. }) = remote_id {
+            self.selected = Some(SelectedMailbox { uid_validity });
+        }
+        Ok(AppendOutcome { remote_id })
     }
 
     async fn create_mailbox(&mut self, path: &MailboxName) -> Result<(), MailError> {

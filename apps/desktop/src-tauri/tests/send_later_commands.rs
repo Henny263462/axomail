@@ -118,7 +118,8 @@ async fn send_message_defers_a_future_message_without_sending() {
     input.scheduled_at_unix = Some(send_at);
     let outcome = send_message_impl(&store, &secrets, &roots, input, false)
         .await
-        .unwrap();
+        .unwrap()
+        .outcome;
 
     assert!(!outcome.sent, "a scheduled message does not leave now");
     assert_eq!(outcome.scheduled_at_unix, Some(send_at));
@@ -201,7 +202,8 @@ async fn send_outbox_now_delivers_a_scheduled_row_immediately() {
 
     let outcome = send_outbox_now_impl(&store, &secrets, &roots, record.id.value())
         .await
-        .unwrap();
+        .unwrap()
+        .outcome;
     assert!(outcome.sent);
     assert_eq!(server.connection_count(), 1);
     let got = store.outbox().get(record.id).await.unwrap().unwrap();

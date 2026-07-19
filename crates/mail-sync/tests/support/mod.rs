@@ -14,10 +14,11 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use axomail_core::{
-    Account, AccountAuth, AccountId, Address, ConnectionSecurity, CredentialRef, EmailAddress,
-    FlagDelta, IncomingMailProvider, IncomingProtocol, IncomingServerConfig, MailError, MailboxId,
-    MailboxName, MailboxRole, MessageFlags, OutgoingServerConfig, RawMessage, RemoteEnvelope,
-    RemoteMailboxState, RemoteMessageId, ServerEndpoint, SyncOutcome, SyncRequest, UtcTimestamp,
+    Account, AccountAuth, AccountId, Address, AppendOutcome, ConnectionSecurity, CredentialRef,
+    EmailAddress, FlagDelta, FlagSet, IncomingMailProvider, IncomingProtocol, IncomingServerConfig,
+    MailError, MailboxId, MailboxName, MailboxRole, MessageFlags, OutgoingServerConfig, RawMessage,
+    RemoteEnvelope, RemoteMailboxState, RemoteMessageId, ServerEndpoint, SyncOutcome, SyncRequest,
+    UtcTimestamp,
 };
 use axomail_storage::{NewAccount, NewMailbox, NewPendingOp, Store};
 use axomail_sync::{ProviderFactory, SyncConfig, SyncEvent, SyncJobId};
@@ -362,6 +363,15 @@ impl IncomingMailProvider for FakeProvider {
 
     async fn delete_message(&mut self, _id: &RemoteMessageId) -> Result<(), MailError> {
         Err(unsupported("EXPUNGE"))
+    }
+
+    async fn append_message(
+        &mut self,
+        _mailbox: &MailboxName,
+        _flags: &FlagSet,
+        _raw: &[u8],
+    ) -> Result<AppendOutcome, MailError> {
+        Ok(AppendOutcome::default())
     }
 
     async fn create_mailbox(&mut self, _path: &MailboxName) -> Result<(), MailError> {
