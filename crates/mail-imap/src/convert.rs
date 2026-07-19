@@ -80,6 +80,10 @@ pub(crate) fn envelope_from_fetch(fetch: &Fetch, uid_validity: u32) -> Option<Re
         date,
         flags,
         size_bytes: size,
+        // The envelope FETCH carries no References chain, so threading
+        // identity is left for the storage layer to backfill from the full
+        // message on first open.
+        threading: None,
     })
 }
 

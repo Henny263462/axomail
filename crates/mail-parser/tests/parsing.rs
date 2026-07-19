@@ -409,6 +409,103 @@ fn nested_multipart_extracts_body_and_attachment() {
 }
 
 #[test]
+fn message_without_threading_headers_has_empty_chains() {
+    let parsed = parse(
+        "From: a@example.org\n\
+         Subject: No threading\n\
+         Message-ID: <root@example.org>\n\
+         Content-Type: text/plain\n\
+         \n\
+         body\n",
+    );
+
+    assert_eq!(parsed.message_id.as_deref(), Some("root@example.org"));
+    assert!(parsed.in_reply_to.is_empty());
+    assert!(parsed.references.is_empty());
+    assert!(parsed.threading_headers().parent_id().is_none());
+}
+
+#[test]
+fn reply_exposes_in_reply_to_and_ordered_references() {
+    let parsed = parse(
+        "From: b@example.org\n\
+         Subject: Re: Hello\n\
+         Message-ID: <reply-2@example.org>\n\
+         In-Reply-To: <root-0@example.org>\n\
+         References: <root-0@example.org> <mid-1@example.org>\n\
+         Content-Type: text/plain\n\
+         \n\
+         body\n",
+    );
+
+    assert_eq!(parsed.message_id.as_deref(), Some("reply-2@example.org"));
+    assert_eq!(parsed.in_reply_to, vec!["root-0@example.org".to_owned()]);
+    assert_eq!(
+        parsed.references,
+        vec![
+            "root-0@example.org".to_owned(),
+            "mid-1@example.org".to_owned()
+        ]
+    );
+    // The nearest ancestor is the last reference.
+    assert_eq!(
+        parsed.threading_headers().parent_id(),
+        Some("mid-1@example.org")
+    );
+}
+
+#[test]
+fn folded_references_header_is_unfolded_into_ordered_ids() {
+    // A long References header wrapped across several continuation lines,
+    // as real mailers emit for deep threads.
+    let parsed = parse(
+        "From: c@example.org\n\
+         Subject: Re: deep thread\n\
+         Message-ID: <r4@example.org>\n\
+         References: <r0@example.org>\n\
+         \t<r1@example.org>\n\
+         \t<r2@example.org> <r3@example.org>\n\
+         Content-Type: text/plain\n\
+         \n\
+         body\n",
+    );
+
+    assert_eq!(
+        parsed.references,
+        vec![
+            "r0@example.org".to_owned(),
+            "r1@example.org".to_owned(),
+            "r2@example.org".to_owned(),
+            "r3@example.org".to_owned(),
+        ]
+    );
+}
+
+#[test]
+fn multiple_in_reply_to_ids_are_all_collected() {
+    let parsed = parse(
+        "From: d@example.org\n\
+         Subject: merge\n\
+         Message-ID: <merge@example.org>\n\
+         In-Reply-To: <a@example.org> <b@example.org>\n\
+         Content-Type: text/plain\n\
+         \n\
+         body\n",
+    );
+
+    assert_eq!(
+        parsed.in_reply_to,
+        vec!["a@example.org".to_owned(), "b@example.org".to_owned()]
+    );
+    assert!(parsed.references.is_empty());
+    // With no References, the parent falls back to the first In-Reply-To id.
+    assert_eq!(
+        parsed.threading_headers().parent_id(),
+        Some("a@example.org")
+    );
+}
+
+#[test]
 fn truly_unparseable_input_maps_to_parse_error() {
     // An empty byte stream has no message structure at all.
     let error = parse_message(&[]).expect_err("empty input should fail");

@@ -13,13 +13,15 @@ use sqlx::SqlitePool;
 
 use crate::error_map::map_sqlx;
 use crate::pagination::NULL_DATE_SORT;
+use crate::threading_json::decode_threading;
 
 /// Columns selected when reading a message, in [`MessageRow`] order.
 pub(crate) const MESSAGE_COLUMNS: &str = "id, mailbox_id, \
     remote_kind, remote_uid, remote_uid_validity, remote_uidl, \
     subject, date_unix, \
     flag_seen, flag_answered, flag_flagged, flag_draft, flag_deleted, \
-    size_bytes, preview";
+    size_bytes, preview, \
+    message_id, in_reply_to, references_json";
 
 /// [`MESSAGE_COLUMNS`] qualified with the `m` table alias, for queries
 /// that join `messages` against other tables (e.g. the unified inbox).
@@ -29,7 +31,8 @@ pub(crate) const MESSAGE_COLUMNS_M: &str = "m.id, m.mailbox_id, \
     m.remote_kind, m.remote_uid, m.remote_uid_validity, m.remote_uidl, \
     m.subject, m.date_unix, \
     m.flag_seen, m.flag_answered, m.flag_flagged, m.flag_draft, m.flag_deleted, \
-    m.size_bytes, m.preview";
+    m.size_bytes, m.preview, \
+    m.message_id, m.in_reply_to, m.references_json";
 
 /// Raw `messages` row, mapped by column name.
 #[derive(sqlx::FromRow)]
@@ -50,6 +53,9 @@ pub(crate) struct MessageRow {
     flag_deleted: bool,
     size_bytes: Option<i64>,
     preview: Option<String>,
+    message_id: Option<String>,
+    in_reply_to: Option<String>,
+    references_json: Option<String>,
 }
 
 impl MessageRow {
@@ -78,6 +84,11 @@ impl MessageRow {
             .map_err(|_| MailError::Database {
                 message: "read_message: negative size".to_owned(),
             })?;
+        let threading = decode_threading(
+            self.message_id,
+            self.in_reply_to,
+            self.references_json.as_deref(),
+        )?;
         Ok(MessageEnvelope {
             id: MessageId::new(self.id),
             mailbox: MailboxId::new(self.mailbox_id),
@@ -95,6 +106,7 @@ impl MessageRow {
             },
             size_bytes,
             preview: self.preview,
+            threading,
         })
     }
 }

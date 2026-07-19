@@ -35,6 +35,7 @@ mod settings;
 mod store;
 mod sync_jobs;
 mod sync_state;
+mod threading_json;
 mod unified;
 
 pub use accounts::{AccountRepo, NewAccount};

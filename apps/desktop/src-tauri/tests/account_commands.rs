@@ -5,6 +5,7 @@ mod common;
 
 use axomail_core::{
     AccountId, MailError, MailboxId, MailboxRole, MessageEnvelope, MessageFlags, MessageId,
+    ThreadingHeaders,
 };
 use axomail_desktop_lib::commands::accounts::{
     create_account_impl, delete_account_impl, list_accounts_impl,
@@ -190,6 +191,7 @@ fn dto_builder_rejects_an_oversized_id() {
         flags: MessageFlags::default(),
         size_bytes: None,
         preview: None,
+        threading: ThreadingHeaders::default(),
     };
     let error = MessageListItemDto::from_envelope(&envelope).unwrap_err();
     assert!(matches!(error, MailError::Configuration { .. }));

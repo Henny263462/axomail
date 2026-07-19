@@ -2,8 +2,8 @@
 //! single envelope, page through a mailbox, and update flags.
 
 use axomail_core::{
-    Address, MailError, MailboxId, MessageEnvelope, MessageFlags, MessageId, RemoteMessageId,
-    UtcTimestamp,
+    AccountId, Address, MailError, MailboxId, MessageEnvelope, MessageFlags, MessageId,
+    RemoteMessageId, ThreadingHeaders, UtcTimestamp,
 };
 use serde::{Deserialize, Serialize};
 use sqlx::{SqliteConnection, SqlitePool};
@@ -11,6 +11,7 @@ use sqlx::{SqliteConnection, SqlitePool};
 use crate::error_map::map_sqlx;
 use crate::message_rows::{MESSAGE_COLUMNS, MessageRow, RemoteColumns, load_recipients};
 use crate::pagination::{MessageCursor, MessagePage, NULL_DATE_SORT};
+use crate::threading_json::ThreadingColumns;
 
 /// Default page size when a caller passes `0`.
 const MIN_PAGE_LIMIT: u32 = 1;
@@ -149,6 +150,9 @@ impl<'a> MessageRepo<'a> {
             flags: new.flags,
             size_bytes: new.size_bytes,
             preview: new.preview.clone(),
+            // Local inserts carry no threading identity; a reply draft gains
+            // one only once it is sent and re-synced.
+            threading: ThreadingHeaders::default(),
         })
     }
 
@@ -269,6 +273,70 @@ impl<'a> MessageRepo<'a> {
         .execute(self.pool)
         .await
         .map_err(|error| map_sqlx("update_flags", error))?;
+        Ok(result.rows_affected() > 0)
+    }
+
+    /// Finds the local id of a stored message whose `Message-ID` matches
+    /// `message_id` within `account`, if any. Used by thread assembly and
+    /// reply matching. Backed by the partial `idx_messages_message_id`
+    /// index (migration 0006); ties (the same id synced into several
+    /// mailboxes) resolve to the lowest local id.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`MailError::Database`] on any query failure.
+    pub async fn find_by_message_id(
+        &self,
+        account: AccountId,
+        message_id: &str,
+    ) -> Result<Option<MessageId>, MailError> {
+        let id: Option<i64> = sqlx::query_scalar(
+            "SELECT m.id FROM messages m
+             JOIN mailboxes b ON b.id = m.mailbox_id
+             WHERE b.account_id = ? AND m.message_id = ?
+             ORDER BY m.id
+             LIMIT 1",
+        )
+        .bind(account.value())
+        .bind(message_id)
+        .fetch_optional(self.pool)
+        .await
+        .map_err(|error| map_sqlx("find_by_message_id", error))?;
+        Ok(id.map(MessageId::new))
+    }
+
+    /// Persists a message's extracted threading identity, but only if it
+    /// has not been extracted yet (`references_json IS NULL`). Returns
+    /// whether a row was updated.
+    ///
+    /// This is the lazy-backfill write: the first time a message is opened
+    /// and its raw body parsed, its Message-ID / In-Reply-To / References
+    /// are stored. The `references_json IS NULL` guard makes it idempotent,
+    /// so re-opening a message (or a message already populated at ingest)
+    /// is a no-op and never overwrites an existing identity.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`MailError::Database`] on any query failure or if the
+    /// references chain cannot be serialized.
+    pub async fn backfill_threading(
+        &self,
+        id: MessageId,
+        headers: &ThreadingHeaders,
+    ) -> Result<bool, MailError> {
+        let columns = ThreadingColumns::from_headers(headers)?;
+        let result = sqlx::query(
+            "UPDATE messages
+                 SET message_id = ?, in_reply_to = ?, references_json = ?
+             WHERE id = ? AND references_json IS NULL",
+        )
+        .bind(columns.message_id)
+        .bind(columns.in_reply_to)
+        .bind(columns.references_json)
+        .bind(id.value())
+        .execute(self.pool)
+        .await
+        .map_err(|error| map_sqlx("backfill_threading", error))?;
         Ok(result.rows_affected() > 0)
     }
 }

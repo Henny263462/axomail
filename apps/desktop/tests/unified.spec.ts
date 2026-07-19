@@ -97,6 +97,9 @@ const detail: MessageDetailDto = {
   remoteBlocked: 0,
   hadActiveContent: false,
   attachments: [],
+  messageId: "work-note-1@example.org",
+  inReplyTo: [],
+  references: [],
 };
 
 beforeEach(() => {

@@ -26,6 +26,9 @@ const htmlDetail: MessageDetailDto = {
   attachments: [
     { filename: "report.pdf", mimeType: "application/pdf", size: 20_480 },
   ],
+  messageId: "quarterly-1@example.org",
+  inReplyTo: [],
+  references: [],
 };
 
 beforeEach(() => {

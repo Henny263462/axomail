@@ -65,11 +65,23 @@ where
     // Feed the full body text into the search index; until a message is
     // opened (and thus fetched) only its header/preview text is
     // searchable. Indexing failures must not break reading the message.
-    if let Some(text) = parsed.text_body.as_deref() {
-        let id = axomail_core::MessageId::new(message_id);
-        if let Err(error) = store.search().index_message_body(id, text).await {
-            tracing::warn!(%message_id, %error, "failed to index message body for search");
-        }
+    if let Some(text) = parsed.text_body.as_deref()
+        && let Err(error) = store.search().index_message_body(id, text).await
+    {
+        tracing::warn!(%message_id, %error, "failed to index message body for search");
+    }
+
+    // Lazily backfill the threading identity (Message-ID / In-Reply-To /
+    // References) the first time a message is opened, for rows synced by an
+    // envelope-only path (IMAP) that could not capture them. Idempotent via
+    // the repo's `references_json IS NULL` guard; a failure must not break
+    // reading the message.
+    if let Err(error) = store
+        .messages()
+        .backfill_threading(id, &parsed.threading_headers())
+        .await
+    {
+        tracing::warn!(%message_id, %error, "failed to backfill threading identity");
     }
 
     MessageDetailDto::from_parsed(message_id, &parsed)

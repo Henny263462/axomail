@@ -6,7 +6,7 @@ mod common;
 
 use std::fs;
 
-use axomail_core::{MailError, MailboxId};
+use axomail_core::{AccountId, MailError, MailboxId};
 use axomail_desktop_lib::commands::accounts::create_account_impl;
 use axomail_desktop_lib::commands::detail::get_message_detail_impl;
 use axomail_desktop_lib::composition::AppProviderFactory;
@@ -65,6 +65,83 @@ async fn detail_parses_and_sanitizes_a_cached_message() {
     assert_eq!(detail.remote_blocked, 0);
     assert!(!detail.had_active_content);
     assert!(detail.attachments.is_empty());
+}
+
+/// A reply message with threading headers and a plain-text body, used to
+/// prove both the DTO exposure and the lazy backfill of migration 0006.
+const THREADED_REPLY: &str = concat!(
+    "From: Bob Example <bob@example.com>\r\n",
+    "To: Alice Example <alice@example.org>\r\n",
+    "Subject: Re: Release notes\r\n",
+    "Date: Wed, 15 Jul 2026 13:00:00 +0000\r\n",
+    "Message-ID: <reply-77@example.com>\r\n",
+    "In-Reply-To: <alt-0002@example.org>\r\n",
+    "References: <root-0001@example.org> <alt-0002@example.org>\r\n",
+    "MIME-Version: 1.0\r\n",
+    "Content-Type: text/plain; charset=utf-8\r\n",
+    "\r\n",
+    "Thanks, looks good.\r\n",
+);
+
+#[tokio::test]
+async fn detail_exposes_threading_and_backfills_the_columns_on_open() {
+    let store = Store::open_in_memory().await.unwrap();
+    let (_concrete, secrets) = secret_stores();
+    let factory = AppProviderFactory::new(secrets.clone(), store.clone());
+    let raw_root = tempfile::tempdir().unwrap();
+
+    let summary = create_account_impl(&store, &secrets, valid_input())
+        .await
+        .unwrap();
+    let inbox = MailboxId::new(summary.mailboxes[0].id);
+
+    // Insert a row with NULL threading columns (as an envelope-only IMAP
+    // sync would), then cache the full raw reply so opening it can parse and
+    // backfill the identity.
+    let envelope = store
+        .messages()
+        .insert(&sample_message(inbox, "row-subject", Some(1)))
+        .await
+        .unwrap();
+    let message_id = envelope.id.value();
+    assert!(envelope.threading.is_empty(), "starts without threading");
+    cache_raw(raw_root.path(), message_id, THREADED_REPLY);
+
+    let detail = get_message_detail_impl(&store, &factory, raw_root.path(), message_id)
+        .await
+        .unwrap();
+
+    // The DTO exposes the parsed identity (angle brackets stripped).
+    assert_eq!(detail.message_id.as_deref(), Some("reply-77@example.com"));
+    assert_eq!(detail.in_reply_to, vec!["alt-0002@example.org".to_owned()]);
+    assert_eq!(
+        detail.references,
+        vec![
+            "root-0001@example.org".to_owned(),
+            "alt-0002@example.org".to_owned()
+        ]
+    );
+
+    // Opening the message backfilled the stored columns.
+    let stored = store
+        .messages()
+        .get(envelope.id)
+        .await
+        .unwrap()
+        .unwrap()
+        .threading;
+    assert_eq!(stored.message_id.as_deref(), Some("reply-77@example.com"));
+    assert_eq!(stored.references.len(), 2);
+    assert_eq!(stored.parent_id(), Some("alt-0002@example.org"));
+
+    // The message is now discoverable by its Message-ID within the account.
+    let account_id = summary.id;
+    let found = store
+        .messages()
+        .find_by_message_id(AccountId::new(account_id), "reply-77@example.com")
+        .await
+        .unwrap();
+    assert_eq!(found, Some(envelope.id));
 }
 
 #[tokio::test]

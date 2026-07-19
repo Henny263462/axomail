@@ -15,7 +15,7 @@ use std::time::Duration;
 
 use axomail_core::{
     Address, MailError, MessageFlags, RemoteEnvelope, RemoteMessageId, SyncOutcome, SyncRequest,
-    UtcTimestamp,
+    ThreadingHeaders, UtcTimestamp,
 };
 
 use crate::command;
@@ -223,11 +223,28 @@ async fn fetch_top(
 }
 
 /// Builds a [`RemoteEnvelope`] from an identity and its scanned headers.
+///
+/// The header scan covers the full header block, so threading identity is
+/// captured here at sync time (`Some(..)`); an absent scan leaves it
+/// `None` for the storage layer to backfill on open.
 fn build_envelope(message: &Identified, scanned: Option<ScannedHeaders>) -> RemoteEnvelope {
-    let (subject, from, date): (Option<String>, Vec<Address>, Option<UtcTimestamp>) = match scanned
-    {
-        Some(headers) => (headers.subject, headers.from, headers.date),
-        None => (None, Vec::new(), None),
+    let (subject, from, date, threading): (
+        Option<String>,
+        Vec<Address>,
+        Option<UtcTimestamp>,
+        Option<ThreadingHeaders>,
+    ) = match scanned {
+        Some(headers) => (
+            headers.subject,
+            headers.from,
+            headers.date,
+            Some(ThreadingHeaders {
+                message_id: headers.message_id,
+                in_reply_to: headers.in_reply_to,
+                references: headers.references,
+            }),
+        ),
+        None => (None, Vec::new(), None, None),
     };
     RemoteEnvelope {
         remote_id: RemoteMessageId::Pop3 {
@@ -239,5 +256,6 @@ fn build_envelope(message: &Identified, scanned: Option<ScannedHeaders>) -> Remo
         date,
         flags: MessageFlags::default(),
         size_bytes: Some(message.size),
+        threading,
     }
 }
