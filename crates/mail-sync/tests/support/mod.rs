@@ -70,6 +70,13 @@ pub struct FakeWorld {
     pause_at: Mutex<Option<Option<u32>>>,
     pass_delay: Mutex<Option<Duration>>,
     gate: Notify,
+    // Write-back observability (track 2.1). Every per-message op the write-back
+    // executor issues is recorded here in call order, and a message's IMAP UID
+    // can be "poisoned" so its op fails with a scripted error class.
+    select_calls: Mutex<Vec<MailboxName>>,
+    flag_calls: Mutex<Vec<(RemoteMessageId, FlagDelta)>>,
+    move_calls: Mutex<Vec<(RemoteMessageId, MailboxName)>>,
+    poison: Mutex<HashMap<u32, FailKind>>,
 }
 
 impl FakeWorld {
@@ -123,6 +130,38 @@ impl FakeWorld {
     #[must_use]
     pub fn max_active(&self, account: AccountId) -> usize {
         lock(&self.max_active).get(&account).copied().unwrap_or(0)
+    }
+
+    /// Makes every write-back op targeting the IMAP `uid` fail with `kind`,
+    /// simulating a poison message the write-back drain must not wedge behind.
+    pub fn poison_uid(&self, uid: u32, kind: FailKind) {
+        lock(&self.poison).insert(uid, kind);
+    }
+
+    /// The mailbox names the write-back executor selected, in call order.
+    #[must_use]
+    pub fn select_calls(&self) -> Vec<MailboxName> {
+        lock(&self.select_calls).clone()
+    }
+
+    /// The `(id, delta)` of every `store_flags` call, in order.
+    #[must_use]
+    pub fn flag_calls(&self) -> Vec<(RemoteMessageId, FlagDelta)> {
+        lock(&self.flag_calls).clone()
+    }
+
+    /// The `(id, target)` of every `move_message` call, in order.
+    #[must_use]
+    pub fn move_calls(&self) -> Vec<(RemoteMessageId, MailboxName)> {
+        lock(&self.move_calls).clone()
+    }
+
+    /// The scripted failure for `id`'s UID, if it was poisoned.
+    fn poison_for(&self, id: &RemoteMessageId) -> Option<FailKind> {
+        let RemoteMessageId::Imap { uid, .. } = id else {
+            return None;
+        };
+        lock(&self.poison).get(uid).copied()
     }
 
     fn should_pause(&self, current: Option<u32>) -> bool {
@@ -231,20 +270,33 @@ impl IncomingMailProvider for FakeProvider {
         Err(unsupported("FETCH"))
     }
 
+    async fn select_mailbox(&mut self, mailbox: &MailboxName) -> Result<(), MailError> {
+        lock(&self.world.select_calls).push(mailbox.clone());
+        Ok(())
+    }
+
     async fn store_flags(
         &mut self,
-        _id: &RemoteMessageId,
-        _delta: &FlagDelta,
+        id: &RemoteMessageId,
+        delta: &FlagDelta,
     ) -> Result<(), MailError> {
-        Err(unsupported("STORE"))
+        if let Some(kind) = self.world.poison_for(id) {
+            return Err(kind.build());
+        }
+        lock(&self.world.flag_calls).push((id.clone(), delta.clone()));
+        Ok(())
     }
 
     async fn move_message(
         &mut self,
-        _id: &RemoteMessageId,
-        _target: &MailboxName,
+        id: &RemoteMessageId,
+        target: &MailboxName,
     ) -> Result<(), MailError> {
-        Err(unsupported("MOVE"))
+        if let Some(kind) = self.world.poison_for(id) {
+            return Err(kind.build());
+        }
+        lock(&self.world.move_calls).push((id.clone(), target.clone()));
+        Ok(())
     }
 
     async fn delete_message(&mut self, _id: &RemoteMessageId) -> Result<(), MailError> {

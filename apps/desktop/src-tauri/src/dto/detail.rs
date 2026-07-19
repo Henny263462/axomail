@@ -104,6 +104,9 @@ pub struct MessageDetailDto {
     pub cc: Vec<RecipientDto>,
     /// Date header in Unix seconds (UTC); `None` when absent.
     pub date_unix: Option<i64>,
+    /// Whether the message is flagged/starred (from local storage, not the
+    /// parsed body): the authoritative state for the reading-pane star toggle.
+    pub flagged: bool,
     /// Decoded plain-text body, if present.
     pub text_body: Option<String>,
     /// Sanitized HTML body, if the message had one.
@@ -139,6 +142,7 @@ impl MessageDetailDto {
         message_id: i64,
         parsed: &ParsedMessage,
         policy: RemoteContentPolicy,
+        flagged: bool,
     ) -> Result<Self, MailError> {
         let sanitized = parsed
             .html_body
@@ -169,6 +173,7 @@ impl MessageDetailDto {
             to: parsed.to.iter().map(RecipientDto::from_address).collect(),
             cc: parsed.cc.iter().map(RecipientDto::from_address).collect(),
             date_unix: parsed.date.map(axomail_core::UtcTimestamp::unix_seconds),
+            flagged,
             text_body: parsed.text_body.clone(),
             remote_blocked_count: sanitized
                 .as_ref()

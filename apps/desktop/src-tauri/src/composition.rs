@@ -70,6 +70,13 @@ impl IncomingMailProvider for AnyIncomingProvider {
         }
     }
 
+    async fn select_mailbox(&mut self, mailbox: &MailboxName) -> Result<(), MailError> {
+        match self {
+            Self::Imap(provider) => provider.select_mailbox(mailbox).await,
+            Self::Pop3(provider) => provider.select_mailbox(mailbox).await,
+        }
+    }
+
     async fn store_flags(
         &mut self,
         id: &RemoteMessageId,

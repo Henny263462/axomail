@@ -77,6 +77,10 @@ impl IncomingMailProvider for Pop3Sync {
         self.provider.fetch_message(id).await
     }
 
+    async fn select_mailbox(&mut self, mailbox: &MailboxName) -> Result<(), MailError> {
+        self.provider.select_mailbox(mailbox).await
+    }
+
     async fn store_flags(
         &mut self,
         id: &RemoteMessageId,

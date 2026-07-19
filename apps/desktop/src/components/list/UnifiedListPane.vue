@@ -14,6 +14,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   select: [messageId: number];
+  toggleFlag: [messageId: number];
 }>();
 
 const namesByAccount = computed(() => {
@@ -45,6 +46,7 @@ function accountName(accountId: number): string {
         :account-name="accountName(item.accountId)"
         :selected="item.id === selectedMessageId"
         @select="emit('select', $event)"
+        @toggle-flag="emit('toggleFlag', $event)"
       />
     </ul>
   </section>

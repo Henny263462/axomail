@@ -15,6 +15,7 @@ const props = withDefaults(
 
 const emit = defineEmits<{
   select: [messageId: number];
+  toggleFlag: [messageId: number];
 }>();
 
 function formatDate(unix: number | null): string {
@@ -29,7 +30,17 @@ const date = computed(() => formatDate(props.message.dateUnix));
 </script>
 
 <template>
-  <li>
+  <li class="wrap">
+    <button
+      type="button"
+      class="star"
+      :class="{ on: message.flagged }"
+      :aria-pressed="message.flagged"
+      :aria-label="message.flagged ? 'Remove star' : 'Add star'"
+      @click="emit('toggleFlag', message.id)"
+    >
+      <span aria-hidden="true">{{ message.flagged ? "★" : "☆" }}</span>
+    </button>
     <button
       type="button"
       class="item"
@@ -55,14 +66,43 @@ const date = computed(() => formatDate(props.message.dateUnix));
 </template>
 
 <style scoped>
+.wrap {
+  display: flex;
+  align-items: stretch;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.star {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  padding: 0 var(--space-1) 0 var(--space-2);
+  font-size: var(--text-sm);
+  color: var(--color-text-tertiary);
+  transition: color var(--transition-fast);
+}
+
+.star:hover {
+  color: var(--color-text-secondary);
+}
+
+.star.on {
+  color: var(--color-accent);
+}
+
+.star:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: -2px;
+}
+
 .item {
   display: flex;
   flex-direction: column;
   gap: 2px;
-  width: 100%;
+  flex: 1;
+  min-width: 0;
   text-align: left;
-  padding: var(--space-2) var(--space-3);
-  border-bottom: 1px solid var(--color-border);
+  padding: var(--space-2) var(--space-3) var(--space-2) var(--space-1);
   transition: background var(--transition-fast);
 }
 

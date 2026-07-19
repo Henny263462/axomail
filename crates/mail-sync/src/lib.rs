@@ -35,6 +35,7 @@ mod engine;
 mod event;
 mod factory;
 mod job;
+mod op_payload;
 mod scheduler;
 mod shared;
 mod worker;
@@ -44,6 +45,8 @@ pub use engine::SyncEngine;
 pub use event::{SyncErrorClass, SyncEvent, SyncJobSummary};
 pub use factory::ProviderFactory;
 pub use job::{SyncMailbox, WorkRequest};
+// Write-back op-payload builders, used by the command layer to enqueue ops.
+pub use op_payload::{delete_op, flagged_op, move_op, seen_op};
 pub use scheduler::{BackgroundScheduler, SchedulerConfig, SchedulerStatus};
 
 // Re-exported so callers can name job identifiers and states without a

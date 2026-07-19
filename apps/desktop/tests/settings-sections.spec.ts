@@ -44,9 +44,12 @@ function stubContext(
     notificationsEnabled: false,
     syncIntervalMinutes: 5,
     theme: "system",
+    autoMarkReadEnabled: true,
+    autoMarkReadDelayMs: 0,
     setNotificationsEnabled: vi.fn(),
     setSyncIntervalMinutes: vi.fn(),
     setTheme: vi.fn(),
+    setAutoMarkRead: vi.fn(),
     reportError: vi.fn(),
     reportStatus: vi.fn(),
     notifyAccountsChanged: vi.fn(),
@@ -78,6 +81,7 @@ describe("settings section registry", () => {
     expect(settingsSections.map((section) => section.id)).toEqual([
       "notifications",
       "sync-interval",
+      "auto-read",
       "appearance",
       "pop3-delete",
       "identities",
@@ -171,6 +175,8 @@ describe("SettingsDialog registry integration", () => {
     notificationsEnabled: false,
     syncIntervalMinutes: 5,
     theme: "system",
+    autoMarkReadEnabled: true,
+    autoMarkReadDelayMs: 0,
     pop3DeletePolicies: [{ accountId: 2, enabled: false }],
   };
 

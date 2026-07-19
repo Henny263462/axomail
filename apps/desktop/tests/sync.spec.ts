@@ -75,7 +75,10 @@ describe("App sync wiring", () => {
       kind: "batchIngested",
       jobId: 5,
       mailboxId: 10,
+      accountId: null,
       newMessages: 2,
+      replayed: null,
+      failed: null,
       errorClass: null,
       message: null,
     });
@@ -94,7 +97,10 @@ describe("App sync wiring", () => {
       kind: "jobFailed",
       jobId: 9,
       mailboxId: 10,
+      accountId: null,
       newMessages: null,
+      replayed: null,
+      failed: null,
       errorClass: "network",
       message: "Sync failed: connection timed out.",
     });

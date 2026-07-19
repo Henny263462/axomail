@@ -5,7 +5,7 @@ mod common;
 
 use axomail_core::{MailError, MailboxId};
 use axomail_desktop_lib::commands::accounts::create_account_impl;
-use axomail_desktop_lib::commands::messages::{list_messages_impl, mark_message_seen_impl};
+use axomail_desktop_lib::commands::messages::list_messages_impl;
 use axomail_storage::Store;
 use common::{sample_message, secret_stores, valid_input};
 
@@ -71,45 +71,6 @@ async fn list_messages_rejects_a_malformed_cursor() {
     assert!(matches!(error, MailError::Configuration { .. }));
 }
 
-#[tokio::test]
-async fn mark_message_seen_round_trips() {
-    let store = Store::open_in_memory().await.unwrap();
-    let mailbox = inbox_of_new_account(&store).await;
-    let envelope = store
-        .messages()
-        .insert(&sample_message(mailbox, "hello", Some(1)))
-        .await
-        .unwrap();
-    assert!(!envelope.flags.seen);
-
-    mark_message_seen_impl(&store, envelope.id.value(), true)
-        .await
-        .unwrap();
-    assert!(
-        store
-            .messages()
-            .get(envelope.id)
-            .await
-            .unwrap()
-            .unwrap()
-            .flags
-            .seen
-    );
-
-    mark_message_seen_impl(&store, envelope.id.value(), false)
-        .await
-        .unwrap();
-    assert!(
-        !store
-            .messages()
-            .get(envelope.id)
-            .await
-            .unwrap()
-            .unwrap()
-            .flags
-            .seen
-    );
-
-    // An unknown id is a silent no-op.
-    mark_message_seen_impl(&store, 999_999, true).await.unwrap();
-}
+// The read/flag write-back commands moved to `commands::writeback`; their
+// behaviour (local apply + op enqueue, POP3 local-only) is covered in
+// `writeback_commands.rs`.

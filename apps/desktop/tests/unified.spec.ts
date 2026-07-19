@@ -19,6 +19,8 @@ vi.mock("../src/api/accounts", () => ({
 vi.mock("../src/api/messages", () => ({
   listMessages: vi.fn(),
   markMessageSeen: vi.fn(),
+  setMessageFlagged: vi.fn(),
+  markMailboxRead: vi.fn(),
   getMessageDetail: vi.fn(),
 }));
 vi.mock("../src/api/sync", () => ({
@@ -94,6 +96,7 @@ const detail: MessageDetailDto = {
   to: [],
   cc: [],
   dateUnix: 1_752_100_000,
+  flagged: false,
   textBody: "note body",
   sanitizedHtml: null,
   remoteBlockedCount: 0,

@@ -4,7 +4,7 @@
  * Each call resolves to its DTO in the desktop shell, or to `null` in the
  * browser preview where the IPC bridge is absent (ADR-0005).
  */
-import { safeInvoke } from "../lib/tauri";
+import { invokeOrThrow, safeInvoke } from "../lib/tauri";
 import type { MessageDetailDto, MessageListPage } from "../types/mail";
 
 /**
@@ -32,6 +32,28 @@ export function markMessageSeen(
   seen: boolean,
 ): Promise<null> {
   return safeInvoke<null>("mark_message_seen", { messageId, seen });
+}
+
+/**
+ * Sets (or clears) the star (flagged) flag on a single message.
+ *
+ * Uses {@link invokeOrThrow} so a backend failure rejects — the caller
+ * reverts its optimistic flip on rejection. Resolves `null` in the browser
+ * preview, where the optimistic flip simply stands.
+ */
+export function setMessageFlagged(
+  messageId: number,
+  flagged: boolean,
+): Promise<null> {
+  return invokeOrThrow<null>("set_message_flagged", { messageId, flagged });
+}
+
+/**
+ * Marks every unread message in a mailbox read. Resolves the number of
+ * messages marked, or `null` in the browser preview.
+ */
+export function markMailboxRead(mailboxId: number): Promise<number | null> {
+  return safeInvoke<number>("mark_mailbox_read", { mailboxId });
 }
 
 /**

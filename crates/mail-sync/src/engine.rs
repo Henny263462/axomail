@@ -173,6 +173,18 @@ where
         tracing::info!(count = requeued, "requeued stale sync jobs after restart");
     }
 
+    // Write-back ops a crash left `inflight` would otherwise block their
+    // message chains forever (an inflight head is never re-claimed). Recover
+    // them here, once, before any worker runs — the only safe moment, since a
+    // running drain owns its account's inflight ops.
+    let requeued_ops = shared.store.pending_ops().requeue_stale().await?;
+    if requeued_ops > 0 {
+        tracing::info!(
+            count = requeued_ops,
+            "requeued stale pending ops after restart"
+        );
+    }
+
     let pending = shared
         .store
         .sync_jobs()

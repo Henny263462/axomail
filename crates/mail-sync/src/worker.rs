@@ -6,10 +6,11 @@
 //! pending row, announce `JobStarted`, run the kind's executor, then record a
 //! terminal state and emit the closing event. [`dispatch`] routes the claimed
 //! job to its executor: `MailboxSync` keeps its full incremental pipeline (in
-//! [`mailbox_sync`]); `Discover` and `OpReplay` are honest not-yet-implemented
-//! seams the Wave 2 tracks drop their real executors into.
+//! [`mailbox_sync`]); `OpReplay` drains the write-back queue (in
+//! [`op_replay`]); `Discover` is the not-yet-implemented seam track 2.2 fills.
 
 mod mailbox_sync;
+mod op_replay;
 
 use std::sync::Arc;
 
@@ -104,7 +105,7 @@ where
     match job.kind {
         JobKind::MailboxSync => mailbox_sync::execute(shared, job, account_id, token).await,
         JobKind::Discover => execute_discover(shared, account_id, token).await,
-        JobKind::OpReplay => execute_op_replay(shared, account_id, token).await,
+        JobKind::OpReplay => op_replay::execute(shared, job, account_id, token).await,
         JobKind::Fetch | JobKind::Send => Err(MailError::NotImplemented {
             feature: format!("job kind {} is not engine-driven", job.kind.as_str()),
         }),
@@ -130,30 +131,6 @@ where
     Err(MailError::NotImplemented {
         feature: format!(
             "folder discovery (JobKind::Discover) for account {account_id}; Wave 2 track 2.2"
-        ),
-    })
-}
-
-/// Executor seam for [`JobKind::OpReplay`] — **Wave 2 track 2.1 (Write-back)**.
-///
-/// Placeholder: returns a typed [`MailError::NotImplemented`]. Track 2.1
-/// replaces this body with the pending-op drain (claim a batch, apply each op
-/// via `store_flags`/`move_message`/`delete_message` through [`guarded`], and
-/// `complete`/`retry`/`fail` per outcome). The account lock, permit, and claim
-/// are already applied by [`run_job`].
-async fn execute_op_replay<P, F>(
-    shared: &Arc<Shared<P, F>>,
-    account_id: AccountId,
-    token: &CancellationToken,
-) -> Result<SyncJobSummary, MailError>
-where
-    P: IncomingMailProvider + 'static,
-    F: ProviderFactory<P>,
-{
-    let _ = (shared, token);
-    Err(MailError::NotImplemented {
-        feature: format!(
-            "pending-op replay (JobKind::OpReplay) for account {account_id}; Wave 2 track 2.1"
         ),
     })
 }

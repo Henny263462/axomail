@@ -1,13 +1,22 @@
 <script setup lang="ts">
 import { ref, watch } from "vue";
 
-import { getMessageDetail, setRemoteContentAllowed } from "../../api/messages";
+import {
+  getMessageDetail,
+  setMessageFlagged,
+  setRemoteContentAllowed,
+} from "../../api/messages";
 import type { MessageDetailDto } from "../../types/mail";
 import EmptyState from "../common/EmptyState.vue";
 import MessageDetail from "./MessageDetail.vue";
 
 const props = defineProps<{
   messageId: number | null;
+}>();
+
+const emit = defineEmits<{
+  /** The starred state changed here; the host syncs the list row. */
+  flagChanged: [payload: { messageId: number; flagged: boolean }];
 }>();
 
 type LoadState = "idle" | "loading" | "loaded" | "error";
@@ -49,6 +58,23 @@ async function alwaysAllowRemote(sender: string): Promise<void> {
   if (id === null) return;
   await setRemoteContentAllowed(sender, true);
   if (props.messageId === id) void load(id, null);
+}
+
+/**
+ * Optimistically toggles the open message's star and persists it, reverting
+ * on a backend error. Notifies the host so the list row stays in step.
+ */
+async function toggleStar(): Promise<void> {
+  const current = detail.value;
+  if (current === null) return;
+  const next = !current.flagged;
+  current.flagged = next;
+  try {
+    await setMessageFlagged(current.id, next);
+    emit("flagChanged", { messageId: current.id, flagged: next });
+  } catch {
+    current.flagged = !next;
+  }
 }
 
 watch(
@@ -93,6 +119,7 @@ watch(
       :detail="detail"
       @show-remote-once="showRemoteOnce"
       @always-allow-remote="alwaysAllowRemote"
+      @toggle-star="toggleStar"
     />
   </section>
 </template>

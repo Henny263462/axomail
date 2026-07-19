@@ -36,6 +36,9 @@ impl IncomingMailProvider for StubProvider {
     async fn fetch_message(&mut self, _id: &RemoteMessageId) -> Result<RawMessage, MailError> {
         Err(MailError::Cancelled)
     }
+    async fn select_mailbox(&mut self, _mailbox: &MailboxName) -> Result<(), MailError> {
+        Err(MailError::Cancelled)
+    }
     async fn store_flags(
         &mut self,
         _id: &RemoteMessageId,

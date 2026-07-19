@@ -2,6 +2,7 @@ import type { Component } from "vue";
 
 import AccountsSection from "./AccountsSection.vue";
 import AppearanceSection from "./AppearanceSection.vue";
+import AutoReadSection from "./AutoReadSection.vue";
 import IdentitiesSection from "./IdentitiesSection.vue";
 import NotificationsSection from "./NotificationsSection.vue";
 import Pop3DeleteSection from "./Pop3DeleteSection.vue";
@@ -33,6 +34,7 @@ export const settingsSections: SettingsSection[] = [
     component: NotificationsSection,
   },
   { id: "sync-interval", title: "Sync", component: SyncIntervalSection },
+  { id: "auto-read", title: "Reading", component: AutoReadSection },
   { id: "appearance", title: "Appearance", component: AppearanceSection },
   {
     id: "pop3-delete",

@@ -113,6 +113,15 @@ impl IncomingMailProvider for ImapProvider {
         })
     }
 
+    async fn select_mailbox(&mut self, mailbox: &MailboxName) -> Result<(), MailError> {
+        let timeout = self.config.timeout;
+        let encoded = utf7::encode(mailbox.as_str());
+        let connected = self.require_session()?;
+        let uid_validity = message_ops::select(connected, &encoded, timeout).await?;
+        self.selected = Some(SelectedMailbox { uid_validity });
+        Ok(())
+    }
+
     async fn store_flags(
         &mut self,
         id: &RemoteMessageId,

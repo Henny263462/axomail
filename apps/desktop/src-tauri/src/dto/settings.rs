@@ -91,6 +91,11 @@ pub struct SettingsDto {
     pub sync_interval_minutes: u32,
     /// Preferred application color theme (applied entirely in the frontend).
     pub theme: ThemePreference,
+    /// Whether a displayed message is automatically marked read.
+    pub auto_mark_read_enabled: bool,
+    /// Delay before auto-marking a displayed message read, in milliseconds
+    /// (`0` = immediate; clamped to a ceiling on write).
+    pub auto_mark_read_delay_ms: u32,
     /// Per-account POP3 server-deletion policies (display only on write).
     pub pop3_delete_policies: Vec<Pop3DeletePolicyDto>,
 }
@@ -146,9 +151,12 @@ mod tests {
             notifications_enabled: true,
             sync_interval_minutes: 10,
             theme: ThemePreference::Dark,
+            auto_mark_read_enabled: true,
+            auto_mark_read_delay_ms: 0,
             pop3_delete_policies: Vec::new(),
         };
         let json = serde_json::to_string(&dto).unwrap();
         assert!(json.contains("\"theme\":\"dark\""), "got {json}");
+        assert!(json.contains("\"autoMarkReadDelayMs\":0"), "got {json}");
     }
 }
