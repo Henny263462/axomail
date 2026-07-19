@@ -244,6 +244,7 @@ export type SyncEventKind =
   | "jobStarted"
   | "batchIngested"
   | "jobFinished"
+  | "jobCancelled"
   | "jobFailed";
 
 /**
@@ -258,4 +259,37 @@ export interface SyncEventDto {
   newMessages: number | null;
   errorClass: string | null;
   message: string | null;
+}
+
+/** Kind of work a background job represents (mirrors the Rust `JobKind`). */
+export type SyncJobKind = "discover" | "mailboxSync" | "fetch" | "send";
+
+/** Lifecycle state of a background job (mirrors the Rust `JobState`). */
+export type SyncJobState =
+  | "pending"
+  | "running"
+  | "succeeded"
+  | "failed"
+  | "cancelled";
+
+/**
+ * One background sync job as shown in the activity manager. `accountLabel`
+ * and `mailboxLabel` are the human-readable names resolved by the backend;
+ * either is null when its owning row no longer exists (e.g. a deleted
+ * account). No message content is ever carried here.
+ */
+export interface SyncJobDto {
+  id: number;
+  kind: SyncJobKind;
+  state: SyncJobState;
+  accountId: number | null;
+  accountLabel: string | null;
+  mailboxId: number | null;
+  mailboxLabel: string | null;
+  /** Redacted failure reason, present only for failed jobs. */
+  error: string | null;
+  /** Unix seconds when the job was claimed, or null if never started. */
+  startedAtUnix: number | null;
+  /** Unix seconds when the job reached a terminal state, or null. */
+  finishedAtUnix: number | null;
 }

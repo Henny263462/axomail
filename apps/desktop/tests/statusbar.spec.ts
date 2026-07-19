@@ -22,4 +22,26 @@ describe("StatusBar", () => {
     await wrapper.get("button.dismiss").trigger("click");
     expect(wrapper.emitted("dismissError")).toHaveLength(1);
   });
+
+  it("opens activity from the always-present activity button", async () => {
+    const wrapper = mount(StatusBar);
+    await wrapper.get('button[aria-label="Activity"]').trigger("click");
+    expect(wrapper.emitted("openActivity")).toHaveLength(1);
+  });
+
+  it("shows a running indicator with a cancel affordance while syncing", async () => {
+    const wrapper = mount(StatusBar, { props: { syncing: true, syncCount: 3 } });
+    expect(wrapper.text()).toContain("Syncing 3…");
+
+    await wrapper.get('button[aria-label="Cancel all sync jobs"]').trigger("click");
+    expect(wrapper.emitted("cancelSync")).toHaveLength(1);
+  });
+
+  it("hides the running indicator when nothing is syncing", () => {
+    const wrapper = mount(StatusBar);
+    expect(wrapper.text()).not.toContain("Syncing");
+    expect(
+      wrapper.find('button[aria-label="Cancel all sync jobs"]').exists(),
+    ).toBe(false);
+  });
 });

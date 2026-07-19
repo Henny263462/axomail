@@ -2,21 +2,34 @@
 import { useAppVersion } from "../../composables/useAppVersion";
 import { isTauri } from "../../lib/tauri";
 
-withDefaults(
+const props = withDefaults(
   defineProps<{
     /** Redacted sync failure to surface, or null when there is none. */
     error?: string | null;
+    /** True while at least one sync job is queued or running. */
+    syncing?: boolean;
+    /** Number of jobs currently queued or running. */
+    syncCount?: number;
   }>(),
-  { error: null },
+  { error: null, syncing: false, syncCount: 0 },
 );
 
 const emit = defineEmits<{
   dismissError: [];
   openSettings: [];
+  openActivity: [];
+  cancelSync: [];
 }>();
 
 const { version } = useAppVersion();
 const browserPreview = !isTauri();
+
+/** Accessible summary of the running indicator. */
+function syncLabel(): string {
+  return props.syncCount === 1
+    ? "1 sync job running — open Activity"
+    : `${props.syncCount} sync jobs running — open Activity`;
+}
 </script>
 
 <template>
@@ -48,15 +61,48 @@ const browserPreview = !isTauri();
     >
       Browser preview — mail features require the desktop app
     </span>
-    <button
-      type="button"
-      class="settings"
-      aria-label="Settings"
-      title="Settings"
-      @click="emit('openSettings')"
-    >
-      ⚙
-    </button>
+    <div class="controls">
+      <span
+        v-if="syncing"
+        class="sync"
+      >
+        <button
+          type="button"
+          class="sync-open"
+          :aria-label="syncLabel()"
+          @click="emit('openActivity')"
+        >
+          Syncing {{ syncCount }}…
+        </button>
+        <button
+          type="button"
+          class="cancel"
+          aria-label="Cancel all sync jobs"
+          title="Cancel all sync jobs"
+          @click="emit('cancelSync')"
+        >
+          ✕
+        </button>
+      </span>
+      <button
+        type="button"
+        class="activity"
+        aria-label="Activity"
+        title="Activity"
+        @click="emit('openActivity')"
+      >
+        ⟳
+      </button>
+      <button
+        type="button"
+        class="settings"
+        aria-label="Settings"
+        title="Settings"
+        @click="emit('openSettings')"
+      >
+        ⚙
+      </button>
+    </div>
   </footer>
 </template>
 
@@ -64,7 +110,6 @@ const browserPreview = !isTauri();
 .status {
   display: flex;
   align-items: center;
-  justify-content: space-between;
   gap: var(--space-3);
   padding: 0 var(--space-3);
   height: 28px;
@@ -78,8 +123,45 @@ const browserPreview = !isTauri();
   color: var(--color-text-secondary);
 }
 
-.settings {
+.controls {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
   margin-left: auto;
+}
+
+.sync {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.sync-open {
+  font-size: var(--text-xs);
+  color: var(--color-accent);
+  padding: 2px var(--space-1);
+  border-radius: var(--radius-sm);
+}
+
+.sync-open:hover {
+  background: var(--color-bg-hover);
+}
+
+.cancel {
+  font-size: var(--text-xs);
+  line-height: 1;
+  color: var(--color-text-secondary);
+  padding: 2px var(--space-1);
+  border-radius: var(--radius-sm);
+}
+
+.cancel:hover {
+  background: var(--color-bg-hover);
+  color: var(--color-danger);
+}
+
+.activity,
+.settings {
   flex-shrink: 0;
   font-size: var(--text-sm);
   line-height: 1;
@@ -89,6 +171,7 @@ const browserPreview = !isTauri();
   transition: background var(--transition-fast);
 }
 
+.activity:hover,
 .settings:hover {
   background: var(--color-bg-hover);
   color: var(--color-text);

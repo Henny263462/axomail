@@ -451,7 +451,9 @@ pub async fn drain_until_terminal(
             Ok(Ok(event)) => {
                 let terminal = matches!(
                     event,
-                    SyncEvent::JobFinished { .. } | SyncEvent::JobFailed { .. }
+                    SyncEvent::JobFinished { .. }
+                        | SyncEvent::JobFailed { .. }
+                        | SyncEvent::JobCancelled { .. }
                 );
                 events.push(event);
                 if terminal {

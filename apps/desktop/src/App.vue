@@ -8,9 +8,11 @@ import {
   listOutbox,
   retryOutbox,
 } from "./api/compose";
+import { cancelAllSyncJobs } from "./api/jobs";
 import { listMessages, markMessageSeen } from "./api/messages";
 import { syncAccount } from "./api/sync";
 import { listUnifiedInbox } from "./api/unified";
+import ActivityDialog from "./components/activity/ActivityDialog.vue";
 import ComposerDialog from "./components/compose/ComposerDialog.vue";
 import EmptyState from "./components/common/EmptyState.vue";
 import AppShell from "./components/layout/AppShell.vue";
@@ -47,6 +49,7 @@ const selectedDraftId = ref<number | null>(null);
 const activeView = ref<SidebarView>("mailbox");
 const setupOpen = ref(false);
 const settingsOpen = ref(false);
+const activityOpen = ref(false);
 const composerOpen = ref(false);
 const composerDraft = ref<DraftDto | null>(null);
 const composerAccountId = ref(0);
@@ -56,7 +59,7 @@ const composerAccountId = ref(0);
 let fixtureMessages: MessageListItem[] = [];
 const usingFixtures = ref(false);
 
-const { syncingMailboxIds, syncError, dismissError } =
+const { syncingMailboxIds, isSyncing, runningCount, syncError, dismissError } =
   useSyncStatus(onSyncEvent);
 
 /** Account ids that have at least one mailbox currently syncing. */
@@ -225,6 +228,19 @@ function closeSettings(): void {
   settingsOpen.value = false;
 }
 
+function openActivity(): void {
+  activityOpen.value = true;
+}
+
+function closeActivity(): void {
+  activityOpen.value = false;
+}
+
+/** Cancels every running/queued sync job from the status-bar affordance. */
+async function onCancelSync(): Promise<void> {
+  await cancelAllSyncJobs();
+}
+
 async function onAccountCreated(account: AccountSummary): Promise<void> {
   setupOpen.value = false;
   await loadAccounts();
@@ -300,8 +316,12 @@ function onSyncEvent(event: SyncEventDto): void {
   <AppShell
     ref="shell"
     :status-error="syncError"
+    :syncing="isSyncing"
+    :sync-count="runningCount"
     @dismiss-status-error="dismissError"
     @open-settings="openSettings"
+    @open-activity="openActivity"
+    @cancel-sync="onCancelSync"
   >
     <template #sidebar>
       <SidebarPane
@@ -375,5 +395,9 @@ function onSyncEvent(event: SyncEventDto): void {
     v-if="settingsOpen"
     :accounts="accounts"
     @close="closeSettings"
+  />
+  <ActivityDialog
+    v-if="activityOpen"
+    @close="closeActivity"
   />
 </template>

@@ -36,7 +36,10 @@ export function useSyncStatus(onEvent?: (event: SyncEventDto) => void) {
         }
         break;
       case "jobFinished":
+      case "jobCancelled":
       case "jobFailed":
+        // Every terminal state clears the running entry. Only a genuine
+        // failure surfaces an error; a cancellation is a deliberate action.
         runningJobs.delete(event.jobId);
         break;
       case "batchIngested":
@@ -71,10 +74,19 @@ export function useSyncStatus(onEvent?: (event: SyncEventDto) => void) {
   /** True while any sync job is running. */
   const isSyncing = computed(() => runningJobs.size > 0);
 
+  /** Number of jobs currently queued or running (for the status indicator). */
+  const runningCount = computed(() => runningJobs.size);
+
   /** Clears the surfaced failure message. */
   function dismissError(): void {
     syncError.value = null;
   }
 
-  return { syncingMailboxIds, isSyncing, syncError, dismissError };
+  return {
+    syncingMailboxIds,
+    isSyncing,
+    runningCount,
+    syncError,
+    dismissError,
+  };
 }
