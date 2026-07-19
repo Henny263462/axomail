@@ -15,9 +15,9 @@
 use std::sync::Arc;
 
 use axomail_core::{
-    Account, AccountAuth, ConnectionCredential, CredentialRef, FlagDelta, IncomingMailProvider,
-    IncomingProtocol, MailError, MailboxName, RawMessage, RemoteMailboxState, RemoteMessageId,
-    SyncOutcome, SyncRequest,
+    Account, AccountAuth, AppendOutcome, ConnectionCredential, CredentialRef, FlagDelta, FlagSet,
+    IncomingMailProvider, IncomingProtocol, MailError, MailboxName, RawMessage, RemoteMailboxState,
+    RemoteMessageId, SyncOutcome, SyncRequest,
 };
 use axomail_imap::{ImapConfig, ImapProvider};
 use axomail_pop3::{Pop3Config, Pop3Provider};
@@ -103,6 +103,18 @@ impl IncomingMailProvider for AnyIncomingProvider {
         match self {
             Self::Imap(provider) => provider.delete_message(id).await,
             Self::Pop3(provider) => provider.delete_message(id).await,
+        }
+    }
+
+    async fn append_message(
+        &mut self,
+        mailbox: &MailboxName,
+        flags: &FlagSet,
+        raw: &[u8],
+    ) -> Result<AppendOutcome, MailError> {
+        match self {
+            Self::Imap(provider) => provider.append_message(mailbox, flags, raw).await,
+            Self::Pop3(provider) => provider.append_message(mailbox, flags, raw).await,
         }
     }
 

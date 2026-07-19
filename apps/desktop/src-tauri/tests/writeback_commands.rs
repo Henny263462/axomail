@@ -7,9 +7,9 @@
 mod common;
 
 use axomail_core::{
-    Account, AccountId, Address, EmailAddress, FlagDelta, IncomingMailProvider, MailError,
-    MailboxId, MailboxName, MailboxRole, MessageFlags, MessageId, RawMessage, RemoteMailboxState,
-    RemoteMessageId, SyncOutcome, SyncRequest, UtcTimestamp,
+    Account, AccountId, Address, AppendOutcome, EmailAddress, FlagDelta, FlagSet,
+    IncomingMailProvider, MailError, MailboxId, MailboxName, MailboxRole, MessageFlags, MessageId,
+    RawMessage, RemoteMailboxState, RemoteMessageId, SyncOutcome, SyncRequest, UtcTimestamp,
 };
 use axomail_desktop_lib::commands::accounts::create_account_impl;
 use axomail_desktop_lib::commands::writeback::{
@@ -59,6 +59,14 @@ impl IncomingMailProvider for StubProvider {
         Err(MailError::Cancelled)
     }
     async fn delete_message(&mut self, _id: &RemoteMessageId) -> Result<(), MailError> {
+        Err(MailError::Cancelled)
+    }
+    async fn append_message(
+        &mut self,
+        _mailbox: &MailboxName,
+        _flags: &FlagSet,
+        _raw: &[u8],
+    ) -> Result<AppendOutcome, MailError> {
         Err(MailError::Cancelled)
     }
     async fn create_mailbox(&mut self, _path: &MailboxName) -> Result<(), MailError> {

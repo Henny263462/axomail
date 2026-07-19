@@ -204,3 +204,18 @@ pub struct SendResult {
     /// kept for diagnostics.
     pub server_reply: Option<String>,
 }
+
+/// Result of an `APPEND` of a message into a server mailbox.
+///
+/// `remote_id` is the server identity the appended message was assigned, when
+/// the adapter could determine it. IMAP resolves it best-effort by matching the
+/// message's `Message-ID` back to a UID in the target mailbox (async-imap does
+/// not surface `APPENDUID`); a server that does not report the UID, or a
+/// protocol without server identities, leaves it `None`. The caller uses it to
+/// adopt the server copy onto its local record so a later sync does not
+/// double-file the same message.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AppendOutcome {
+    /// The appended message's server identity, if the adapter resolved it.
+    pub remote_id: Option<RemoteMessageId>,
+}

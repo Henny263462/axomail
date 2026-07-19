@@ -13,7 +13,7 @@ use tokio_rustls::client::TlsStream;
 
 use crate::config::SmtpConfig;
 use crate::error_map::{map_reply, map_send_error};
-use crate::mime::{HELO_HOST, build_message_bytes, collect_recipients};
+use crate::mime::{HELO_HOST, collect_recipients, render_message};
 use crate::redact::redact_reply_line;
 use crate::tls::build_tls_connector;
 
@@ -115,19 +115,30 @@ impl SmtpProvider {
         let _ = client.cmd(b"QUIT\r\n").await;
         Ok(line)
     }
-}
 
-impl OutgoingMailProvider for SmtpProvider {
-    /// Submits one message. Validates recipients before any network I/O, then
-    /// connects, authenticates, and transmits.
-    async fn send(&self, message: &OutgoingMessage) -> Result<SendResult, MailError> {
+    /// Submits a message whose RFC 5322 `body` has already been rendered,
+    /// deriving the envelope (sender and recipients) from `message`.
+    ///
+    /// Splitting the render out lets the caller file the *identical* bytes to
+    /// the Sent folder via IMAP `APPEND`, so the delivered message and the
+    /// filed copy share one `Message-ID`. Validates recipients before any
+    /// network I/O, then connects, authenticates, and transmits.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`MailError::Configuration`] for an empty recipient set, and any
+    /// TLS/connection/authentication/submission error otherwise.
+    pub async fn send_body(
+        &self,
+        message: &OutgoingMessage,
+        body: &[u8],
+    ) -> Result<SendResult, MailError> {
         if message.to.is_empty() {
             return Err(MailError::Configuration {
                 message: "outgoing message has no primary (To) recipient".to_owned(),
             });
         }
 
-        let body = build_message_bytes(message)?;
         let recipients = collect_recipients(message);
         let sender = message.from.email.as_str();
 
@@ -150,11 +161,20 @@ impl OutgoingMailProvider for SmtpProvider {
             .await
             .map_err(|err| map_send_error(err, self.config.timeout))?;
 
-        let server_reply = self.submit(&mut client, sender, &recipients, &body).await?;
+        let server_reply = self.submit(&mut client, sender, &recipients, body).await?;
         // The reply is already redacted; safe to log for diagnostics.
         tracing::debug!(reply = server_reply.as_str(), "SMTP submission accepted");
         Ok(SendResult {
             server_reply: Some(server_reply),
         })
+    }
+}
+
+impl OutgoingMailProvider for SmtpProvider {
+    /// Submits one message. Renders it, then connects, authenticates, and
+    /// transmits via [`SmtpProvider::send_body`].
+    async fn send(&self, message: &OutgoingMessage) -> Result<SendResult, MailError> {
+        let body = render_message(message)?.bytes;
+        self.send_body(message, &body).await
     }
 }

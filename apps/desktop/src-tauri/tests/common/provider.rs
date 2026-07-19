@@ -8,8 +8,8 @@
 #![allow(dead_code, clippy::unwrap_used, clippy::expect_used)]
 
 use axomail_core::{
-    Account, FlagDelta, IncomingMailProvider, MailError, MailboxName, RawMessage,
-    RemoteMailboxState, RemoteMessageId, SyncOutcome, SyncRequest,
+    Account, AppendOutcome, FlagDelta, FlagSet, IncomingMailProvider, MailError, MailboxName,
+    RawMessage, RemoteMailboxState, RemoteMessageId, SyncOutcome, SyncRequest,
 };
 use axomail_storage::Store;
 use axomail_sync::{ProviderFactory, SyncConfig, SyncEngine};
@@ -66,6 +66,14 @@ impl IncomingMailProvider for StubProvider {
         Err(MailError::Cancelled)
     }
     async fn delete_message(&mut self, _id: &RemoteMessageId) -> Result<(), MailError> {
+        Err(MailError::Cancelled)
+    }
+    async fn append_message(
+        &mut self,
+        _mailbox: &MailboxName,
+        _flags: &FlagSet,
+        _raw: &[u8],
+    ) -> Result<AppendOutcome, MailError> {
         Err(MailError::Cancelled)
     }
     async fn create_mailbox(&mut self, _path: &MailboxName) -> Result<(), MailError> {
@@ -148,6 +156,14 @@ impl IncomingMailProvider for CannedProvider {
         Err(MailError::Cancelled)
     }
     async fn delete_message(&mut self, _id: &RemoteMessageId) -> Result<(), MailError> {
+        Err(MailError::Cancelled)
+    }
+    async fn append_message(
+        &mut self,
+        _mailbox: &MailboxName,
+        _flags: &FlagSet,
+        _raw: &[u8],
+    ) -> Result<AppendOutcome, MailError> {
         Err(MailError::Cancelled)
     }
     async fn create_mailbox(&mut self, _path: &MailboxName) -> Result<(), MailError> {

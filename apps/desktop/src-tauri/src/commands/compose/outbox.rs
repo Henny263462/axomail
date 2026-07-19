@@ -4,7 +4,8 @@
 use axomail_core::MailError;
 use axomail_storage::{OutboxId, OutboxState, Store};
 
-use super::shared::{load_account, submit_record};
+use super::append::spawn_sent_copy_append;
+use super::shared::{Submission, load_account, submit_record};
 use crate::commands::map_command_error;
 use crate::dto::{OutboxItemDto, SendOutcomeDto};
 use crate::state::{AppState, SharedSecretStore};
@@ -24,7 +25,7 @@ pub async fn retry_outbox_impl(
     secrets: &SharedSecretStore,
     extra_roots: &[Vec<u8>],
     outbox_id: i64,
-) -> Result<SendOutcomeDto, MailError> {
+) -> Result<Submission, MailError> {
     let id = OutboxId::new(outbox_id);
     let record = store
         .outbox()
@@ -43,7 +44,10 @@ pub async fn retry_outbox_impl(
                 Some("a send for this message is already in progress".to_owned()),
             ),
         };
-        return SendOutcomeDto::new(outbox_id, sent, error);
+        return Ok(Submission {
+            outcome: SendOutcomeDto::new(outbox_id, sent, error)?,
+            sent_copy: None,
+        });
     }
 
     let account = load_account(store, record.account.value()).await?;
@@ -67,14 +71,21 @@ pub async fn list_outbox_impl(store: &Store) -> Result<Vec<OutboxItemDto>, MailE
 }
 
 /// Retries a failed or queued outbox item.
+///
+/// A successful retry that resolved a server Sent folder uploads the Sent copy
+/// on a background task (see [`send_message`](super::send::send_message)).
 #[tauri::command]
 pub async fn retry_outbox(
     state: tauri::State<'_, AppState>,
     outbox_id: i64,
 ) -> Result<SendOutcomeDto, String> {
-    retry_outbox_impl(state.store(), state.secrets(), &[], outbox_id)
+    let submission = retry_outbox_impl(state.store(), state.secrets(), &[], outbox_id)
         .await
-        .map_err(map_command_error)
+        .map_err(map_command_error)?;
+    if let Some(plan) = submission.sent_copy {
+        spawn_sent_copy_append(state.store(), state.factory(), plan);
+    }
+    Ok(submission.outcome)
 }
 
 /// Lists every outbox item.

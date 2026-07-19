@@ -17,7 +17,23 @@ use mail_builder::headers::content_type::ContentType;
 /// wire while staying RFC 5321 valid.
 pub(crate) const HELO_HOST: &str = "[127.0.0.1]";
 
-/// Renders `message` into an RFC 5322 byte stream.
+/// A rendered outgoing message together with the `Message-ID` it was assigned.
+///
+/// The identical `bytes` are handed to SMTP submission **and** to the IMAP
+/// `APPEND` that files the Sent copy, so the delivered message and the filed
+/// copy are byte-for-byte the same and share the returned `message_id`. The id
+/// is bracket-free (no `<>`), matching how the storage layer records
+/// `Message-ID`.
+#[derive(Debug, Clone)]
+pub struct RenderedMessage {
+    /// The complete RFC 5322 byte stream.
+    pub bytes: Vec<u8>,
+    /// The generated `Message-ID`, without angle brackets.
+    pub message_id: String,
+}
+
+/// Renders `message` into an RFC 5322 byte stream, returning it alongside the
+/// generated `Message-ID`.
 ///
 /// `text_body` is always present. `html_body`, when set, is emitted as the
 /// second part of a `multipart/alternative`; attachments wrap the result in a
@@ -28,12 +44,13 @@ pub(crate) const HELO_HOST: &str = "[127.0.0.1]";
 ///
 /// Returns [`MailError::Protocol`] if serialization fails (an internal writer
 /// error; not expected for in-memory buffers).
-pub(crate) fn build_message_bytes(message: &OutgoingMessage) -> Result<Vec<u8>, MailError> {
+pub fn render_message(message: &OutgoingMessage) -> Result<RenderedMessage, MailError> {
+    let message_id = generate_message_id(message.from.email.domain());
     let mut builder = MessageBuilder::new()
         .from(builder_address(&message.from))
         .to(address_list(&message.to))
         .subject(message.subject.as_str())
-        .message_id(generate_message_id(message.from.email.domain()))
+        .message_id(message_id.clone())
         .text_body(message.text_body.as_str());
 
     if !message.cc.is_empty() {
@@ -53,9 +70,10 @@ pub(crate) fn build_message_bytes(message: &OutgoingMessage) -> Result<Vec<u8>, 
         );
     }
 
-    builder.write_to_vec().map_err(|err| MailError::Protocol {
+    let bytes = builder.write_to_vec().map_err(|err| MailError::Protocol {
         message: format!("failed to serialize outgoing message: {err}"),
-    })
+    })?;
+    Ok(RenderedMessage { bytes, message_id })
 }
 
 /// Collects the SMTP envelope recipients: `To`, then `Cc`, then `Bcc`.

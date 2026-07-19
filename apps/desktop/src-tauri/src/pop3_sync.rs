@@ -19,8 +19,8 @@
 //! recorded and the message is simply fetched again — the safe direction.
 
 use axomail_core::{
-    AccountId, FlagDelta, IncomingMailProvider, MailError, MailboxName, RawMessage,
-    RemoteMailboxState, RemoteMessageId, SyncOutcome, SyncRequest,
+    AccountId, AppendOutcome, FlagDelta, FlagSet, IncomingMailProvider, MailError, MailboxName,
+    RawMessage, RemoteMailboxState, RemoteMessageId, SyncOutcome, SyncRequest,
 };
 use axomail_pop3::Pop3Provider;
 use axomail_storage::Store;
@@ -99,6 +99,15 @@ impl IncomingMailProvider for Pop3Sync {
 
     async fn delete_message(&mut self, id: &RemoteMessageId) -> Result<(), MailError> {
         self.provider.delete_message(id).await
+    }
+
+    async fn append_message(
+        &mut self,
+        mailbox: &MailboxName,
+        flags: &FlagSet,
+        raw: &[u8],
+    ) -> Result<AppendOutcome, MailError> {
+        self.provider.append_message(mailbox, flags, raw).await
     }
 
     async fn create_mailbox(&mut self, path: &MailboxName) -> Result<(), MailError> {

@@ -41,4 +41,5 @@ mod redact;
 mod tls;
 
 pub use config::{DEFAULT_TIMEOUT, SmtpConfig};
+pub use mime::{RenderedMessage, render_message};
 pub use provider::SmtpProvider;

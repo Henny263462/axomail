@@ -17,11 +17,14 @@
 //! - [`shared`] — the SMTP submission pipeline (`submit_record`) plus the small
 //!   helpers both entry points reuse (account/address loading, provider and
 //!   message builders, local Sent-copy filing).
+//! - [`append`] — the best-effort background upload of the Sent copy to the
+//!   server via IMAP `APPEND`.
 //!
 //! The public `*_impl` functions and their `#[tauri::command]` wrappers are
 //! re-exported here so `commands::compose::<name>` keeps resolving for the
 //! `generate_handler!` array in `lib.rs` and for the integration tests.
 
+mod append;
 mod outbox;
 mod send;
 mod shared;
@@ -31,5 +34,8 @@ mod shared;
 // `__tauri_command_name_<name>`) are reachable at `commands::compose::<name>` —
 // `generate_handler!` in `lib.rs` resolves them there. This also re-exports the
 // `*_impl` functions the integration tests import from `commands::compose`.
+pub(crate) use append::spawn_sent_copy_append;
+pub use append::{SentCopyPlan, append_sent_copy_impl};
 pub use outbox::*;
 pub use send::*;
+pub use shared::Submission;

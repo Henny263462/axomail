@@ -42,6 +42,7 @@ pub use oauth::{
 };
 pub use provider::{IncomingMailProvider, OutgoingMailProvider};
 pub use provider_types::{
-    MailboxSyncState, OutgoingAttachment, OutgoingMessage, RawMessage, RemoteEnvelope,
-    RemoteMailbox, RemoteMailboxState, SendResult, SyncOutcome, SyncRequest, SyncSummary,
+    AppendOutcome, MailboxSyncState, OutgoingAttachment, OutgoingMessage, RawMessage,
+    RemoteEnvelope, RemoteMailbox, RemoteMailboxState, SendResult, SyncOutcome, SyncRequest,
+    SyncSummary,
 };

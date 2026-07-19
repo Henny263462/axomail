@@ -4,7 +4,8 @@
 use axomail_core::{Account, MailError};
 use axomail_storage::{Identity, IdentityId, NewOutbox, Store};
 
-use super::shared::{load_account, now_unix, parse_addresses, submit_record};
+use super::append::spawn_sent_copy_append;
+use super::shared::{Submission, load_account, now_unix, parse_addresses, submit_record};
 use crate::commands::map_command_error;
 use crate::dto::{ComposeInput, SendOutcomeDto};
 use crate::state::{AppState, SharedSecretStore};
@@ -23,13 +24,18 @@ use crate::state::{AppState, SharedSecretStore};
 /// Returns [`MailError::Configuration`] for an empty or invalid recipient
 /// set or an unknown account. A submission failure is reported inside the
 /// returned [`SendOutcomeDto`] (with a redacted reason), not as an error.
+///
+/// On a successful immediate send the returned [`Submission`] carries a
+/// [`SentCopyPlan`](super::append::SentCopyPlan) for an IMAP account with a
+/// resolvable Sent folder; the command wrapper uploads that copy in the
+/// background.
 pub async fn send_message_impl(
     store: &Store,
     secrets: &SharedSecretStore,
     extra_roots: &[Vec<u8>],
     input: ComposeInput,
     offline: bool,
-) -> Result<SendOutcomeDto, MailError> {
+) -> Result<Submission, MailError> {
     if input.to.is_empty() {
         return Err(MailError::Configuration {
             message: "a message needs at least one primary (To) recipient".to_owned(),
@@ -64,24 +70,33 @@ pub async fn send_message_impl(
     // A scheduled message waits in the outbox; the worker's time guard keeps it
     // from being submitted until it is due.
     if let Some(at) = scheduled {
-        return SendOutcomeDto::scheduled(record.id.value(), at);
+        return Ok(no_copy(SendOutcomeDto::scheduled(record.id.value(), at)?));
     }
 
     // Working offline: the message stays `queued` in the outbox and is sent by
     // the drain once the app is back online. No network I/O happens now.
     if offline {
-        return SendOutcomeDto::queued_offline(record.id.value());
+        return Ok(no_copy(SendOutcomeDto::queued_offline(record.id.value())?));
     }
 
     // A freshly created row is `queued`, so this transition always succeeds.
     if !store.outbox().begin_send(record.id).await? {
-        return SendOutcomeDto::new(
+        return Ok(no_copy(SendOutcomeDto::new(
             record.id.value(),
             false,
             Some("the message could not be queued for sending".to_owned()),
-        );
+        )?));
     }
     submit_record(store, secrets, extra_roots, &account, &record).await
+}
+
+/// Wraps an outcome that has no Sent copy to upload (scheduled, offline, or a
+/// pre-submission failure).
+fn no_copy(outcome: SendOutcomeDto) -> Submission {
+    Submission {
+        outcome,
+        sent_copy: None,
+    }
 }
 
 /// Loads and validates the chosen sender identity, if any.
@@ -116,12 +131,16 @@ async fn resolve_identity(
 }
 
 /// Sends a composed message, queuing it in the outbox first.
+///
+/// On a successful send that resolved a server Sent folder, the Sent copy is
+/// uploaded to the server on a background task before the outcome is returned,
+/// so a slow IMAP `APPEND` never blocks the composer.
 #[tauri::command]
 pub async fn send_message(
     state: tauri::State<'_, AppState>,
     input: ComposeInput,
 ) -> Result<SendOutcomeDto, String> {
-    send_message_impl(
+    let submission = send_message_impl(
         state.store(),
         state.secrets(),
         &[],
@@ -129,5 +148,9 @@ pub async fn send_message(
         state.is_offline(),
     )
     .await
-    .map_err(map_command_error)
+    .map_err(map_command_error)?;
+    if let Some(plan) = submission.sent_copy {
+        spawn_sent_copy_append(state.store(), state.factory(), plan);
+    }
+    Ok(submission.outcome)
 }

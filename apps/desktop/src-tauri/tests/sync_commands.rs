@@ -8,8 +8,8 @@ mod common;
 use std::collections::HashSet;
 
 use axomail_core::{
-    Account, FlagDelta, IncomingMailProvider, MailError, MailboxName, MailboxRole, RawMessage,
-    RemoteMailboxState, RemoteMessageId, SyncOutcome, SyncRequest,
+    Account, AppendOutcome, FlagDelta, FlagSet, IncomingMailProvider, MailError, MailboxName,
+    MailboxRole, RawMessage, RemoteMailboxState, RemoteMessageId, SyncOutcome, SyncRequest,
 };
 use axomail_desktop_lib::commands::accounts::create_account_impl;
 use axomail_desktop_lib::commands::sync::sync_account_impl;
@@ -56,6 +56,14 @@ impl IncomingMailProvider for StubProvider {
         Err(MailError::Cancelled)
     }
     async fn delete_message(&mut self, _id: &RemoteMessageId) -> Result<(), MailError> {
+        Err(MailError::Cancelled)
+    }
+    async fn append_message(
+        &mut self,
+        _mailbox: &MailboxName,
+        _flags: &FlagSet,
+        _raw: &[u8],
+    ) -> Result<AppendOutcome, MailError> {
         Err(MailError::Cancelled)
     }
     async fn create_mailbox(&mut self, _path: &MailboxName) -> Result<(), MailError> {

@@ -10,15 +10,28 @@
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use axomail_core::{
-    Account, AccountId, Address, EmailAddress, MailError, MailboxId, MailboxRole, MessageFlags,
-    OutgoingMailProvider, OutgoingMessage, UtcTimestamp,
+    Account, AccountId, Address, EmailAddress, FlagSet, IncomingProtocol, MailError, Mailbox,
+    MailboxRole, MessageFlags, OutgoingMessage, SystemFlags, ThreadingHeaders, UtcTimestamp,
 };
-use axomail_smtp::{SmtpConfig, SmtpProvider};
+use axomail_smtp::{RenderedMessage, SmtpConfig, SmtpProvider, render_message};
 use axomail_storage::{Identity, NewMessage, OutboxId, OutboxRecord, Store};
 
+use super::append::SentCopyPlan;
 use crate::composition::resolve_credential;
 use crate::dto::SendOutcomeDto;
 use crate::state::SharedSecretStore;
+
+/// The result of a submission attempt: the DTO to return to the caller, and —
+/// on a successful send that resolved a server Sent folder — a plan to upload
+/// the Sent copy on a background task.
+#[derive(Debug)]
+pub struct Submission {
+    /// Outcome to hand back to the composer (sent / failed / scheduled).
+    pub outcome: SendOutcomeDto,
+    /// Present only when an IMAP Sent folder was resolved: the interactive
+    /// command wrappers spawn the server `APPEND` from it.
+    pub sent_copy: Option<SentCopyPlan>,
+}
 
 /// Length at which the stored Sent-copy preview is truncated.
 const PREVIEW_LEN: usize = 200;
@@ -26,13 +39,18 @@ const PREVIEW_LEN: usize = 200;
 /// Submits one outbox row (already transitioned to `sending`) over SMTP and
 /// records the terminal state. Never propagates a send failure as an error:
 /// it is captured on the row and in the returned outcome.
+///
+/// The message is rendered once so the identical bytes go to SMTP and to the
+/// local Sent copy; on success a [`SentCopyPlan`] is returned (for IMAP accounts
+/// with a resolvable Sent folder) so the caller can upload the copy to the
+/// server on a background task.
 pub(super) async fn submit_record(
     store: &Store,
     secrets: &SharedSecretStore,
     extra_roots: &[Vec<u8>],
     account: &Account,
     record: &OutboxRecord,
-) -> Result<SendOutcomeDto, MailError> {
+) -> Result<Submission, MailError> {
     // Resolve the identity the row was queued under; a deleted identity nulls
     // the reference (ON DELETE SET NULL), so this falls back to the account.
     let identity = match record.identity {
@@ -47,12 +65,29 @@ pub(super) async fn submit_record(
         Ok(provider) => provider,
         Err(error) => return fail(store, record.id, error).await,
     };
+    // Render once: SMTP delivery and the Sent copy share these exact bytes and
+    // their single Message-ID.
+    let rendered = match render_message(&message) {
+        Ok(rendered) => rendered,
+        Err(error) => return fail(store, record.id, error).await,
+    };
 
-    match provider.send(&message).await {
+    match provider.send_body(&message, &rendered.bytes).await {
         Ok(_) => {
             store.outbox().mark_sent(record.id).await?;
-            file_sent_copy(store, account, record, &message).await;
-            SendOutcomeDto::new(record.id.value(), true, None)
+            let sent_copy = file_sent_copy(
+                store,
+                account,
+                identity.as_ref(),
+                record,
+                &message,
+                rendered,
+            )
+            .await;
+            Ok(Submission {
+                outcome: SendOutcomeDto::new(record.id.value(), true, None)?,
+                sent_copy,
+            })
         }
         Err(error) => fail(store, record.id, error).await,
     }
@@ -60,10 +95,13 @@ pub(super) async fn submit_record(
 
 /// Records a failed submission and reports it in the outcome (never as an
 /// error): `MailError` messages are redacted by construction (ADR-0003).
-async fn fail(store: &Store, id: OutboxId, error: MailError) -> Result<SendOutcomeDto, MailError> {
+async fn fail(store: &Store, id: OutboxId, error: MailError) -> Result<Submission, MailError> {
     let reason = error.to_string();
     store.outbox().mark_failed(id, &reason).await?;
-    SendOutcomeDto::new(id.value(), false, Some(reason))
+    Ok(Submission {
+        outcome: SendOutcomeDto::new(id.value(), false, Some(reason))?,
+        sent_copy: None,
+    })
 }
 
 /// Builds the SMTP provider for an account, resolving its outgoing secret.
@@ -133,30 +171,36 @@ fn sender_headers(
     Ok((from, reply_to))
 }
 
-/// Files a local copy of a sent message in the account's Sent mailbox.
+/// Files a local copy of a sent message in the account's Sent mailbox and, for
+/// an IMAP account, returns a [`SentCopyPlan`] to upload the copy to the server.
 ///
-/// This is local bookkeeping only; uploading the copy to the server via IMAP
-/// `APPEND` is a later improvement. A missing Sent mailbox is logged and
-/// skipped — the message was already delivered, so this must not fail.
+/// The Sent folder is resolved from the sending identity's configured
+/// `sent_dest`, falling back to the account's `\Sent`-role mailbox. A missing
+/// Sent mailbox is logged and skipped — the message was already delivered, so
+/// this must never fail. POP3 accounts have no server folder, so they file
+/// locally only and return `None`.
 async fn file_sent_copy(
     store: &Store,
     account: &Account,
+    identity: Option<&Identity>,
     record: &OutboxRecord,
     message: &OutgoingMessage,
-) {
-    let sent = match sent_mailbox(store, account.id).await {
-        Ok(Some(id)) => id,
+    rendered: RenderedMessage,
+) -> Option<SentCopyPlan> {
+    let sent = match resolve_sent_mailbox(store, account, identity).await {
+        Ok(Some(mailbox)) => mailbox,
         Ok(None) => {
             tracing::warn!("account has no Sent mailbox; skipping local sent copy");
-            return;
+            return None;
         }
         Err(error) => {
             tracing::warn!(error = %error, "could not resolve Sent mailbox for sent copy");
-            return;
+            return None;
         }
     };
+    let size = u64::try_from(rendered.bytes.len()).ok();
     let new = NewMessage {
-        mailbox: sent,
+        mailbox: sent.id,
         remote_id: None,
         subject: (!record.subject.is_empty()).then(|| record.subject.clone()),
         from: vec![message.from.clone()],
@@ -168,24 +212,65 @@ async fn file_sent_copy(
             seen: true,
             ..MessageFlags::default()
         },
-        size_bytes: None,
+        size_bytes: size,
         preview: Some(preview_of(&record.body_text)),
         has_raw: false,
     };
-    if let Err(error) = store.messages().insert(&new).await {
-        tracing::warn!(error = %error, "could not file local sent copy");
+    let local_copy_id = match store.messages().insert(&new).await {
+        Ok(envelope) => envelope.id,
+        Err(error) => {
+            tracing::warn!(error = %error, "could not file local sent copy");
+            return None;
+        }
+    };
+    // Record the sent message's Message-ID so it threads with later replies and
+    // so a synced server copy can be matched back to this local row.
+    let headers = ThreadingHeaders {
+        message_id: Some(rendered.message_id),
+        in_reply_to: Vec::new(),
+        references: Vec::new(),
+    };
+    if let Err(error) = store
+        .messages()
+        .backfill_threading(local_copy_id, &headers)
+        .await
+    {
+        tracing::warn!(error = %error, "could not record the sent copy's Message-ID");
     }
+
+    // Only IMAP accounts have a server-side Sent folder to append into.
+    if !matches!(account.incoming.protocol, IncomingProtocol::Imap) {
+        return None;
+    }
+    Some(SentCopyPlan {
+        account_id: account.id,
+        local_copy_id,
+        mailbox_remote: sent.remote_name,
+        flags: FlagSet::from_system(SystemFlags {
+            seen: true,
+            ..SystemFlags::default()
+        }),
+        raw: rendered.bytes,
+    })
 }
 
-/// Finds the id of the account's Sent mailbox, if it has one.
-async fn sent_mailbox(store: &Store, account: AccountId) -> Result<Option<MailboxId>, MailError> {
-    Ok(store
-        .mailboxes()
-        .list(account)
-        .await?
+/// Resolves the mailbox that sent copies are filed into: the sending identity's
+/// configured `sent_dest` when it still exists, otherwise the account's
+/// `\Sent`-role mailbox.
+async fn resolve_sent_mailbox(
+    store: &Store,
+    account: &Account,
+    identity: Option<&Identity>,
+) -> Result<Option<Mailbox>, MailError> {
+    let mailboxes = store.mailboxes().list(account.id).await?;
+    if let Some(dest) = identity.and_then(|identity| identity.fields.sent_dest)
+        && let Some(mailbox) = mailboxes.iter().find(|mailbox| mailbox.id == dest)
+    {
+        return Ok(Some(mailbox.clone()));
+    }
+    Ok(mailboxes
         .into_iter()
-        .find(|mailbox| mailbox.role == MailboxRole::Sent)
-        .map(|mailbox| mailbox.id))
+        .find(|mailbox| mailbox.role == MailboxRole::Sent))
 }
 
 /// Loads an account by id, mapping an unknown id to a configuration error.

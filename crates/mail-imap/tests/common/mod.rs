@@ -18,7 +18,8 @@ use rcgen::{CertifiedKey, generate_simple_self_signed};
 use rustls::ServerConfig;
 use rustls::pki_types::{CertificateDer, PrivateKeyDer, PrivatePkcs8KeyDer};
 use tokio::io::{
-    self, AsyncBufRead, AsyncBufReadExt, AsyncRead, AsyncWrite, AsyncWriteExt, BufReader,
+    self, AsyncBufRead, AsyncBufReadExt, AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt,
+    BufReader,
 };
 use tokio::net::{TcpListener, TcpStream};
 use tokio::task::JoinHandle;
@@ -326,6 +327,8 @@ where
             handle_search(stream, tag, spec).await?;
         } else if upper.starts_with("UID FETCH") {
             handle_uid_fetch(stream, tag, rest, spec).await?;
+        } else if upper.starts_with("APPEND") {
+            handle_append(stream, tag, rest, spec).await?;
         } else if upper.starts_with("LOGOUT") {
             send(stream, "* BYE Logging out\r\n").await?;
             send(stream, &format!("{tag} OK LOGOUT completed\r\n")).await?;
@@ -565,6 +568,53 @@ where
         }
     }
     send(stream, &format!("{tag} OK FETCH completed\r\n")).await
+}
+
+/// Handles `APPEND mailbox [(flags)] {len}`: reads the sync literal after a `+`
+/// continuation and acknowledges, or rejects (before the literal) when the spec
+/// scripts an `APPEND` failure.
+///
+/// The command line itself is already recorded, so a test can assert on the
+/// mailbox and flags; the literal bytes are read and discarded to keep the
+/// stream framed.
+async fn handle_append<S>(
+    stream: &mut BufReader<S>,
+    tag: &str,
+    rest: &str,
+    spec: &Spec,
+) -> io::Result<()>
+where
+    S: AsyncRead + AsyncWrite + Unpin,
+{
+    if fails(spec, &rest.to_ascii_uppercase()) {
+        // Reject before the literal: with a sync literal the client waits for a
+        // continuation and never sends the body after a tagged NO.
+        send(stream, &format!("{tag} NO APPEND rejected\r\n")).await?;
+        return Ok(());
+    }
+    let Some(len) = append_literal_len(rest) else {
+        send(stream, &format!("{tag} BAD malformed APPEND literal\r\n")).await?;
+        return Ok(());
+    };
+    // Continuation request, then consume the literal plus its trailing CRLF.
+    send(stream, "+ OK send the message\r\n").await?;
+    let mut body = vec![0u8; len];
+    stream.read_exact(&mut body).await?;
+    let mut crlf = [0u8; 2];
+    stream.read_exact(&mut crlf).await?;
+    send(
+        stream,
+        &format!("{tag} OK [APPENDUID 42 1000] APPEND completed\r\n"),
+    )
+    .await
+}
+
+/// Parses the `{len}` (or `{len+}`) sync-literal size at the end of an APPEND
+/// command line.
+fn append_literal_len(rest: &str) -> Option<usize> {
+    let open = rest.rfind('{')?;
+    let close = rest[open..].find('}')? + open;
+    rest[open + 1..close].trim_end_matches('+').parse().ok()
 }
 
 /// Extracts the numeric argument of a `CHANGEDSINCE n` fetch modifier, if any.
