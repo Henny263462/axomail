@@ -15,9 +15,9 @@
 use std::sync::Arc;
 
 use axomail_core::{
-    Account, AccountAuth, ConnectionCredential, CredentialRef, IncomingMailProvider,
-    IncomingProtocol, MailError, MailboxName, MessageFlags, RawMessage, RemoteMailboxState,
-    RemoteMessageId, SyncOutcome, SyncRequest,
+    Account, AccountAuth, ConnectionCredential, CredentialRef, FlagDelta, IncomingMailProvider,
+    IncomingProtocol, MailError, MailboxName, RawMessage, RemoteMailboxState, RemoteMessageId,
+    SyncOutcome, SyncRequest,
 };
 use axomail_imap::{ImapConfig, ImapProvider};
 use axomail_pop3::{Pop3Config, Pop3Provider};
@@ -70,14 +70,14 @@ impl IncomingMailProvider for AnyIncomingProvider {
         }
     }
 
-    async fn set_flags(
+    async fn store_flags(
         &mut self,
         id: &RemoteMessageId,
-        flags: MessageFlags,
+        delta: &FlagDelta,
     ) -> Result<(), MailError> {
         match self {
-            Self::Imap(provider) => provider.set_flags(id, flags).await,
-            Self::Pop3(provider) => provider.set_flags(id, flags).await,
+            Self::Imap(provider) => provider.store_flags(id, delta).await,
+            Self::Pop3(provider) => provider.store_flags(id, delta).await,
         }
     }
 

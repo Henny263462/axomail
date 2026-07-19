@@ -1,41 +1,46 @@
-//! Per-job execution: claiming, per-account serialization, the pass loop
-//! with incremental ingestion, transient-failure retries, and terminal
-//! state recording.
+//! Per-job execution: the shared claim/serialize/finalize shape plus the
+//! per-kind executor dispatch.
+//!
+//! Every job — whatever its kind — runs the same durable shape: take the
+//! account lock, acquire a global parallelism permit, atomically claim the
+//! pending row, announce `JobStarted`, run the kind's executor, then record a
+//! terminal state and emit the closing event. [`dispatch`] routes the claimed
+//! job to its executor: `MailboxSync` keeps its full incremental pipeline (in
+//! [`mailbox_sync`]); `Discover` and `OpReplay` are honest not-yet-implemented
+//! seams the Wave 2 tracks drop their real executors into.
+
+mod mailbox_sync;
 
 use std::sync::Arc;
 
-use axomail_core::{
-    Account, ErrorClass, IncomingMailProvider, MailError, MailboxId, MailboxName, SyncRequest,
-};
-use axomail_storage::{JobState, SyncJob};
+use axomail_core::{AccountId, IncomingMailProvider, MailError};
+use axomail_storage::{JobKind, JobState, SyncJob};
 use tokio_util::sync::CancellationToken;
 
-use crate::backoff::backoff_delay;
 use crate::event::{SyncEvent, SyncJobSummary};
 use crate::factory::ProviderFactory;
 use crate::shared::Shared;
 
-/// Runs a claimed-or-pending job to a terminal state, then deregisters
-/// its cancellation token.
+/// Runs a claimed-or-pending job to a terminal state, then deregisters its
+/// cancellation token.
 pub(crate) async fn run_job<P, F>(shared: Arc<Shared<P, F>>, job: SyncJob, token: CancellationToken)
 where
     P: IncomingMailProvider + 'static,
     F: ProviderFactory<P>,
 {
-    let (account_id, mailbox_id) = match (job.account_id, job.mailbox_id) {
-        (Some(account), Some(mailbox)) => (account, mailbox),
-        _ => {
-            finalize(
-                &shared,
-                &job,
-                Err(MailError::Configuration {
-                    message: "sync job is missing its account or mailbox".to_owned(),
-                }),
-            )
-            .await;
-            shared.take_cancel(job.id);
-            return;
-        }
+    // Every kind is account-scoped; the mailbox (if any) is resolved by the
+    // per-kind executor. A row without an account is a corruption, not work.
+    let Some(account_id) = job.account_id else {
+        finalize(
+            &shared,
+            &job,
+            Err(MailError::Configuration {
+                message: "sync job is missing its account".to_owned(),
+            }),
+        )
+        .await;
+        shared.take_cancel(job.id);
+        return;
     };
 
     // Serialize per account first, then take a global parallelism permit.
@@ -52,9 +57,9 @@ where
         }
     };
 
-    // Claim the job under the account lock so no two `running` rows for
-    // one account can ever coexist. A non-pending row means someone else
-    // already handled it; leave its terminal state untouched.
+    // Claim the job under the account lock so no two `running` rows for one
+    // account can ever coexist. A non-pending row means someone else already
+    // handled it; leave its terminal state untouched.
     match shared.store.sync_jobs().claim(job.id).await {
         Ok(Some(_)) => {}
         Ok(None) => {
@@ -73,178 +78,89 @@ where
     let result = if token.is_cancelled() {
         Err(MailError::Cancelled)
     } else {
-        execute(&shared, job.id, account_id, mailbox_id, &token).await
+        dispatch(&shared, &job, account_id, &token).await
     };
 
     finalize(&shared, &job, result).await;
     shared.take_cancel(job.id);
 }
 
-/// Resolves account and mailbox context, then drives the retry loop.
-async fn execute<P, F>(
+/// Routes a claimed job to its per-kind executor.
+///
+/// The account lock, permit, and claim are already held/done by [`run_job`],
+/// so each executor only implements the kind-specific work. `Discover` and
+/// `OpReplay` are placeholder seams (see below); `Fetch`/`Send` are not
+/// engine-driven kinds.
+async fn dispatch<P, F>(
     shared: &Arc<Shared<P, F>>,
-    job_id: axomail_storage::SyncJobId,
-    account_id: axomail_core::AccountId,
-    mailbox_id: MailboxId,
+    job: &SyncJob,
+    account_id: AccountId,
     token: &CancellationToken,
 ) -> Result<SyncJobSummary, MailError>
 where
     P: IncomingMailProvider + 'static,
     F: ProviderFactory<P>,
 {
-    let account = shared
-        .store
-        .accounts()
-        .get(account_id)
-        .await?
-        .ok_or_else(|| MailError::Configuration {
-            message: "account for sync job no longer exists".to_owned(),
-        })?;
-    let remote_name = resolve_mailbox_name(shared, account_id, mailbox_id).await?;
-    run_with_retry(shared, job_id, mailbox_id, &remote_name, &account, token).await
-}
-
-/// Finds the remote name of `mailbox_id` within its account.
-async fn resolve_mailbox_name<P, F>(
-    shared: &Arc<Shared<P, F>>,
-    account_id: axomail_core::AccountId,
-    mailbox_id: MailboxId,
-) -> Result<MailboxName, MailError>
-where
-    P: IncomingMailProvider + 'static,
-    F: ProviderFactory<P>,
-{
-    shared
-        .store
-        .mailboxes()
-        .list(account_id)
-        .await?
-        .into_iter()
-        .find(|mailbox| mailbox.id == mailbox_id)
-        .map(|mailbox| mailbox.name)
-        .ok_or_else(|| MailError::Configuration {
-            message: "mailbox for sync job no longer exists".to_owned(),
-        })
-}
-
-/// Retries the pass loop on transient failures with backoff, up to the
-/// configured attempt budget; permanent, configuration, and cancellation
-/// errors fail immediately.
-async fn run_with_retry<P, F>(
-    shared: &Arc<Shared<P, F>>,
-    job_id: axomail_storage::SyncJobId,
-    mailbox_id: MailboxId,
-    remote_name: &MailboxName,
-    account: &Account,
-    token: &CancellationToken,
-) -> Result<SyncJobSummary, MailError>
-where
-    P: IncomingMailProvider + 'static,
-    F: ProviderFactory<P>,
-{
-    let mut transient_failures = 0u32;
-    loop {
-        if token.is_cancelled() {
-            return Err(MailError::Cancelled);
-        }
-        match run_passes(shared, job_id, mailbox_id, remote_name, account, token).await {
-            Ok(summary) => return Ok(summary),
-            Err(error) => {
-                if error.class() != ErrorClass::Temporary {
-                    return Err(error);
-                }
-                transient_failures += 1;
-                if transient_failures >= shared.config.max_attempts {
-                    return Err(error);
-                }
-                let delay = backoff_delay(transient_failures, &shared.config);
-                tokio::select! {
-                    biased;
-                    () = token.cancelled() => return Err(MailError::Cancelled),
-                    () = tokio::time::sleep(delay) => {}
-                }
-            }
-        }
+    match job.kind {
+        JobKind::MailboxSync => mailbox_sync::execute(shared, job, account_id, token).await,
+        JobKind::Discover => execute_discover(shared, account_id, token).await,
+        JobKind::OpReplay => execute_op_replay(shared, account_id, token).await,
+        JobKind::Fetch | JobKind::Send => Err(MailError::NotImplemented {
+            feature: format!("job kind {} is not engine-driven", job.kind.as_str()),
+        }),
     }
 }
 
-/// One full connection lifecycle: build a provider, connect, pump batches
-/// until the server reports no more, and disconnect (best effort).
-async fn run_passes<P, F>(
+/// Executor seam for [`JobKind::Discover`] — **Wave 2 track 2.2 (Folders)**.
+///
+/// Placeholder: returns a typed [`MailError::NotImplemented`]. Track 2.2
+/// replaces this body with the real LIST + SPECIAL-USE reconcile into the
+/// mailbox repo, reusing [`guarded`] for every network round-trip. The
+/// account lock, permit, and claim are already applied by [`run_job`].
+async fn execute_discover<P, F>(
     shared: &Arc<Shared<P, F>>,
-    job_id: axomail_storage::SyncJobId,
-    mailbox_id: MailboxId,
-    remote_name: &MailboxName,
-    account: &Account,
+    account_id: AccountId,
     token: &CancellationToken,
 ) -> Result<SyncJobSummary, MailError>
 where
     P: IncomingMailProvider + 'static,
     F: ProviderFactory<P>,
 {
-    let net = shared.config.network_timeout;
-    let mut provider = guarded(token, net, shared.factory.make(account)).await?;
-    let outcome = pump(
-        shared,
-        job_id,
-        mailbox_id,
-        remote_name,
-        &mut provider,
-        token,
-    )
-    .await;
-    // Close the session regardless of how the pass loop ended.
-    let _ = guarded(token, net, provider.disconnect()).await;
-    outcome
+    let _ = (shared, token);
+    Err(MailError::NotImplemented {
+        feature: format!(
+            "folder discovery (JobKind::Discover) for account {account_id}; Wave 2 track 2.2"
+        ),
+    })
 }
 
-/// Repeatedly requests and ingests sync passes until `has_more` clears,
-/// persisting each pass so progress survives a crash.
-async fn pump<P, F>(
+/// Executor seam for [`JobKind::OpReplay`] — **Wave 2 track 2.1 (Write-back)**.
+///
+/// Placeholder: returns a typed [`MailError::NotImplemented`]. Track 2.1
+/// replaces this body with the pending-op drain (claim a batch, apply each op
+/// via `store_flags`/`move_message`/`delete_message` through [`guarded`], and
+/// `complete`/`retry`/`fail` per outcome). The account lock, permit, and claim
+/// are already applied by [`run_job`].
+async fn execute_op_replay<P, F>(
     shared: &Arc<Shared<P, F>>,
-    job_id: axomail_storage::SyncJobId,
-    mailbox_id: MailboxId,
-    remote_name: &MailboxName,
-    provider: &mut P,
+    account_id: AccountId,
     token: &CancellationToken,
 ) -> Result<SyncJobSummary, MailError>
 where
     P: IncomingMailProvider + 'static,
     F: ProviderFactory<P>,
 {
-    let net = shared.config.network_timeout;
-    guarded(token, net, provider.connect()).await?;
-
-    let mut summary = SyncJobSummary::default();
-    loop {
-        if token.is_cancelled() {
-            return Err(MailError::Cancelled);
-        }
-        let state = shared.store.sync_state().get(mailbox_id).await?;
-        let request = SyncRequest {
-            mailbox: mailbox_id,
-            remote_name: remote_name.clone(),
-            state,
-            batch_size: shared.config.batch_size,
-        };
-        let outcome = guarded(token, net, provider.sync(request)).await?;
-        let ingest = shared.store.ingest().apply(mailbox_id, &outcome).await?;
-        summary.absorb(&ingest);
-        shared.emit(SyncEvent::BatchIngested {
-            job_id,
-            mailbox_id,
-            new_messages: ingest.inserted,
-        });
-        if !outcome.has_more {
-            break;
-        }
-    }
-    Ok(summary)
+    let _ = (shared, token);
+    Err(MailError::NotImplemented {
+        feature: format!(
+            "pending-op replay (JobKind::OpReplay) for account {account_id}; Wave 2 track 2.1"
+        ),
+    })
 }
 
-/// Awaits a fallible network future under both a per-operation timeout
-/// and the job's cancellation token. Cancellation wins ties.
-async fn guarded<T, Fut>(
+/// Awaits a fallible network future under both a per-operation timeout and the
+/// job's cancellation token. Cancellation wins ties. Shared by every executor.
+pub(super) async fn guarded<T, Fut>(
     token: &CancellationToken,
     timeout: std::time::Duration,
     future: Fut,

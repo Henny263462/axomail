@@ -6,11 +6,11 @@
 
 use std::time::Duration;
 
-use axomail_core::{MailError, MessageFlags};
+use axomail_core::{FlagDelta, MailError};
 use futures::TryStreamExt;
 
 use crate::connection::Connected;
-use crate::convert::flags_to_imap_list;
+use crate::convert::flag_set_to_imap_list;
 use crate::error::{map_imap_error, with_deadline};
 
 /// Fetches the complete raw bytes of one message.
@@ -43,15 +43,28 @@ pub(crate) async fn fetch_body(
     .await
 }
 
-/// Replaces a message's flags (`UID STORE ... FLAGS (...)`).
-pub(crate) async fn set_flags(
+/// Applies an additive flag change with `UID STORE ... +FLAGS`/`-FLAGS`.
+///
+/// The added and removed sides are issued as separate `STORE` commands
+/// (plain IMAP, capability-agnostic); an empty side is skipped, and an
+/// entirely empty delta performs no network round-trip. Because only the
+/// named flags are touched, this never clobbers flags or keywords the caller
+/// did not mention — the invariant the write-back queue relies on.
+pub(crate) async fn store_flags(
     connected: &mut Connected,
     uid: u32,
-    flags: MessageFlags,
+    delta: &FlagDelta,
     timeout: Duration,
 ) -> Result<(), MailError> {
-    let query = format!("FLAGS {}", flags_to_imap_list(flags));
-    run_store(connected, uid, &query, timeout).await
+    if !delta.add.is_empty() {
+        let query = format!("+FLAGS {}", flag_set_to_imap_list(&delta.add));
+        run_store(connected, uid, &query, timeout).await?;
+    }
+    if !delta.remove.is_empty() {
+        let query = format!("-FLAGS {}", flag_set_to_imap_list(&delta.remove));
+        run_store(connected, uid, &query, timeout).await?;
+    }
+    Ok(())
 }
 
 /// Moves a message to `encoded_target` (already modified UTF-7 encoded).

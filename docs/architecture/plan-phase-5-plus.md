@@ -113,6 +113,91 @@ table (ordered, per-account, message-scoped, retry state); additive-flag
 contract (`+FLAGS`/`-FLAGS`) and keyword set on `MessageFlags` in core +
 `SyncOutcome` flag-delta contract. Migration 0010. Engine tests via FakeWorld.
 
+### Wave 2 Stage 0 delivered API
+
+Delivered (main @ Stage 0). The four Wave-2 tracks code against exactly this;
+`Discover`/`OpReplay` executors and keyword/tag persistence are marked seams
+the tracks fill in.
+
+**Work-request enum + executor seam** (`axomail_sync`)
+
+- `enum WorkRequest { MailboxSync(SyncMailbox), Discover { account_id }, OpReplay { account_id } }`
+  with `WorkRequest::account_id() -> AccountId` and `From<SyncMailbox>`.
+  `MailboxSync` is mailbox-scoped; `Discover`/`OpReplay` are account-scoped
+  (persisted row's `mailbox_id` is `NULL`).
+- Engine entry points: `SyncEngine::enqueue(SyncMailbox)` (unchanged, wraps
+  `MailboxSync`) and the general `SyncEngine::enqueue_work(WorkRequest)`.
+- Dispatch lives in `crates/mail-sync/src/worker.rs`: `run_job` keeps the shared
+  account-lock → semaphore → `claim` → `JobStarted` → executor → `finalize`
+  shape (commit-then-continue), then `dispatch` matches `job.kind`. Per-kind
+  executor signature (the seam):
+  `async fn(shared: &Arc<Shared<P, F>>, account_id: AccountId, token: &CancellationToken) -> Result<SyncJobSummary, MailError>`.
+  - `MailboxSync` → `worker::mailbox_sync::execute` (behaviour unchanged,
+    byte-for-byte).
+  - `Discover` → `execute_discover` — **placeholder** returning
+    `MailError::NotImplemented` (track 2.2 drops in LIST/SPECIAL-USE reconcile).
+  - `OpReplay` → `execute_op_replay` — **placeholder** returning
+    `MailError::NotImplemented` (track 2.1 drops in the pending-op drain).
+  - Shared `worker::guarded(token, timeout, future)` wraps every network call
+    with timeout + cancellation.
+- `recover()` resumes **all** pending kinds (no more `MailboxSync`-only filter).
+- New: `JobKind::OpReplay` (`"op_replay"`, camelCase `opReplay`); new
+  `MailError::NotImplemented { feature }` (class `Permanent`);
+  `SyncEvent::JobQueued::mailbox_id` is now `Option<MailboxId>` (`None` for
+  account-scoped kinds; `SyncEventDto`/`SyncJobKind` TS mirror updated).
+
+**Dedup-key rule** (`SyncJobRepo::create_if_absent`)
+
+- Dedup key is now `(kind, account_id, mailbox_id)`, NULL-safe on both scopes
+  (SQL `IS`). Account-scoped kinds (`mailbox_id NULL`) no longer collapse across
+  accounts. The `account_id` column already existed (migration 0004); this is a
+  code change, proven by a two-account `Discover` enqueue test.
+
+**PendingOpsRepo** (`axomail_storage`, via `store.pending_ops()`)
+
+Ordering is `id` per account; ops execute per message (lowest-id un-completed op
+= head; only a `pending` head is claimable, so an inflight/failed head blocks
+its own message chain but never the whole account).
+
+- `enqueue(&NewPendingOp) -> Result<PendingOp>` (validates payload is JSON)
+- `claim_next_batch(account: AccountId, limit: u32) -> Result<Vec<PendingOp>>`
+  (atomic `pending → inflight`, per-message head order)
+- `complete(id: PendingOpId) -> Result<bool>` (delete on success)
+- `retry(id, error: &str) -> Result<bool>` (`inflight → pending`, attempts + 1)
+- `fail(id, error: &str) -> Result<bool>` (`inflight → failed`, attempts + 1; park)
+- `requeue(id) -> Result<bool>` (`failed → pending`; un-park, no attempt bump)
+- `requeue_stale() -> Result<u64>` (`inflight → pending`; crash recovery)
+- `list_failed(account) -> Result<Vec<PendingOp>>`
+- `counts(account) -> Result<PendingOpCounts>` (`{ pending, inflight, failed }`)
+
+Types: `NewPendingOp { account_id, message_id, kind: PendingOpKind, payload_json: String }`,
+`PendingOp`, `PendingOpId`, `PendingOpKind { AddFlags, RemoveFlags, AddKeyword,
+RemoveKeyword, Move, Delete }`, `PendingOpState { Pending, Inflight, Failed }`,
+`PendingOpCounts`. Both FKs (`account_id`, `message_id`) are `ON DELETE CASCADE`.
+
+**FlagDelta / keyword types** (`axomail_core`)
+
+- `Keyword` — validated RFC 3501 atom, case-preserving with case-insensitive
+  identity (`Keyword::parse(&str) -> Result<Keyword>`, `as_str`, serde
+  `try_from`). Rejects system-flag names.
+- `SystemFlags { seen, answered, flagged, draft, deleted }` (`Copy`, `is_empty`).
+- `FlagSet { system: SystemFlags, keywords: BTreeSet<Keyword> }`
+  (`is_empty`, `from_system`, `from_keyword`).
+- `FlagDelta { add: FlagSet, remove: FlagSet }` (`is_empty`).
+- `MessageFlags` gains `keywords: BTreeSet<Keyword>` (**no longer `Copy`**;
+  `#[serde(default)]`) plus `MessageFlags::system() -> SystemFlags`.
+- Trait method renamed: `IncomingMailProvider::store_flags(&mut self, id:
+  &RemoteMessageId, delta: &FlagDelta)` (was the REPLACE-form `set_flags`). IMAP
+  issues additive `UID STORE +FLAGS`/`-FLAGS` (empty side skipped); POP3 returns
+  `UnsupportedCapability`. Implemented by all adapters + `AnyIncomingProvider`
+  dispatch + `Pop3Sync` + `FakeProvider`.
+- Read/persist seam for track 2.4: server keywords are carried on
+  `MessageFlags.keywords` (model), but ingest still persists **only** the five
+  system flags (`convert::flags_from_fetch` leaves keywords empty;
+  `ingest::apply_flags`/`insert_envelope` drop them) until `message_tags` lands
+  in 2.4. The write path never clobbers server keywords because `store_flags`
+  only ever sends a delta.
+
 | Track | Cluster | Scope | Migration |
 |---|---|---|---|
 | 2.1 | F2+M3 Write-back | Op-queue executors: additive flag ops, move (gate on MOVE capability, fallback COPY + STORE `+FLAGS \Deleted` + UID EXPUNGE), delete-to-trash; seen/star propagation; star toggle UI; auto-mark-read-on-display (delay setting); bulk mark-read (selection/thread/folder/all). | — |

@@ -7,7 +7,7 @@
 mod common;
 
 use axomail_core::{
-    Account, AccountId, IncomingMailProvider, MailError, MailboxId, MailboxName, MessageFlags,
+    Account, AccountId, FlagDelta, IncomingMailProvider, MailError, MailboxId, MailboxName,
     RawMessage, RemoteMailboxState, RemoteMessageId, SyncOutcome, SyncRequest,
 };
 use axomail_desktop_lib::commands::accounts::create_account_impl;
@@ -36,10 +36,10 @@ impl IncomingMailProvider for StubProvider {
     async fn fetch_message(&mut self, _id: &RemoteMessageId) -> Result<RawMessage, MailError> {
         Err(MailError::Cancelled)
     }
-    async fn set_flags(
+    async fn store_flags(
         &mut self,
         _id: &RemoteMessageId,
-        _flags: MessageFlags,
+        _delta: &FlagDelta,
     ) -> Result<(), MailError> {
         Err(MailError::Cancelled)
     }

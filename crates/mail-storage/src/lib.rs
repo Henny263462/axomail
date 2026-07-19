@@ -31,6 +31,7 @@ mod message_rows;
 mod messages;
 mod outbox;
 mod pagination;
+mod pending_ops;
 mod pop3_uidl;
 mod remote_content;
 mod search;
@@ -50,6 +51,10 @@ pub use mailboxes::{MailboxRepo, NewMailbox};
 pub use messages::{MessageRepo, NewMessage};
 pub use outbox::{NewOutbox, OutboxId, OutboxRecord, OutboxRepo, OutboxState};
 pub use pagination::{MessageCursor, MessagePage};
+pub use pending_ops::{
+    NewPendingOp, PendingOp, PendingOpCounts, PendingOpId, PendingOpKind, PendingOpState,
+    PendingOpsRepo,
+};
 pub use pop3_uidl::Pop3UidlRepo;
 pub use remote_content::RemoteContentRepo;
 pub use search::{SearchHit, SearchRepo};

@@ -7,7 +7,7 @@
 
 use std::sync::{Arc, Mutex};
 
-use axomail_core::{IncomingMailProvider, MailError};
+use axomail_core::{AccountId, IncomingMailProvider, MailError, MailboxId};
 use axomail_storage::{JobKind, JobState, NewSyncJob, Store, SyncJob, SyncJobId};
 use tokio::sync::broadcast;
 use tokio::sync::mpsc;
@@ -16,7 +16,7 @@ use tokio::task::JoinHandle;
 use crate::config::SyncConfig;
 use crate::event::SyncEvent;
 use crate::factory::ProviderFactory;
-use crate::job::SyncMailbox;
+use crate::job::{SyncMailbox, WorkRequest};
 use crate::shared::Shared;
 use crate::worker::run_job;
 
@@ -32,7 +32,7 @@ where
     F: ProviderFactory<P>,
 {
     shared: Arc<Shared<P, F>>,
-    commands: mpsc::Sender<SyncMailbox>,
+    commands: mpsc::Sender<WorkRequest>,
     dispatcher: JoinHandle<()>,
     workers: Arc<Mutex<Vec<JoinHandle<()>>>>,
 }
@@ -84,8 +84,23 @@ where
     /// Returns [`MailError::Cancelled`] if the engine has shut down and
     /// no longer accepts work.
     pub async fn enqueue(&self, job: SyncMailbox) -> Result<(), MailError> {
+        self.enqueue_work(WorkRequest::MailboxSync(job)).await
+    }
+
+    /// Enqueues any [`WorkRequest`] (mailbox sync, discover, or op replay).
+    ///
+    /// The dispatcher persists it as a `sync_jobs` row, de-duplicates
+    /// equivalent pending/running work per the request's dedup key, and
+    /// routes the claimed job to its per-kind executor. This is the general
+    /// entry point the Wave 2 tracks use to enqueue `Discover`/`OpReplay`.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`MailError::Cancelled`] if the engine has shut down and no
+    /// longer accepts work.
+    pub async fn enqueue_work(&self, request: WorkRequest) -> Result<(), MailError> {
         self.commands
-            .send(job)
+            .send(request)
             .await
             .map_err(|_| MailError::Cancelled)
     }
@@ -126,7 +141,7 @@ where
 /// engine is dropped and the channel closes.
 async fn dispatch<P, F>(
     shared: Arc<Shared<P, F>>,
-    mut commands: mpsc::Receiver<SyncMailbox>,
+    mut commands: mpsc::Receiver<WorkRequest>,
     workers: Arc<Mutex<Vec<JoinHandle<()>>>>,
 ) where
     P: IncomingMailProvider + 'static,
@@ -136,14 +151,15 @@ async fn dispatch<P, F>(
         tracing::error!(error = %error, "sync engine startup recovery failed");
     }
 
-    while let Some(job) = commands.recv().await {
-        if let Err(error) = enqueue_job(&shared, &workers, job).await {
+    while let Some(request) = commands.recv().await {
+        if let Err(error) = enqueue_job(&shared, &workers, request).await {
             tracing::error!(error = %error, "failed to enqueue sync job");
         }
     }
 }
 
-/// Requeues crash-orphaned `running` jobs and resumes `pending` ones.
+/// Requeues crash-orphaned `running` jobs and resumes every `pending` one,
+/// regardless of kind (the worker routes each to its per-kind executor).
 async fn recover<P, F>(
     shared: &Arc<Shared<P, F>>,
     workers: &Arc<Mutex<Vec<JoinHandle<()>>>>,
@@ -163,9 +179,7 @@ where
         .list_by_state(JobState::Pending)
         .await?;
     for job in pending {
-        if job.kind == JobKind::MailboxSync {
-            spawn_worker(shared, workers, job);
-        }
+        spawn_worker(shared, workers, job);
     }
     Ok(())
 }
@@ -174,16 +188,17 @@ where
 async fn enqueue_job<P, F>(
     shared: &Arc<Shared<P, F>>,
     workers: &Arc<Mutex<Vec<JoinHandle<()>>>>,
-    request: SyncMailbox,
+    request: WorkRequest,
 ) -> Result<(), MailError>
 where
     P: IncomingMailProvider + 'static,
     F: ProviderFactory<P>,
 {
+    let (kind, account_id, mailbox_id) = describe(request);
     let new = NewSyncJob {
-        kind: JobKind::MailboxSync,
-        account_id: Some(request.account_id),
-        mailbox_id: Some(request.mailbox_id),
+        kind,
+        account_id: Some(account_id),
+        mailbox_id,
     };
     match shared.store.sync_jobs().create_if_absent(&new).await? {
         Some(job) => {
@@ -191,20 +206,34 @@ where
             // for a job always begin with `JobQueued`.
             shared.emit(SyncEvent::JobQueued {
                 job_id: job.id,
-                account_id: request.account_id,
-                mailbox_id: request.mailbox_id,
+                account_id,
+                mailbox_id,
             });
             spawn_worker(shared, workers, job);
         }
         None => {
             tracing::debug!(
-                account_id = %request.account_id,
-                mailbox_id = %request.mailbox_id,
+                kind = kind.as_str(),
+                account_id = %account_id,
                 "skipped duplicate sync job"
             );
         }
     }
     Ok(())
+}
+
+/// Maps a [`WorkRequest`] to the persisted job's `(kind, account, mailbox)`.
+/// Account-scoped kinds carry no mailbox.
+fn describe(request: WorkRequest) -> (JobKind, AccountId, Option<MailboxId>) {
+    match request {
+        WorkRequest::MailboxSync(mailbox) => (
+            JobKind::MailboxSync,
+            mailbox.account_id,
+            Some(mailbox.mailbox_id),
+        ),
+        WorkRequest::Discover { account_id } => (JobKind::Discover, account_id, None),
+        WorkRequest::OpReplay { account_id } => (JobKind::OpReplay, account_id, None),
+    }
 }
 
 /// Registers a cancellation token (before any event that reveals the id)

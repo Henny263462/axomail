@@ -1,7 +1,7 @@
 //! The [`ImapProvider`] adapter implementing [`IncomingMailProvider`].
 
 use axomail_core::{
-    IncomingMailProvider, MailError, MailboxName, MessageFlags, RawMessage, RemoteMailboxState,
+    FlagDelta, IncomingMailProvider, MailError, MailboxName, RawMessage, RemoteMailboxState,
     RemoteMessageId, SyncOutcome, SyncRequest,
 };
 
@@ -22,7 +22,7 @@ struct SelectedMailbox {
 /// A single instance owns one connection. Call [`IncomingMailProvider::connect`]
 /// first; then [`discover`](IncomingMailProvider::discover) and
 /// [`sync`](IncomingMailProvider::sync). Per-message operations
-/// (`fetch_message`, `set_flags`, `move_message`, `delete_message`) act on
+/// (`fetch_message`, `store_flags`, `move_message`, `delete_message`) act on
 /// the mailbox most recently selected by `sync`, and require the message's
 /// `uid_validity` to match that mailbox.
 pub struct ImapProvider {
@@ -113,15 +113,15 @@ impl IncomingMailProvider for ImapProvider {
         })
     }
 
-    async fn set_flags(
+    async fn store_flags(
         &mut self,
         id: &RemoteMessageId,
-        flags: MessageFlags,
+        delta: &FlagDelta,
     ) -> Result<(), MailError> {
         let uid = self.resolve_uid(id)?;
         let timeout = self.config.timeout;
         let connected = self.require_session()?;
-        message_ops::set_flags(connected, uid, flags, timeout).await
+        message_ops::store_flags(connected, uid, delta, timeout).await
     }
 
     async fn move_message(

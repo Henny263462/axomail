@@ -8,8 +8,9 @@ use std::num::NonZeroU16;
 use std::time::Duration;
 
 use axomail_core::{
-    ConnectionSecurity, IncomingMailProvider, MailError, MailboxId, MailboxName, MailboxRole,
-    MailboxSyncState, MessageFlags, RemoteMessageId, ServerEndpoint, SyncRequest,
+    ConnectionSecurity, FlagDelta, FlagSet, IncomingMailProvider, Keyword, MailError, MailboxId,
+    MailboxName, MailboxRole, MailboxSyncState, RemoteMessageId, ServerEndpoint, SyncRequest,
+    SystemFlags,
 };
 use axomail_imap::{ImapConfig, ImapProvider};
 
@@ -386,7 +387,7 @@ async fn fetch_message_returns_full_bytes_via_peek() {
 }
 
 #[tokio::test]
-async fn set_flags_sends_replace_store() {
+async fn store_flags_sends_additive_store() {
     let mut spec = Spec::base(TlsMode::Implicit);
     spec.messages = vec![Message::new(1)];
     let server = common::start(spec).await;
@@ -398,24 +399,48 @@ async fn set_flags_sends_replace_store() {
         .await
         .expect("sync selects the mailbox");
 
-    let flags = MessageFlags {
-        seen: true,
-        flagged: true,
-        ..MessageFlags::default()
+    // Add \Seen \Flagged and the $Junk keyword; remove \Deleted. The write is
+    // additive per side, never a replace, so untouched flags survive.
+    let delta = FlagDelta {
+        add: FlagSet {
+            system: SystemFlags {
+                seen: true,
+                flagged: true,
+                ..SystemFlags::default()
+            },
+            keywords: [Keyword::parse("$Junk").expect("valid keyword")]
+                .into_iter()
+                .collect(),
+        },
+        remove: FlagSet::from_system(SystemFlags {
+            deleted: true,
+            ..SystemFlags::default()
+        }),
     };
     provider
-        .set_flags(
+        .store_flags(
             &RemoteMessageId::Imap {
                 uid: 1,
                 uid_validity: 42,
             },
-            flags,
+            &delta,
         )
         .await
-        .expect("set flags");
+        .expect("store flags");
 
     assert!(
-        server.saw_command("UID STORE 1 FLAGS (\\Seen \\Flagged)"),
+        server.saw_command("UID STORE 1 +FLAGS (\\Seen \\Flagged $Junk)"),
+        "commands: {:?}",
+        server.commands()
+    );
+    assert!(
+        server.saw_command("UID STORE 1 -FLAGS (\\Deleted)"),
+        "commands: {:?}",
+        server.commands()
+    );
+    // A replace-form STORE must never be emitted.
+    assert!(
+        !server.saw_command("UID STORE 1 FLAGS ("),
         "commands: {:?}",
         server.commands()
     );

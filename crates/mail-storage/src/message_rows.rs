@@ -103,6 +103,9 @@ impl MessageRow {
                 flagged: self.flag_flagged,
                 draft: self.flag_draft,
                 deleted: self.flag_deleted,
+                // Keywords persist in Wave 2 track 2.4 (message_tags); until
+                // then the read path reconstructs an empty keyword set.
+                ..MessageFlags::default()
             },
             size_bytes,
             preview: self.preview,

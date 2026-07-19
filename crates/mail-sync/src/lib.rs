@@ -43,7 +43,7 @@ pub use config::SyncConfig;
 pub use engine::SyncEngine;
 pub use event::{SyncErrorClass, SyncEvent, SyncJobSummary};
 pub use factory::ProviderFactory;
-pub use job::SyncMailbox;
+pub use job::{SyncMailbox, WorkRequest};
 pub use scheduler::{BackgroundScheduler, SchedulerConfig, SchedulerStatus};
 
 // Re-exported so callers can name job identifiers and states without a

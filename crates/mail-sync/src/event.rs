@@ -67,8 +67,9 @@ pub enum SyncEvent {
         job_id: SyncJobId,
         /// Owning account.
         account_id: AccountId,
-        /// Target mailbox.
-        mailbox_id: MailboxId,
+        /// Target mailbox, when the job is mailbox-scoped. `None` for
+        /// account-scoped kinds (`Discover`, `OpReplay`).
+        mailbox_id: Option<MailboxId>,
     },
     /// A job was claimed and started executing.
     JobStarted {

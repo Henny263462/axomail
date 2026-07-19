@@ -119,6 +119,17 @@ pub enum MailError {
         message: String,
     },
 
+    /// A code path is a deliberate not-yet-implemented placeholder.
+    ///
+    /// Used by the sync engine's per-kind executor seams (Discover, OpReplay)
+    /// until the Wave 2 tracks drop in their real executors. Classified as
+    /// [`ErrorClass::Permanent`] so retry logic never spins on a stub.
+    #[error("not yet implemented: {feature}")]
+    NotImplemented {
+        /// Which feature is not yet wired, plus its owning track.
+        feature: String,
+    },
+
     /// The operation was cancelled on request.
     ///
     /// Classified as [`ErrorClass::Permanent`] so retry logic never
@@ -143,6 +154,7 @@ impl MailError {
             | Self::Keychain { .. }
             | Self::Filesystem { .. }
             | Self::UnsupportedCapability { .. }
+            | Self::NotImplemented { .. }
             | Self::Cancelled => ErrorClass::Permanent,
             Self::Authentication | Self::Configuration { .. } => ErrorClass::UserConfiguration,
         }

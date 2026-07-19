@@ -56,7 +56,7 @@ pub async fn mark_message_seen_impl(
     }
     let mut flags = envelope.flags;
     flags.seen = seen;
-    store.messages().update_flags(id, flags).await?;
+    store.messages().update_flags(id, &flags).await?;
     Ok(())
 }
 

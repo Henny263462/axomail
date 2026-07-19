@@ -4,10 +4,13 @@
 //! body. Full content is loaded on demand through the storage layer and
 //! never lives in these types.
 
+use std::collections::BTreeSet;
+
 use serde::{Deserialize, Serialize};
 
 use crate::address::Address;
 use crate::id::{MailboxId, MessageId, RemoteMessageId};
+use crate::keyword::{Keyword, SystemFlags};
 
 /// A point in time as seconds since the Unix epoch (UTC).
 ///
@@ -72,7 +75,12 @@ impl ThreadingHeaders {
 
 /// Standard per-message flags, aligned with IMAP system flags but used
 /// protocol-independently (POP3 messages carry purely local flags).
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+///
+/// The five system flags stay flat here for ergonomic `flags.seen`-style
+/// access. The `keywords` set carries IMAP custom flags ($Junk, $Forwarded,
+/// user labels …) end-to-end on the sync model. This type is no longer `Copy`
+/// (the keyword set owns heap data), so it is passed by reference on hot paths.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct MessageFlags {
     /// Message has been read.
     pub seen: bool,
@@ -84,6 +92,29 @@ pub struct MessageFlags {
     pub draft: bool,
     /// Message is marked for deletion.
     pub deleted: bool,
+    /// IMAP keywords (custom, non-system flags) on the message.
+    ///
+    /// **Carried but not yet persisted.** `message_tags` storage lands in
+    /// Wave 2 track 2.4; until then the ingest path writes only the five
+    /// system flags above and leaves this set as the seam 2.4 fills in. The
+    /// write path never depends on this field — `store_flags` sends a
+    /// [`FlagDelta`](crate::FlagDelta), so server keywords are never clobbered.
+    #[serde(default)]
+    pub keywords: BTreeSet<Keyword>,
+}
+
+impl MessageFlags {
+    /// The system-flag mask of these flags, dropping any keywords.
+    #[must_use]
+    pub fn system(&self) -> SystemFlags {
+        SystemFlags {
+            seen: self.seen,
+            answered: self.answered,
+            flagged: self.flagged,
+            draft: self.draft,
+            deleted: self.deleted,
+        }
+    }
 }
 
 /// Summary of a message for list rendering and sync bookkeeping.

@@ -90,7 +90,7 @@ impl<'a> IngestRepo<'a> {
 
         let mut flags_updated = 0u64;
         for (remote_id, flags) in &outcome.flag_updates {
-            flags_updated += apply_flags(&mut tx, mailbox, remote_id, *flags).await?;
+            flags_updated += apply_flags(&mut tx, mailbox, remote_id, flags).await?;
         }
 
         let mut removed = 0u64;
@@ -159,6 +159,10 @@ async fn insert_envelope(
         None => ThreadingColumns::unextracted(),
     };
 
+    // Only the five system flags are persisted here; `envelope.flags.keywords`
+    // is carried on the model but dropped on write until Wave 2 track 2.4 adds
+    // the `message_tags` table and indexes the keyword set in this insert.
+    //
     // `ON CONFLICT DO NOTHING` covers the IMAP unique index on
     // (mailbox_id, remote_uid_validity, remote_uid); a skipped row yields
     // no `RETURNING` output, so recipients are only written for genuine
@@ -242,13 +246,20 @@ async fn insert_recipients(
     Ok(())
 }
 
-/// Overwrites the flags of the message with a matching remote identity in
-/// this mailbox. Returns the number of rows changed (`0` if unknown).
+/// Overwrites the system flags of the message with a matching remote
+/// identity in this mailbox. Returns the number of rows changed (`0` if
+/// unknown).
+///
+/// Only the five system-flag columns are written. Any `flags.keywords` are
+/// intentionally dropped here: `message_tags` persistence lands in Wave 2
+/// track 2.4, which extends this function to upsert the keyword set. The
+/// server-side write path (`store_flags`) is delta-based, so nothing is
+/// clobbered on the server regardless.
 async fn apply_flags(
     conn: &mut SqliteConnection,
     mailbox: MailboxId,
     remote_id: &RemoteMessageId,
-    flags: MessageFlags,
+    flags: &MessageFlags,
 ) -> Result<u64, MailError> {
     let mut builder = sqlx::query(sqlx::AssertSqlSafe(flags_sql(remote_id)))
         .bind(flags.seen)

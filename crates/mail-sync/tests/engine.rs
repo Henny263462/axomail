@@ -7,8 +7,10 @@ mod support;
 use std::time::Duration;
 
 use axomail_core::{MessageFlags, RemoteMessageId};
+use axomail_storage::{JobKind, NewSyncJob};
 use axomail_sync::{
     JobState, SyncConfig, SyncEngine, SyncErrorClass, SyncEvent, SyncJobId, SyncMailbox,
+    WorkRequest,
 };
 use support::{
     FailKind, FakeFactory, FakeWorld, Pass, batch, changes, drain_until_terminal, envelope,
@@ -724,9 +726,111 @@ async fn duplicate_enqueue_is_deduplicated() {
     engine.cancel_all();
 }
 
+#[tokio::test]
+async fn discover_work_runs_placeholder_and_fails_not_implemented() {
+    let world = FakeWorld::new();
+    let (store, account, _mailbox) = store_with_mailbox().await;
+    let engine = SyncEngine::start(store.clone(), FakeFactory::new(world), test_config());
+    let mut events = engine.subscribe();
+
+    // The general entry point accepts an account-scoped Discover work request.
+    engine
+        .enqueue_work(WorkRequest::Discover {
+            account_id: account,
+        })
+        .await
+        .unwrap();
+    let collected = drain_until_terminal(&mut events).await;
+
+    // JobQueued carries no mailbox for an account-scoped kind.
+    let (job_id, mailbox) = collected
+        .iter()
+        .find_map(|event| match event {
+            SyncEvent::JobQueued {
+                job_id, mailbox_id, ..
+            } => Some((*job_id, *mailbox_id)),
+            _ => None,
+        })
+        .expect("a JobQueued event was emitted");
+    assert_eq!(mailbox, None, "account-scoped Discover has no mailbox");
+
+    // The persisted row is a Discover job that reached a terminal Failed state
+    // through the honest not-yet-implemented placeholder executor.
+    let job = store.sync_jobs().get(job_id).await.unwrap().unwrap();
+    assert_eq!(job.kind, JobKind::Discover);
+    assert_eq!(job.state, JobState::Failed);
+    match collected.last().unwrap() {
+        SyncEvent::JobFailed { class, message, .. } => {
+            assert_eq!(*class, SyncErrorClass::Permanent);
+            assert!(
+                message.contains("not yet implemented"),
+                "placeholder should report not-implemented, got {message:?}"
+            );
+        }
+        other => panic!("expected JobFailed, got {other:?}"),
+    }
+
+    // Serde round-trip proves the optional-mailbox JobQueued stays wire-ready.
+    let json = serde_json::to_string(&collected).unwrap();
+    let back: Vec<SyncEvent> = serde_json::from_str(&json).unwrap();
+    assert_eq!(back, collected);
+}
+
+#[tokio::test]
+async fn recover_resumes_all_kinds_not_just_mailbox_sync() {
+    let world = FakeWorld::new();
+    let (store, account, _mailbox) = store_with_mailbox().await;
+    // Pre-seed a pending OpReplay job, as if a prior run had enqueued it. If
+    // recovery still filtered to MailboxSync, this would sit pending forever.
+    let seeded = store
+        .sync_jobs()
+        .create_if_absent(&NewSyncJob {
+            kind: JobKind::OpReplay,
+            account_id: Some(account),
+            mailbox_id: None,
+        })
+        .await
+        .unwrap()
+        .expect("a fresh account has no active OpReplay job");
+
+    let _engine = SyncEngine::start(store.clone(), FakeFactory::new(world), test_config());
+
+    // Recovery resumes it and the placeholder drives it to a terminal state.
+    let state = wait_for_job_state(&store, seeded.id, JobState::Failed).await;
+    assert_eq!(state, JobState::Failed);
+    let resumed = store.sync_jobs().get(seeded.id).await.unwrap().unwrap();
+    assert!(
+        resumed
+            .error
+            .as_deref()
+            .unwrap_or_default()
+            .contains("not yet implemented"),
+        "resumed OpReplay ran the placeholder executor, got {:?}",
+        resumed.error
+    );
+}
+
 // ---------------------------------------------------------------------------
 // Small local helpers
 // ---------------------------------------------------------------------------
+
+/// Polls the store until `job_id` reaches `want`, or panics after a timeout.
+/// Used when a job may reach its terminal state before a subscription exists
+/// (e.g. jobs resumed by startup recovery).
+async fn wait_for_job_state(
+    store: &axomail_storage::Store,
+    job_id: SyncJobId,
+    want: JobState,
+) -> JobState {
+    for _ in 0..300 {
+        let job = store.sync_jobs().get(job_id).await.unwrap().unwrap();
+        if job.state == want {
+            return job.state;
+        }
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
+    panic!("job {job_id} did not reach {want:?}");
+}
 
 /// Enqueues one job and drives it to a terminal event.
 async fn run_one(

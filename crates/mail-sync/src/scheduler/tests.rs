@@ -128,7 +128,7 @@ impl JobSink for FakeSink {
         let _ = self.events.send(SyncEvent::JobQueued {
             job_id,
             account_id: job.account_id,
-            mailbox_id: job.mailbox_id,
+            mailbox_id: Some(job.mailbox_id),
         });
         self.calls.lock().unwrap().push(Enqueued {
             at: Instant::now(),

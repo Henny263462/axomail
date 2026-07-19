@@ -39,7 +39,13 @@ impl SyncEventDto {
         Ok(match event {
             SyncEvent::JobQueued {
                 job_id, mailbox_id, ..
-            } => Self::base("jobQueued", job_id.value())?.with_mailbox(mailbox_id.value())?,
+            } => {
+                let dto = Self::base("jobQueued", job_id.value())?;
+                match mailbox_id {
+                    Some(mailbox_id) => dto.with_mailbox(mailbox_id.value())?,
+                    None => dto,
+                }
+            }
             SyncEvent::JobStarted { job_id } => Self::base("jobStarted", job_id.value())?,
             SyncEvent::BatchIngested {
                 job_id,

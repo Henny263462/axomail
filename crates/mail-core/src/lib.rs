@@ -17,6 +17,7 @@ mod address;
 mod conn_credential;
 mod error;
 mod id;
+mod keyword;
 mod mailbox;
 mod message;
 mod oauth;
@@ -32,6 +33,7 @@ pub use address::{Address, EmailAddress};
 pub use conn_credential::{ConnectionCredential, xoauth2_sasl};
 pub use error::{ErrorClass, MailError};
 pub use id::{AccountId, AttachmentId, CredentialRef, MailboxId, MessageId, RemoteMessageId};
+pub use keyword::{FlagDelta, FlagSet, Keyword, SystemFlags};
 pub use mailbox::{Mailbox, MailboxName, MailboxRole};
 pub use message::{MessageEnvelope, MessageFlags, ThreadingHeaders, UtcTimestamp};
 pub use oauth::{

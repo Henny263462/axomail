@@ -3,7 +3,7 @@
 use std::collections::HashSet;
 
 use axomail_core::{
-    IncomingMailProvider, MailError, MailboxName, MailboxRole, MessageFlags, RawMessage,
+    FlagDelta, IncomingMailProvider, MailError, MailboxName, MailboxRole, RawMessage,
     RemoteMailbox, RemoteMailboxState, RemoteMessageId, SyncOutcome, SyncRequest,
 };
 
@@ -122,10 +122,10 @@ impl IncomingMailProvider for Pop3Provider {
         })
     }
 
-    async fn set_flags(
+    async fn store_flags(
         &mut self,
         _id: &RemoteMessageId,
-        _flags: MessageFlags,
+        _delta: &FlagDelta,
     ) -> Result<(), MailError> {
         // POP3 has no server-side flags; flags are a local-only concept.
         Err(MailError::UnsupportedCapability {

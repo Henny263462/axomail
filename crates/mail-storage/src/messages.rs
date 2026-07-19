@@ -147,7 +147,7 @@ impl<'a> MessageRepo<'a> {
             from: new.from.clone(),
             to: new.to.clone(),
             date: new.date,
-            flags: new.flags,
+            flags: new.flags.clone(),
             size_bytes: new.size_bytes,
             preview: new.preview.clone(),
             // Local inserts carry no threading identity; a reply draft gains
@@ -282,7 +282,7 @@ impl<'a> MessageRepo<'a> {
     pub async fn update_flags(
         &self,
         id: MessageId,
-        flags: MessageFlags,
+        flags: &MessageFlags,
     ) -> Result<bool, MailError> {
         let result = sqlx::query(
             "UPDATE messages SET

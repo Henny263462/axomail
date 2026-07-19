@@ -262,7 +262,12 @@ export interface SyncEventDto {
 }
 
 /** Kind of work a background job represents (mirrors the Rust `JobKind`). */
-export type SyncJobKind = "discover" | "mailboxSync" | "fetch" | "send";
+export type SyncJobKind =
+  | "discover"
+  | "mailboxSync"
+  | "fetch"
+  | "send"
+  | "opReplay";
 
 /** Lifecycle state of a background job (mirrors the Rust `JobState`). */
 export type SyncJobState =

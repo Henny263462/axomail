@@ -13,8 +13,8 @@
 
 use crate::error::MailError;
 use crate::id::RemoteMessageId;
+use crate::keyword::FlagDelta;
 use crate::mailbox::MailboxName;
-use crate::message::MessageFlags;
 use crate::provider_types::{
     OutgoingMessage, RawMessage, RemoteMailboxState, SendResult, SyncOutcome, SyncRequest,
 };
@@ -44,11 +44,16 @@ pub trait IncomingMailProvider: Send {
         id: &RemoteMessageId,
     ) -> impl Future<Output = Result<RawMessage, MailError>> + Send;
 
-    /// Replaces the flags of a message on the server.
-    fn set_flags(
+    /// Applies an additive flag change to a message on the server.
+    ///
+    /// The `delta` names only the flags and keywords to add (`STORE +FLAGS`)
+    /// and remove (`STORE -FLAGS`); it never replaces the full flag set, so a
+    /// write can never clobber flags or keywords the caller did not name. An
+    /// empty delta is a no-op.
+    fn store_flags(
         &mut self,
         id: &RemoteMessageId,
-        flags: MessageFlags,
+        delta: &FlagDelta,
     ) -> impl Future<Output = Result<(), MailError>> + Send;
 
     /// Moves a message to another mailbox on the server.
@@ -105,10 +110,10 @@ mod tests {
             Err(MailError::Cancelled)
         }
 
-        async fn set_flags(
+        async fn store_flags(
             &mut self,
             _id: &RemoteMessageId,
-            _flags: MessageFlags,
+            _delta: &FlagDelta,
         ) -> Result<(), MailError> {
             Err(MailError::Cancelled)
         }
@@ -151,6 +156,14 @@ mod tests {
             state: MailboxSyncState::default(),
             batch_size: 100,
         }));
+        let delta = FlagDelta::default();
+        assert_send_future(provider.store_flags(
+            &RemoteMessageId::Imap {
+                uid: 1,
+                uid_validity: 1,
+            },
+            &delta,
+        ));
         assert_send_future(provider.disconnect());
     }
 

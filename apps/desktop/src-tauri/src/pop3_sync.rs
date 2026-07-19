@@ -19,7 +19,7 @@
 //! recorded and the message is simply fetched again — the safe direction.
 
 use axomail_core::{
-    AccountId, IncomingMailProvider, MailError, MailboxName, MessageFlags, RawMessage,
+    AccountId, FlagDelta, IncomingMailProvider, MailError, MailboxName, RawMessage,
     RemoteMailboxState, RemoteMessageId, SyncOutcome, SyncRequest,
 };
 use axomail_pop3::Pop3Provider;
@@ -77,12 +77,12 @@ impl IncomingMailProvider for Pop3Sync {
         self.provider.fetch_message(id).await
     }
 
-    async fn set_flags(
+    async fn store_flags(
         &mut self,
         id: &RemoteMessageId,
-        flags: MessageFlags,
+        delta: &FlagDelta,
     ) -> Result<(), MailError> {
-        self.provider.set_flags(id, flags).await
+        self.provider.store_flags(id, delta).await
     }
 
     async fn move_message(

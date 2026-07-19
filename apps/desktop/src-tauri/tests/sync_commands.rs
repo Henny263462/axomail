@@ -8,7 +8,7 @@ mod common;
 use std::collections::HashSet;
 
 use axomail_core::{
-    Account, IncomingMailProvider, MailError, MailboxName, MailboxRole, MessageFlags, RawMessage,
+    Account, FlagDelta, IncomingMailProvider, MailError, MailboxName, MailboxRole, RawMessage,
     RemoteMailboxState, RemoteMessageId, SyncOutcome, SyncRequest,
 };
 use axomail_desktop_lib::commands::accounts::create_account_impl;
@@ -38,10 +38,10 @@ impl IncomingMailProvider for StubProvider {
     async fn fetch_message(&mut self, _id: &RemoteMessageId) -> Result<RawMessage, MailError> {
         Err(MailError::Cancelled)
     }
-    async fn set_flags(
+    async fn store_flags(
         &mut self,
         _id: &RemoteMessageId,
-        _flags: MessageFlags,
+        _delta: &FlagDelta,
     ) -> Result<(), MailError> {
         Err(MailError::Cancelled)
     }

@@ -287,7 +287,7 @@ async fn message_flags_update() {
         flagged: true,
         ..MessageFlags::default()
     };
-    assert!(repo.update_flags(message.id, updated).await.unwrap());
+    assert!(repo.update_flags(message.id, &updated).await.unwrap());
 
     let fetched = repo.get(message.id).await.unwrap().unwrap();
     assert_eq!(fetched.flags, updated);

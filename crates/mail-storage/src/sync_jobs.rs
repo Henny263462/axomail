@@ -50,6 +50,8 @@ pub enum JobKind {
     Fetch,
     /// Submit one outgoing message.
     Send,
+    /// Replay this account's queued offline operations to the server.
+    OpReplay,
 }
 
 impl JobKind {
@@ -61,6 +63,7 @@ impl JobKind {
             Self::MailboxSync => "mailbox_sync",
             Self::Fetch => "fetch",
             Self::Send => "send",
+            Self::OpReplay => "op_replay",
         }
     }
 
@@ -70,6 +73,7 @@ impl JobKind {
             "mailbox_sync" => Ok(Self::MailboxSync),
             "fetch" => Ok(Self::Fetch),
             "send" => Ok(Self::Send),
+            "op_replay" => Ok(Self::OpReplay),
             _ => Err(MailError::Database {
                 message: "read_sync_job: unknown job kind".to_owned(),
             }),
@@ -170,12 +174,20 @@ impl<'a> SyncJobRepo<'a> {
         Self { pool }
     }
 
-    /// Creates a `pending` job, but only if no equivalent job of the
-    /// same kind and mailbox is already `pending` or `running`.
+    /// Creates a `pending` job, but only if no equivalent job of the same
+    /// kind, **account**, and mailbox is already `pending` or `running`.
     ///
-    /// The check and insert are one atomic statement so concurrent
-    /// enqueues cannot both create a duplicate. Returns `None` when an
-    /// equivalent active job already exists.
+    /// The dedup key is `(kind, account_id, mailbox_id)`, NULL-safe on both
+    /// scopes. Including `account_id` is essential for account-scoped kinds
+    /// (`mailbox_id NULL`, e.g. `Discover`/`OpReplay`): keying on
+    /// `(kind, mailbox_id)` alone collapsed every account's `NULL`-mailbox
+    /// job into one, so a second account could never enqueue its own. For
+    /// mailbox-scoped kinds the added `account_id` term is redundant but
+    /// harmless (a mailbox already implies its account).
+    ///
+    /// The check and insert are one atomic statement so concurrent enqueues
+    /// cannot both create a duplicate. Returns `None` when an equivalent
+    /// active job already exists.
     ///
     /// # Errors
     ///
@@ -190,7 +202,8 @@ impl<'a> SyncJobRepo<'a> {
              SELECT ?, ?, ?, 'pending'
              WHERE NOT EXISTS (
                  SELECT 1 FROM sync_jobs
-                 WHERE kind = ? AND mailbox_id IS ? AND state IN ('pending', 'running')
+                 WHERE kind = ? AND account_id IS ? AND mailbox_id IS ?
+                   AND state IN ('pending', 'running')
              )
              RETURNING {JOB_COLUMNS}"
             )))
@@ -198,6 +211,7 @@ impl<'a> SyncJobRepo<'a> {
             .bind(account_id)
             .bind(mailbox_id)
             .bind(new.kind.as_str())
+            .bind(account_id)
             .bind(mailbox_id)
             .fetch_optional(self.pool)
             .await

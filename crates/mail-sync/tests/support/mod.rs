@@ -15,7 +15,7 @@ use std::time::Duration;
 
 use axomail_core::{
     Account, AccountAuth, AccountId, Address, ConnectionSecurity, CredentialRef, EmailAddress,
-    IncomingMailProvider, IncomingProtocol, IncomingServerConfig, MailError, MailboxId,
+    FlagDelta, IncomingMailProvider, IncomingProtocol, IncomingServerConfig, MailError, MailboxId,
     MailboxName, MailboxRole, MessageFlags, OutgoingServerConfig, RawMessage, RemoteEnvelope,
     RemoteMailboxState, RemoteMessageId, ServerEndpoint, SyncOutcome, SyncRequest, UtcTimestamp,
 };
@@ -231,10 +231,10 @@ impl IncomingMailProvider for FakeProvider {
         Err(unsupported("FETCH"))
     }
 
-    async fn set_flags(
+    async fn store_flags(
         &mut self,
         _id: &RemoteMessageId,
-        _flags: MessageFlags,
+        _delta: &FlagDelta,
     ) -> Result<(), MailError> {
         Err(unsupported("STORE"))
     }

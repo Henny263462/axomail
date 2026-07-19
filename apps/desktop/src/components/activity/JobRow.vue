@@ -22,6 +22,7 @@ const KIND_LABELS: Record<SyncJobKind, string> = {
   mailboxSync: "Mailbox sync",
   fetch: "Message fetch",
   send: "Message send",
+  opReplay: "Server updates",
 };
 
 /** Human-readable label for each lifecycle state. */

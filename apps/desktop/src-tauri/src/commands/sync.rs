@@ -89,7 +89,7 @@ where
                 Ok(SyncEvent::JobQueued {
                     job_id,
                     account_id: queued_account,
-                    mailbox_id,
+                    mailbox_id: Some(mailbox_id),
                 }) => {
                     if queued_account == account && pending.remove(&mailbox_id.value()) {
                         raw_ids.push(job_id.value());

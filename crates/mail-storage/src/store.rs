@@ -31,6 +31,7 @@ use crate::ingest::IngestRepo;
 use crate::mailboxes::MailboxRepo;
 use crate::messages::MessageRepo;
 use crate::outbox::OutboxRepo;
+use crate::pending_ops::PendingOpsRepo;
 use crate::pop3_uidl::Pop3UidlRepo;
 use crate::remote_content::RemoteContentRepo;
 use crate::search::SearchRepo;
@@ -181,6 +182,12 @@ impl Store {
     #[must_use]
     pub fn outbox(&self) -> OutboxRepo<'_> {
         OutboxRepo::new(&self.pool)
+    }
+
+    /// The offline operation-queue (write-back) repository.
+    #[must_use]
+    pub fn pending_ops(&self) -> PendingOpsRepo<'_> {
+        PendingOpsRepo::new(&self.pool)
     }
 
     /// The POP3 `UIDL` de-duplication repository.

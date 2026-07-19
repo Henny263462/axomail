@@ -21,7 +21,8 @@ use super::checked_id;
 pub struct SyncJobDto {
     /// Local job identifier.
     pub id: i64,
-    /// Kind of work, camelCase (`mailboxSync`, `discover`, `fetch`, `send`).
+    /// Kind of work, camelCase (`mailboxSync`, `discover`, `fetch`, `send`,
+    /// `opReplay`).
     pub kind: &'static str,
     /// Lifecycle state (`pending`, `running`, `succeeded`, `failed`,
     /// `cancelled`).
@@ -85,6 +86,7 @@ fn kind_str(kind: JobKind) -> &'static str {
         JobKind::MailboxSync => "mailboxSync",
         JobKind::Fetch => "fetch",
         JobKind::Send => "send",
+        JobKind::OpReplay => "opReplay",
     }
 }
 

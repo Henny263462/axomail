@@ -2,11 +2,16 @@
 
 use async_imap::imap_proto::types::Address as ImapAddress;
 use async_imap::types::{Fetch, Flag};
-use axomail_core::{Address, EmailAddress, MessageFlags, RemoteEnvelope, RemoteMessageId};
+use axomail_core::{Address, EmailAddress, FlagSet, MessageFlags, RemoteEnvelope, RemoteMessageId};
 
 use crate::{date, rfc2047};
 
 /// Reads the system flags of a `FETCH` response into [`MessageFlags`].
+///
+/// Keywords (IMAP custom flags, `Flag::Custom`) are **not** read here yet:
+/// Wave 2 track 2.4 wires `Flag::Custom` → `MessageFlags::keywords` in this
+/// function, together with the `message_tags` persistence. Until then the
+/// keyword set is left empty; the write path never depends on it.
 #[must_use]
 pub(crate) fn flags_from_fetch(fetch: &Fetch) -> MessageFlags {
     let mut flags = MessageFlags::default();
@@ -23,26 +28,31 @@ pub(crate) fn flags_from_fetch(fetch: &Fetch) -> MessageFlags {
     flags
 }
 
-/// Renders [`MessageFlags`] as an IMAP flag list, e.g. `(\Seen \Flagged)`.
+/// Renders a [`FlagSet`] as an IMAP flag list, e.g. `(\Seen $Junk)`.
 ///
-/// This is the replace-set form used by `UID STORE ... FLAGS (...)`.
+/// Used additively by `UID STORE ... +FLAGS`/`-FLAGS`. System flags come
+/// first in a fixed order, then keywords in the set's (case-insensitive)
+/// order for deterministic output.
 #[must_use]
-pub(crate) fn flags_to_imap_list(flags: MessageFlags) -> String {
+pub(crate) fn flag_set_to_imap_list(set: &FlagSet) -> String {
     let mut parts: Vec<&str> = Vec::new();
-    if flags.seen {
+    if set.system.seen {
         parts.push("\\Seen");
     }
-    if flags.answered {
+    if set.system.answered {
         parts.push("\\Answered");
     }
-    if flags.flagged {
+    if set.system.flagged {
         parts.push("\\Flagged");
     }
-    if flags.draft {
+    if set.system.draft {
         parts.push("\\Draft");
     }
-    if flags.deleted {
+    if set.system.deleted {
         parts.push("\\Deleted");
+    }
+    for keyword in &set.keywords {
+        parts.push(keyword.as_str());
     }
     format!("({})", parts.join(" "))
 }
@@ -144,17 +154,33 @@ pub(crate) fn format_uid_set(uids: &[u32]) -> String {
 
 #[cfg(test)]
 mod tests {
+    #![allow(clippy::unwrap_used, clippy::expect_used)]
+
+    use axomail_core::{Keyword, SystemFlags};
+
     use super::*;
 
     #[test]
-    fn flag_list_is_replace_form() {
-        let flags = MessageFlags {
-            seen: true,
-            flagged: true,
-            ..MessageFlags::default()
+    fn flag_set_lists_system_flags_then_keywords() {
+        let set = FlagSet {
+            system: SystemFlags {
+                seen: true,
+                flagged: true,
+                ..SystemFlags::default()
+            },
+            keywords: [
+                Keyword::parse("$Junk").expect("valid keyword"),
+                Keyword::parse("$Forwarded").expect("valid keyword"),
+            ]
+            .into_iter()
+            .collect(),
         };
-        assert_eq!(flags_to_imap_list(flags), "(\\Seen \\Flagged)");
-        assert_eq!(flags_to_imap_list(MessageFlags::default()), "()");
+        // System flags first (fixed order), then keywords in set order.
+        assert_eq!(
+            flag_set_to_imap_list(&set),
+            "(\\Seen \\Flagged $Forwarded $Junk)"
+        );
+        assert_eq!(flag_set_to_imap_list(&FlagSet::default()), "()");
     }
 
     #[test]
