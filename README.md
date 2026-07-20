@@ -7,12 +7,18 @@
 A fast, lightweight, open-source desktop mail client for Windows, macOS, and
 Linux. Built with Tauri 2, Rust, and Vue 3.
 
-> **Status: pre-alpha.** The MVP feature set is implemented — IMAP two-way
-> sync, SMTP sending with drafts and a guarded outbox, POP3 download,
-> multiple accounts with a unified inbox, sanitized message viewing,
-> full-text search (FTS5), background sync, and desktop notifications —
-> but it has not yet been hardened against real-world servers at scale.
-> Expect rough edges; release bundles are unsigned. See
+> **Status: pre-alpha.** A broad desktop-mail feature set is implemented —
+> two-way IMAP sync (CONDSTORE/QRESYNC) with IDLE push, POP3, and SMTP;
+> OAuth2/XOAUTH2 (Gmail, Microsoft 365) and password auth; multiple
+> accounts, identities, folder management, tags, and a unified inbox;
+> reply/forward with a rich-text composer, attachments, and server-side
+> Sent copies; a virtualized threaded list with quick filters, full-text
+> search, and saved searches; move/copy/archive/Trash with undo; an
+> address book, message filters, a Bayesian junk filter, iCalendar
+> invitations, OpenPGP, an offline store, a command palette, mbox
+> import/export, printing, and English + German localization — but it has
+> not yet been hardened against real-world servers at scale. Expect rough
+> edges; release bundles are unsigned. See
 > [docs/architecture/](docs/architecture/) for the roadmap and
 > [Releases](https://github.com/Henny263462/axomail/releases) for downloads.
 

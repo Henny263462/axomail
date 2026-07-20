@@ -47,14 +47,31 @@ jobs:
           releaseName: "axomail ${{ github.ref_name }}"
           releaseBody: |
             Pre-alpha build of axomail — a fast, lightweight, open-source
-            desktop mail client (IMAP, POP3, SMTP).
+            desktop mail client built with Tauri 2, Rust, and Vue 3.
+
+            This build reaches broad feature parity with a desktop mail
+            client: two-way IMAP sync (CONDSTORE/QRESYNC) with IDLE push,
+            POP3, SMTP; OAuth2/XOAUTH2 (Gmail, Microsoft 365) alongside
+            password auth; multiple accounts, identities, folder
+            management, tags, and a unified inbox; reply/reply-all/forward
+            with a rich-text composer, attachments, and server-side Sent
+            copies; a virtualized threaded message list with quick filters
+            and full-text search plus a saved-search builder; move / copy /
+            archive / delete-to-Trash with undo and Empty Trash; an address
+            book with autocomplete, message filters, a Bayesian junk filter,
+            iCalendar invitations, OpenPGP sign/verify/encrypt/decrypt, an
+            offline store with "Work Offline", a command palette with
+            keyboard shortcuts, mbox import/export, printing, and full
+            English + German localization.
 
             **These bundles are unsigned.** Windows SmartScreen and macOS
             Gatekeeper will warn on first launch; on macOS use
             right-click → Open. Linux builds ship as AppImage/deb/rpm.
 
-            All mail data stays local; credentials live only in the OS
-            keychain. See the README for the current feature state and
-            known limitations.
+            All mail data stays local; credentials and PGP secret keys live
+            only in the OS keychain, and no telemetry is collected. It has
+            not yet been hardened against real-world servers at scale —
+            expect rough edges. See the README for the current feature
+            state and known limitations.
           releaseDraft: false
           prerelease: true
