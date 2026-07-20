@@ -27,6 +27,7 @@ export type AppDialogMap = {
   setup: undefined;
   settings: undefined;
   activity: undefined;
+  addressBook: undefined;
   composer: ComposerPayload;
   moveToFolder: MoveToFolderPayload;
 };

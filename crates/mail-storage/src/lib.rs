@@ -21,6 +21,7 @@
 
 mod accounts;
 mod address_json;
+mod contacts;
 mod drafts;
 mod error_map;
 mod identities;
@@ -45,8 +46,13 @@ mod sync_state;
 mod tags;
 mod threading_json;
 mod unified;
+mod vcard;
 
 pub use accounts::{AccountRepo, AccountUpdate, NewAccount};
+pub use contacts::{
+    Contact, ContactEmail, ContactGroup, ContactGroupId, ContactId, ContactMatch, ContactRepo,
+    ContactUpdate, NewContact, NewContactEmail,
+};
 pub use drafts::{DraftId, DraftRecord, DraftRepo, NewDraft};
 pub use identities::{Identity, IdentityFields, IdentityId, IdentityRepo, NewIdentity};
 pub use identity_prefs::{ArchiveGranularity, ForwardMode, ReplyPosition, SignaturePlacement};
@@ -70,3 +76,4 @@ pub use sync_jobs::{JobKind, JobState, NewSyncJob, SyncJob, SyncJobId, SyncJobRe
 pub use sync_state::SyncStateRepo;
 pub use tags::{NewTag, Tag, TagColor, TagId, TagRepo, TagUpdate};
 pub use unified::{UnifiedInboxPage, UnifiedMessage, UnifiedRepo};
+pub use vcard::{VCard, VCardEmail, VCardVersion, emit_vcards, parse_vcards};
