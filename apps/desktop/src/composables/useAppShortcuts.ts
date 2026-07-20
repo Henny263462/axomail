@@ -101,7 +101,8 @@ export function useAppShortcuts(deps: AppShortcutsDeps): AppShortcuts {
       dialogs.isOpen("activity") ||
       dialogs.isOpen("addressBook") ||
       dialogs.isOpen("moveToFolder") ||
-      dialogs.isOpen("shortcutHelp")
+      dialogs.isOpen("shortcutHelp") ||
+      dialogs.isOpen("advancedSearch")
     );
   }
 

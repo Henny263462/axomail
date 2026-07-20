@@ -66,12 +66,17 @@ export function useMailboxView(deps: Deps) {
   let fixtureMessages: MessageListItem[] = [];
   let usingFixtures = false;
 
-  /** True for the message-backed views (a mailbox, the unified inbox, or a tag). */
+  /**
+   * True for the message-backed views: a mailbox, the unified inbox, a tag
+   * filter, or an advanced/saved-search results list. Each opens a message the
+   * same way, so the reading pane shows the selected id in all of them.
+   */
   const messageView = computed(
     () =>
       deps.activeView.value === "mailbox" ||
       deps.activeView.value === "unified" ||
-      deps.activeView.value === "tag",
+      deps.activeView.value === "tag" ||
+      deps.activeView.value === "search",
   );
 
   const viewedMessageId = computed(() =>

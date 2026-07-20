@@ -39,6 +39,7 @@ use crate::outbox::OutboxRepo;
 use crate::pending_ops::PendingOpsRepo;
 use crate::pop3_uidl::Pop3UidlRepo;
 use crate::remote_content::RemoteContentRepo;
+use crate::saved_searches::SavedSearchRepo;
 use crate::search::SearchRepo;
 use crate::settings::SettingsRepo;
 use crate::sync_jobs::SyncJobRepo;
@@ -236,6 +237,12 @@ impl Store {
     #[must_use]
     pub fn search(&self) -> SearchRepo<'_> {
         SearchRepo::new(&self.pool)
+    }
+
+    /// The saved-search (advanced query / virtual folder) repository.
+    #[must_use]
+    pub fn saved_searches(&self) -> SavedSearchRepo<'_> {
+        SavedSearchRepo::new(&self.pool)
     }
 
     /// The per-sender remote-content allow-list repository.

@@ -41,6 +41,7 @@ mod pending_ops;
 mod pop3_uidl;
 mod raw_store;
 mod remote_content;
+mod saved_searches;
 mod search;
 mod settings;
 mod store;
@@ -79,6 +80,11 @@ pub use pending_ops::{
 pub use pop3_uidl::Pop3UidlRepo;
 pub use raw_store::{raw_message_path, read_raw, remove_raw, write_raw_atomically};
 pub use remote_content::RemoteContentRepo;
+pub use saved_searches::{
+    SavedSearch, SavedSearchId, SavedSearchInput, SavedSearchRepo, SearchCondition, SearchField,
+    SearchMatch, SearchQuery, SearchScope, SearchSort, validate_saved_search_input,
+    validate_search_query,
+};
 pub use search::{SearchHit, SearchRepo};
 pub use settings::SettingsRepo;
 pub use store::Store;

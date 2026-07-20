@@ -2,8 +2,10 @@
 import { computed } from "vue";
 
 import type { AccountSummary } from "../../types/mail";
+import type { SavedSearchDto } from "../../types/search";
 import EmptyState from "../common/EmptyState.vue";
 import FolderTree from "./FolderTree.vue";
+import SidebarSavedSearchesPane from "./SidebarSavedSearchesPane.vue";
 import SidebarTagsPane from "./SidebarTagsPane.vue";
 import type { SidebarView } from "./view";
 
@@ -19,12 +21,18 @@ const props = withDefaults(
     activeTagId?: number | null;
     /** Bumped to make the Tags group reload after a tag/sync change. */
     tagsRefreshKey?: number;
+    /** Active saved search, for highlighting the Saved searches group. */
+    activeSavedSearchId?: number | null;
+    /** Bumped to make the Saved searches group reload after a change. */
+    savedSearchRefreshKey?: number;
   }>(),
   {
     activeView: "mailbox",
     syncingAccountIds: () => [],
     activeTagId: null,
     tagsRefreshKey: 0,
+    activeSavedSearchId: null,
+    savedSearchRefreshKey: 0,
   },
 );
 
@@ -38,6 +46,9 @@ const emit = defineEmits<{
   selectOutbox: [];
   selectTag: [tagId: number, name: string];
   foldersChanged: [];
+  selectSavedSearch: [saved: SavedSearchDto];
+  editSavedSearch: [saved: SavedSearchDto];
+  savedSearchesChanged: [];
 }>();
 
 const hasAccounts = computed(() => props.accounts.length > 0);
@@ -129,6 +140,17 @@ function isSyncing(accountId: number): boolean {
       :active-tag-id="activeTagId"
       :refresh-key="tagsRefreshKey"
       @select-tag="(tagId, name) => emit('selectTag', tagId, name)"
+    />
+
+    <!-- Track 5.2 mount point: the Saved searches (virtual folders) group. A
+         self-contained child component so it never collides with the folder
+         tree or the Tags group. -->
+    <SidebarSavedSearchesPane
+      :active-saved-search-id="activeSavedSearchId"
+      :refresh-key="savedSearchRefreshKey"
+      @select="emit('selectSavedSearch', $event)"
+      @edit="emit('editSavedSearch', $event)"
+      @changed="emit('savedSearchesChanged')"
     />
 
     <div class="fixed-views">

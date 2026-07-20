@@ -14,6 +14,7 @@ import MailListRegion from "./components/list/MailListRegion.vue";
 import MessageListPane from "./components/list/MessageListPane.vue";
 import OutboxListPane from "./components/list/OutboxListPane.vue";
 import MessageViewPane from "./components/message/MessageViewPane.vue";
+import AdvancedSearchResultsPane from "./components/search/AdvancedSearchResultsPane.vue";
 import SidebarPane from "./components/sidebar/SidebarPane.vue";
 import type { SidebarView } from "./components/sidebar/view";
 import { useAppShortcuts } from "./composables/useAppShortcuts";
@@ -23,6 +24,7 @@ import { useMailboxActions } from "./composables/useMailboxActions";
 import { useMailboxView } from "./composables/useMailboxView";
 import { useMessageActions } from "./composables/useMessageActions";
 import { useMessageListLoading } from "./composables/useMessageListLoading";
+import { useSavedSearch } from "./composables/useSavedSearch";
 import { useSyncStatus } from "./composables/useSyncStatus";
 import { reconcileTheme } from "./composables/useTheme";
 import { reconcileLanguage } from "./i18n";
@@ -118,6 +120,16 @@ const { isModalOpen } = useAppShortcuts({
   messageActions,
 });
 
+// Advanced-search results + saved-search (virtual folder) state. Registers the
+// "Advanced search" command against the registry provided by useAppShortcuts.
+const savedSearch = useSavedSearch({
+  activeView,
+  selectedMessageId,
+  dialogs,
+  showList: () => shell.value?.showPane("list"),
+  isModalOpen,
+});
+
 const { syncingMailboxIds, isSyncing, runningCount, syncError, dismissError } =
   useSyncStatus(onSyncEvent);
 
@@ -205,6 +217,8 @@ function onSyncEvent(event: SyncEventDto): void {
         :syncing-account-ids="syncingAccountIds"
         :active-tag-id="activeView === 'tag' ? selectedTagId : null"
         :tags-refresh-key="tagsRefreshKey"
+        :active-saved-search-id="activeView === 'search' ? savedSearch.activeSavedSearchId.value : null"
+        :saved-search-refresh-key="savedSearch.refreshKey.value"
         @select-mailbox="view.selectMailbox"
         @select-unified="view.selectUnified"
         @add-account="dialogs.open('setup')"
@@ -214,6 +228,9 @@ function onSyncEvent(event: SyncEventDto): void {
         @select-outbox="compose.selectOutbox"
         @select-tag="view.selectTag"
         @folders-changed="view.onAccountsChanged"
+        @select-saved-search="savedSearch.openSaved"
+        @edit-saved-search="savedSearch.openDialog"
+        @saved-searches-changed="savedSearch.refresh"
       />
     </template>
     <template #list>
@@ -243,6 +260,14 @@ function onSyncEvent(event: SyncEventDto): void {
         @bulk-action="mailboxActions.dispatch"
         @update:threaded="listLoading.onToggleThreaded"
       />
+      <AdvancedSearchResultsPane
+        v-else-if="activeView === 'search'"
+        :title="savedSearch.resultsTitle.value"
+        :results="savedSearch.results.value"
+        :searching="savedSearch.running.value"
+        :selected-message-id="selectedMessageId"
+        @select="view.onSelectMessage"
+      />
       <MailListRegion
         v-else
         :view="activeView === 'unified' ? 'unified' : 'mailbox'"
@@ -262,6 +287,7 @@ function onSyncEvent(event: SyncEventDto): void {
         @selection-change="listLoading.onSelectionChange"
         @bulk-action="mailboxActions.dispatch"
         @update:threaded="listLoading.onToggleThreaded"
+        @advanced-search="savedSearch.openDialog()"
       />
     </template>
     <template #message>
@@ -301,6 +327,8 @@ function onSyncEvent(event: SyncEventDto): void {
     @tags-changed="tagsRefreshKey += 1"
     @settings-saved="syncStartupPreferences"
     @folder-picked="mailboxActions.onFolderPicked"
+    @advanced-search-run="savedSearch.showResults"
+    @saved-searches-changed="savedSearch.refresh"
   />
   <UndoToast
     :undo-message="mailboxActions.undoState.value?.message ?? null"

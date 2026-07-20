@@ -1,4 +1,5 @@
 import type { ComposerPrefillDto, DraftDto } from "../../types/mail";
+import type { SavedSearchDto } from "../../types/search";
 
 /**
  * Payload for opening the composer: which account, an optional draft, and an
@@ -15,6 +16,11 @@ export interface ComposerPayload {
 export interface MoveToFolderPayload {
   ids: number[];
   mode: "move" | "copy";
+}
+
+/** Payload for the advanced-search dialog: a saved search to edit, or none. */
+export interface AdvancedSearchPayload {
+  savedSearch: SavedSearchDto | null;
 }
 
 /**
@@ -34,4 +40,6 @@ export type AppDialogMap = {
   commandPalette: undefined;
   /** The keyboard-shortcut help overlay (opened with `?`). */
   shortcutHelp: undefined;
+  /** The advanced/faceted search builder. */
+  advancedSearch: AdvancedSearchPayload;
 };

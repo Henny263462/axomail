@@ -3,13 +3,14 @@ import { computed } from "vue";
 
 import type { DialogController } from "../../composables/useDialogs";
 import type { FolderPicked } from "../../composables/useMailboxActions";
-import type { AccountSummary } from "../../types/mail";
+import type { AccountSummary, SearchResultDto } from "../../types/mail";
 import ActivityDialog from "../activity/ActivityDialog.vue";
 import CommandPalette from "../command/CommandPalette.vue";
 import ShortcutHelp from "../command/ShortcutHelp.vue";
 import ComposerDialog from "../compose/ComposerDialog.vue";
 import AddressBookDialog from "../contacts/AddressBookDialog.vue";
 import MoveToFolderDialog from "../message/MoveToFolderDialog.vue";
+import AdvancedSearchDialog from "../search/AdvancedSearchDialog.vue";
 import SettingsDialog from "../settings/SettingsDialog.vue";
 import AccountSetupDialog from "../setup/AccountSetupDialog.vue";
 import type { AppDialogMap } from "./dialogs";
@@ -29,6 +30,8 @@ const emit = defineEmits<{
   tagsChanged: [];
   settingsSaved: [];
   folderPicked: [payload: FolderPicked];
+  advancedSearchRun: [payload: { title: string; results: SearchResultDto[] }];
+  savedSearchesChanged: [];
 }>();
 
 // The composer is only mounted while open; the fallback keeps the prop types
@@ -45,6 +48,11 @@ const composer = computed(
 // Same total-typing fallback for the move/copy picker payload.
 const moveTarget = computed(
   () => props.dialogs.payload("moveToFolder") ?? { ids: [], mode: "move" as const },
+);
+
+// Total-typing fallback for the advanced-search payload (no saved search = new).
+const advancedSearch = computed(
+  () => props.dialogs.payload("advancedSearch") ?? { savedSearch: null },
 );
 
 /** Forwards a picked folder to the host and closes the picker. */
@@ -101,5 +109,13 @@ function onPicked(payload: FolderPicked): void {
   <ShortcutHelp
     v-if="dialogs.isOpen('shortcutHelp')"
     @close="dialogs.close('shortcutHelp')"
+  />
+  <AdvancedSearchDialog
+    v-if="dialogs.isOpen('advancedSearch')"
+    :saved-search="advancedSearch.savedSearch"
+    :accounts="accounts"
+    @close="dialogs.close('advancedSearch')"
+    @run="emit('advancedSearchRun', $event)"
+    @saved="emit('savedSearchesChanged')"
   />
 </template>
