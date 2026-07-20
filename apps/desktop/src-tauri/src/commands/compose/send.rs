@@ -84,6 +84,39 @@ pub async fn send_message_impl(
         });
     }
 
+    // OpenPGP protection rides only the immediate-send path for the same reason
+    // attachments do (the durable outbox row is text-only), so reject a deferred
+    // send that asked for it rather than silently sending it in the clear.
+    let wants_pgp = input.sign || input.encrypt;
+    if deferred && wants_pgp {
+        return Err(MailError::Configuration {
+            message: "signing or encryption can only be applied to a message sent now, \
+                      not one scheduled or queued while offline"
+                .to_owned(),
+        });
+    }
+    // Resolve the sign/encrypt plan up front, so a missing signing key or a
+    // recipient without a public key fails the command before any row is
+    // written — never a message sent unprotected when protection was requested.
+    let pgp_plan = if deferred || !wants_pgp {
+        None
+    } else {
+        let from_email = identity
+            .as_ref()
+            .map(|identity| identity.fields.email.clone())
+            .unwrap_or_else(|| account.email.as_str().to_owned());
+        crate::commands::pgp::resolve_send_plan(
+            store,
+            secrets,
+            &from_email,
+            &recipients,
+            input.sign,
+            input.encrypt,
+            input.pgp_passphrase.clone(),
+        )
+        .await?
+    };
+
     // Read attachments and sanitize the HTML only for an immediate send. Reading
     // up front means an unreadable or oversized attachment fails the command
     // before any outbox row is written (like recipient validation). Picked files
@@ -99,6 +132,7 @@ pub async fn send_message_impl(
             references: input.references.clone(),
             html_body: sanitize_html_body(input.html_body.as_deref()),
             attachments,
+            pgp: pgp_plan,
         }
     };
 

@@ -121,6 +121,13 @@ tauri-plugin-fs = "2.5.1"
 # now so its whole resolved graph is cargo-deny-vetted once, ahead of fan-out.
 # Version 0.20.0 verified against crates.io on 2026-07-20 (MIT OR Apache-2.0).
 pgp = { version = "0.20.0", default-features = false }
+# CSPRNG for OpenPGP key generation and per-message session keys (Track 5.1).
+# rPGP's key-gen / encrypt / sign APIs all take an `impl rand::Rng + CryptoRng`;
+# `rand` 0.8 is exactly the version rPGP itself uses (it re-exports the same
+# `rand_core` 0.6 `CryptoRng` bound), so this pins to the version already in the
+# resolved graph and introduces no new transitive tree. MIT OR Apache-2.0,
+# verified against crates.io on 2026-07-20. Only `mail-security` uses it.
+rand = "0.8"
 
 # Internal crates. Directory names follow the architecture layout; package
 # names carry the `axomail-` prefix to avoid clashes with public crates

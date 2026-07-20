@@ -485,6 +485,7 @@ dependencies = [
  "base64 0.22.1",
  "keyring",
  "pgp",
+ "rand 0.8.7",
  "serde",
  "serde_json",
  "tracing",

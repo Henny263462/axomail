@@ -10,6 +10,7 @@ import IdentitiesSection from "./IdentitiesSection.vue";
 import JunkSection from "./JunkSection.vue";
 import LanguageSection from "./LanguageSection.vue";
 import NotificationsSection from "./NotificationsSection.vue";
+import PgpKeysSection from "./PgpKeysSection.vue";
 import Pop3DeleteSection from "./Pop3DeleteSection.vue";
 import PushSection from "./PushSection.vue";
 import ShortcutsSection from "./ShortcutsSection.vue";
@@ -61,6 +62,7 @@ export const settingsSections: SettingsSection[] = [
   { id: "contacts", title: "Contacts", component: ContactsSection },
   { id: "filters", title: "Filters", component: FiltersSection },
   { id: "junk", title: "Junk", component: JunkSection },
+  { id: "pgp", title: "OpenPGP encryption", component: PgpKeysSection },
   { id: "shortcuts", title: "Keyboard shortcuts", component: ShortcutsSection },
   { id: "accounts", title: "Accounts", component: AccountsSection },
 ];

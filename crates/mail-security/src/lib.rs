@@ -39,6 +39,7 @@ mod inline_images;
 mod keyring_store;
 mod memory_store;
 mod oauth_tokens;
+pub mod pgp;
 mod redact;
 mod remote_policy;
 mod scam;

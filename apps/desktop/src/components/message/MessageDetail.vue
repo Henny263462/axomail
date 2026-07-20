@@ -9,6 +9,7 @@ import MessageActions from "./MessageActions.vue";
 import MessageAttachments from "./MessageAttachments.vue";
 import MessageBody from "./MessageBody.vue";
 import MessageTagArea from "./MessageTagArea.vue";
+import PgpBadge from "./PgpBadge.vue";
 
 const props = withDefaults(
   defineProps<{
@@ -113,6 +114,8 @@ function alwaysAllow(): void {
       </dl>
       <MessageTagArea :message-id="detail.id" />
     </header>
+
+    <PgpBadge :message-id="detail.id" />
 
     <InvitationCard
       v-if="detail.invitation"

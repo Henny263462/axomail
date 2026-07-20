@@ -38,6 +38,7 @@ mod offline;
 mod outbox;
 mod pagination;
 mod pending_ops;
+mod pgp_keys;
 mod pop3_uidl;
 mod raw_store;
 mod remote_content;
@@ -75,6 +76,10 @@ pub use pagination::{MessageCursor, MessagePage};
 pub use pending_ops::{
     NewPendingOp, PendingOp, PendingOpCounts, PendingOpId, PendingOpKind, PendingOpState,
     PendingOpsRepo,
+};
+pub use pgp_keys::{
+    NewPgpOwnKey, NewPgpRecipientKey, PgpKeyRepo, PgpOwnKey, PgpOwnKeyId, PgpRecipientKey,
+    PgpRecipientKeyId,
 };
 pub use pop3_uidl::Pop3UidlRepo;
 pub use raw_store::{raw_message_path, read_raw, remove_raw, write_raw_atomically};

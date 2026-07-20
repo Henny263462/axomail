@@ -18,6 +18,7 @@ import type {
 import ComposeAttachments from "./ComposeAttachments.vue";
 import ComposeBody from "./ComposeBody.vue";
 import ComposeFields from "./ComposeFields.vue";
+import ComposePgpControls from "./ComposePgpControls.vue";
 import ComposerActions from "./ComposerActions.vue";
 import FromPicker from "./FromPicker.vue";
 
@@ -81,6 +82,26 @@ const replySource = ref<PrefillSourceDto | null>(null);
 const prefillIdentityId = ref<number | null>(null);
 const hasPrefill = ref(false);
 
+// OpenPGP protection for this message (Track 5.1). Availability is decided by
+// `ComposePgpControls` against the sender and recipients; the passphrase (for a
+// protected signing key) rides only the send, never persisted.
+const sign = ref(false);
+const encrypt = ref(false);
+const pgpPassphrase = ref("");
+/** The sender email, from the chosen identity (drives the signing-key lookup). */
+const fromEmail = computed(
+  () =>
+    identities.value.find((identity) => identity.id === selectedIdentityId.value)
+      ?.email ?? "",
+);
+/** All recipient address strings, for the encryption-availability check. */
+const pgpRecipients = computed(() =>
+  [to.value, cc.value, bcc.value]
+    .flatMap((raw) => raw.split(","))
+    .map((part) => part.trim())
+    .filter((part) => part.length > 0),
+);
+
 const sending = ref(false);
 const savingDraft = ref(false);
 const finished = ref(false);
@@ -142,6 +163,9 @@ const { isComposerEmpty, onSend, onSchedule, onSaveDraft, autosave } =
     draftId,
     hasPrefill,
     currentSignatureText,
+    sign,
+    encrypt,
+    pgpPassphrase,
     sending,
     savingDraft,
     finished,
@@ -255,6 +279,13 @@ function close(): void {
         <ComposeAttachments
           v-model="attachments"
           @error="errorMessage = $event"
+        />
+        <ComposePgpControls
+          v-model:sign="sign"
+          v-model:encrypt="encrypt"
+          v-model:passphrase="pgpPassphrase"
+          :from-email="fromEmail"
+          :recipients="pgpRecipients"
         />
         <p
           v-if="attachmentWarning !== ''"

@@ -119,6 +119,19 @@ pub enum MailError {
         message: String,
     },
 
+    /// A cryptographic operation failed (OpenPGP sign/verify/encrypt/decrypt or
+    /// key handling, Track 5.1).
+    ///
+    /// The message is a fixed, secret-free description of the failing step;
+    /// raw crypto-library detail and key/passphrase material are never carried
+    /// (ADR-0003). Classified [`ErrorClass::Permanent`] — a failed decrypt or a
+    /// malformed key does not become valid on retry.
+    #[error("cryptographic operation failed: {message}")]
+    Crypto {
+        /// Redacted description of the failing step.
+        message: String,
+    },
+
     /// A code path is a deliberate not-yet-implemented placeholder.
     ///
     /// Used by the sync engine's per-kind executor seams (Discover, OpReplay)
@@ -155,6 +168,7 @@ impl MailError {
             | Self::Filesystem { .. }
             | Self::UnsupportedCapability { .. }
             | Self::NotImplemented { .. }
+            | Self::Crypto { .. }
             | Self::Cancelled => ErrorClass::Permanent,
             Self::Authentication | Self::Configuration { .. } => ErrorClass::UserConfiguration,
         }

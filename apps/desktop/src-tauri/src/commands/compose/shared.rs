@@ -17,7 +17,10 @@ use axomail_core::{
 use axomail_smtp::{RenderedMessage, SmtpConfig, SmtpProvider, render_message};
 use axomail_storage::{Identity, NewMessage, OutboxId, OutboxRecord, Store};
 
+use axomail_security::pgp::apply_pgp_mime;
+
 use super::append::SentCopyPlan;
+use crate::commands::pgp::PgpSendPlan;
 use crate::composition::resolve_credential;
 use crate::dto::SendOutcomeDto;
 use crate::state::SharedSecretStore;
@@ -58,6 +61,10 @@ pub(super) struct MessageExtras {
     /// Attachments to include: picked files read from disk and any forwarded
     /// `message/rfc822` parts, each with a sanitized name and MIME type.
     pub attachments: Vec<OutgoingAttachment>,
+    /// OpenPGP protection to apply after rendering (Track 5.1). Present only on
+    /// the immediate-send path; a deferred/offline send that requested PGP is
+    /// rejected up front (see [`send_message_impl`](super::send)).
+    pub pgp: Option<PgpSendPlan>,
 }
 
 /// Submits one outbox row (already transitioned to `sending`) over SMTP and
@@ -84,6 +91,10 @@ pub(super) async fn submit_record(
         Some(id) => store.identities().get(id).await?,
         None => None,
     };
+    // The PGP plan rides on `extras` but is applied after rendering, so lift it
+    // out before `build_message` consumes the rest.
+    let mut extras = extras;
+    let pgp_plan = extras.pgp.take();
     let message = match build_message(account, record, identity.as_ref(), extras) {
         Ok(message) => message,
         Err(error) => return fail(store, record.id, error).await,
@@ -95,6 +106,14 @@ pub(super) async fn submit_record(
     // Render once: SMTP delivery and the Sent copy share these exact bytes and
     // their single Message-ID.
     let rendered = match render_message(&message) {
+        Ok(rendered) => rendered,
+        Err(error) => return fail(store, record.id, error).await,
+    };
+    // Apply OpenPGP protection (RFC 3156 PGP/MIME) to the rendered bytes, when
+    // requested. The envelope headers and Message-ID are preserved, so the SMTP
+    // envelope recipients and the filed Sent copy still line up; the Sent copy
+    // is filed in its protected form (encrypted-to-self keeps it readable).
+    let rendered = match apply_pgp_plan(rendered, pgp_plan) {
         Ok(rendered) => rendered,
         Err(error) => return fail(store, record.id, error).await,
     };
@@ -118,6 +137,28 @@ pub(super) async fn submit_record(
         }
         Err(error) => fail(store, record.id, error).await,
     }
+}
+
+/// Applies a resolved PGP plan to already-rendered message bytes, returning the
+/// (possibly transformed) rendered message. With no plan the bytes are returned
+/// unchanged. A crypto failure (e.g. a wrong signing passphrase) propagates so
+/// the caller records the send as failed rather than sending unprotected.
+fn apply_pgp_plan(
+    rendered: RenderedMessage,
+    plan: Option<PgpSendPlan>,
+) -> Result<RenderedMessage, MailError> {
+    let Some(plan) = plan else {
+        return Ok(rendered);
+    };
+    let signer = plan
+        .signer
+        .as_ref()
+        .map(|signer| (signer.secret_armored.as_str(), signer.passphrase.as_deref()));
+    let bytes = apply_pgp_mime(&rendered.bytes, signer, &plan.encrypt_to)?;
+    Ok(RenderedMessage {
+        bytes,
+        message_id: rendered.message_id,
+    })
 }
 
 /// Records a failed submission and reports it in the outcome (never as an
