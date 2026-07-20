@@ -59,8 +59,14 @@ where
     )
     .await?;
 
-    // Run-on-arrival filters: applied after a successful inbox sync. A failure
-    // here never fails the sync — it is logged and the pass continues.
+    // Post-ingest passes run junk-first, then user filters (Thunderbird order):
+    // junk auto-routing happens per batch inside `pump` (see below) — it moves
+    // classified spam out of the inbox locally before this point — so the
+    // arrival-filter candidate query (inbox-scoped, id > high-water) never sees
+    // an already-junk-routed message, and no message is double-acted. A filter
+    // that wants to see junk-routed mail would look in the Junk folder, not the
+    // inbox. Run-on-arrival filters are applied after a successful inbox sync;
+    // a failure here never fails the sync — it is logged and the pass continues.
     if let Err(error) = super::filter_arrival::run(shared, account_id, mailbox_id).await {
         tracing::warn!(error = %error, "run-on-arrival filter pass failed");
     }
@@ -221,6 +227,13 @@ where
         let outcome = guarded(token, net, provider.sync(request)).await?;
         let ingest = shared.store.ingest().apply(mailbox_id, &outcome).await?;
         summary.absorb(&ingest);
+        // Auto-file mail the ingest classifier scored as junk (best-effort).
+        // This runs per batch, before the run-on-arrival filter pass in
+        // `execute`, so junk is routed out of the inbox first and user filters
+        // then see only the surviving mail (see the ordering note in `execute`).
+        if !ingest.auto_junk_candidates.is_empty() {
+            super::junk_route::autoroute(shared, &ingest.auto_junk_candidates).await;
+        }
         shared.emit(SyncEvent::BatchIngested {
             job_id,
             mailbox_id,

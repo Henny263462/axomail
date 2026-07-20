@@ -22,6 +22,7 @@ const emit = defineEmits<{
   (event: "move"): void;
   (event: "copy"): void;
   (event: "archive"): void;
+  (event: "junk"): void;
   (event: "delete"): void;
 }>();
 
@@ -94,6 +95,13 @@ function alwaysAllow(): void {
         @click="emit('copy')"
       >
         Copy to…
+      </button>
+      <button
+        type="button"
+        class="action"
+        @click="emit('junk')"
+      >
+        Junk
       </button>
       <button
         type="button"

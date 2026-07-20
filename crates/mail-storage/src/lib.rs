@@ -28,6 +28,7 @@ mod filters;
 mod identities;
 mod identity_prefs;
 mod ingest;
+mod junk;
 mod mailboxes;
 mod message_disposal;
 mod message_rows;
@@ -63,6 +64,7 @@ pub use filters::{
 pub use identities::{Identity, IdentityFields, IdentityId, IdentityRepo, NewIdentity};
 pub use identity_prefs::{ArchiveGranularity, ForwardMode, ReplyPosition, SignaturePlacement};
 pub use ingest::{IngestRepo, IngestSummary};
+pub use junk::{JunkRepo, JunkSettings};
 pub use mailboxes::{DiscoveredMailbox, MailboxCounts, MailboxRepo, NewMailbox, ReconcileSummary};
 pub use messages::{MessageRepo, NewMessage};
 pub use offline::{DownloadCandidate, DownloadPlan, OfflineMode, OfflinePolicy, OfflinePolicyRepo};

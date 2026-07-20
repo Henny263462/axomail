@@ -26,6 +26,13 @@ vi.mock("../src/api/tags", () => ({
   deleteTag: vi.fn(),
 }));
 
+// The Junk section loads its settings on mount; stub the junk api likewise.
+vi.mock("../src/api/junk", () => ({
+  getJunkSettings: vi.fn().mockResolvedValue(null),
+  setJunkSettings: vi.fn(),
+  runJunkControls: vi.fn(),
+}));
+
 const getSettingsMock = vi.mocked(getSettings);
 const setPop3DeletePolicyMock = vi.mocked(setPop3DeletePolicy);
 
@@ -99,6 +106,7 @@ describe("settings section registry", () => {
       "tags",
       "contacts",
       "filters",
+      "junk",
       "accounts",
     ]);
   });

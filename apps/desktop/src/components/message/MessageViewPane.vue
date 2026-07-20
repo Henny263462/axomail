@@ -26,6 +26,8 @@ const emit = defineEmits<{
   copy: [messageId: number];
   archive: [messageId: number];
   deleteMessage: [messageId: number];
+  /** Mark the given message as junk (train + file to Junk). */
+  junk: [messageId: number];
 }>();
 
 type LoadState = "idle" | "loading" | "loaded" | "error";
@@ -140,6 +142,7 @@ watch(
       @move="emit('move', detail.id)"
       @copy="emit('copy', detail.id)"
       @archive="emit('archive', detail.id)"
+      @junk="emit('junk', detail.id)"
       @delete="emit('deleteMessage', detail.id)"
     />
   </section>

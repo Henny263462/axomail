@@ -11,6 +11,7 @@
 
 mod discover;
 mod filter_arrival;
+mod junk_route;
 mod mailbox_sync;
 mod offline_download;
 mod op_replay;

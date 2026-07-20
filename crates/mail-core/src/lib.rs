@@ -17,6 +17,7 @@ mod address;
 mod conn_credential;
 mod error;
 mod id;
+pub mod junk;
 mod keyword;
 mod mailbox;
 mod message;

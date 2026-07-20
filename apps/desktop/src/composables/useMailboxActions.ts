@@ -7,6 +7,7 @@ import {
   moveMessages,
   undoMove,
 } from "../api/actions";
+import { markJunk, markNotJunk } from "../api/junk";
 import { markMessagesRead } from "../api/messages";
 import { isTauri } from "../lib/tauri";
 import type { DialogController } from "./useDialogs";
@@ -27,7 +28,14 @@ const NOTICE_TIMEOUT_MS = 4000;
 const UNAVAILABLE = "This action needs the desktop app.";
 
 /** The bulk actions the list/context-menu surfaces dispatch. */
-export type BulkAction = "archive" | "delete" | "move" | "copy" | "markRead";
+export type BulkAction =
+  | "archive"
+  | "delete"
+  | "move"
+  | "copy"
+  | "markRead"
+  | "junk"
+  | "notJunk";
 
 /** A folder chosen in the move/copy picker, with the request it answers. */
 export interface FolderPicked {
@@ -208,6 +216,43 @@ export function useMailboxActions(deps: Deps) {
     await relocate(ids, () => deleteToTrash(ids), (n) => `Deleted ${n}`);
   }
 
+  /**
+   * Files a selection as junk / not-junk: splice optimistically, await the
+   * backend, and either confirm with a notice or fully revert. Unlike a
+   * relocation there is no undo toast — the inverse action (not-junk / junk) is
+   * the deliberate reversal, and it retrains the classifier, which a plain
+   * move-back would not.
+   */
+  async function junkAction(
+    ids: number[],
+    run: () => ReturnType<typeof markJunk>,
+    label: (n: number) => string,
+  ): Promise<void> {
+    if (ids.length === 0) return;
+    const snapshot = removeRows(ids);
+    try {
+      const outcome = await run();
+      if (outcome === null) {
+        restore(snapshot);
+        showNotice(UNAVAILABLE);
+        return;
+      }
+      showNotice(label(ids.length));
+      deps.clearSelection?.();
+    } catch (error) {
+      restore(snapshot);
+      showNotice(errorText(error));
+    }
+  }
+
+  async function junk(ids: number[]): Promise<void> {
+    await junkAction(ids, () => markJunk(ids), (n) => `Marked ${n} as junk`);
+  }
+
+  async function notJunk(ids: number[]): Promise<void> {
+    await junkAction(ids, () => markNotJunk(ids), (n) => `Marked ${n} as not junk`);
+  }
+
   async function moveTo(
     ids: number[],
     mailboxId: number,
@@ -306,6 +351,8 @@ export function useMailboxActions(deps: Deps) {
     else if (action === "delete") void remove(ids);
     else if (action === "move") requestMove(ids);
     else if (action === "copy") requestCopy(ids);
+    else if (action === "junk") void junk(ids);
+    else if (action === "notJunk") void notJunk(ids);
     else void markRead(ids);
   }
 
@@ -324,6 +371,8 @@ export function useMailboxActions(deps: Deps) {
     moveTo,
     copyTo,
     markRead,
+    junk,
+    notJunk,
     undo,
     dismissUndo,
     requestMove,

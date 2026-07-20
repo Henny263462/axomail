@@ -12,8 +12,8 @@ mod flags;
 mod present;
 
 use axomail_core::{
-    AccountId, Address, MailError, MailboxId, MailboxSyncState, RemoteEnvelope, RemoteMessageId,
-    SyncOutcome,
+    AccountId, Address, MailError, MailboxId, MailboxSyncState, MessageId, RemoteEnvelope,
+    RemoteMessageId, SyncOutcome,
 };
 use serde::{Deserialize, Serialize};
 use sqlx::{SqliteConnection, SqlitePool};
@@ -29,7 +29,7 @@ use crate::threading_json::ThreadingColumns;
 /// outcome's list lengths: an envelope already present is not
 /// re-inserted, and a flag update or removal for an unknown message is a
 /// no-op. This is what the engine reports as real progress.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct IngestSummary {
     /// New messages actually inserted.
     pub inserted: u64,
@@ -39,6 +39,12 @@ pub struct IngestSummary {
     pub removed: u64,
     /// Whether a `UIDVALIDITY` change wiped the mailbox first.
     pub wiped: bool,
+    /// Newly inserted inbound messages that the junk classifier scored at or
+    /// above the auto-file threshold (and that are not address-book contacts).
+    /// The sync worker routes these to the Junk folder; empty when junk control
+    /// is disabled or the mailbox is not the Inbox.
+    #[serde(default)]
+    pub auto_junk_candidates: Vec<MessageId>,
 }
 
 /// Repository that applies sync outcomes to the message store.
@@ -83,6 +89,8 @@ impl<'a> IngestRepo<'a> {
         }
 
         let mut inserted = 0u64;
+        // Captured for junk scoring after the insert loop: (row id, envelope).
+        let mut new_messages: Vec<(i64, &RemoteEnvelope)> = Vec::new();
         for envelope in &outcome.new_envelopes {
             if let Some(message_id) = insert_envelope(&mut tx, mailbox, envelope).await? {
                 insert_recipients(&mut tx, message_id, "from", &envelope.from).await?;
@@ -100,6 +108,7 @@ impl<'a> IngestRepo<'a> {
                     )
                     .await?;
                 }
+                new_messages.push((message_id, envelope));
                 inserted += 1;
             }
         }
@@ -140,6 +149,18 @@ impl<'a> IngestRepo<'a> {
         };
         write_state(&mut *tx, mailbox, &next_state).await?;
 
+        // Score freshly ingested inbound mail (Inbox only) and collect the ids
+        // to auto-file as junk. Persisting the score lands in this same pass
+        // transaction; the routing (server ops) happens in the sync worker. A
+        // pass with no new messages (flag-only / empty) skips the role and
+        // settings reads entirely.
+        let auto_junk_candidates =
+            if !new_messages.is_empty() && mailbox_is_inbox(&mut tx, mailbox).await? {
+                crate::junk::score_new_inbound(&mut tx, account, &new_messages).await?
+            } else {
+                Vec::new()
+            };
+
         tx.commit()
             .await
             .map_err(|error| map_sqlx("ingest_commit", error))?;
@@ -149,6 +170,7 @@ impl<'a> IngestRepo<'a> {
             flags_updated,
             removed,
             wiped,
+            auto_junk_candidates,
         })
     }
 }
@@ -290,6 +312,20 @@ async fn resolve_account(
             message: "ingest: mailbox has no owning account".to_owned(),
         })?;
     Ok(AccountId::new(account_id))
+}
+
+/// Whether `mailbox` is the account's Inbox — the only role junk scoring runs
+/// over, so Sent/Drafts/etc. are never classified.
+async fn mailbox_is_inbox(
+    tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
+    mailbox: MailboxId,
+) -> Result<bool, MailError> {
+    let role: Option<String> = sqlx::query_scalar("SELECT role FROM mailboxes WHERE id = ?")
+        .bind(mailbox.value())
+        .fetch_optional(&mut **tx)
+        .await
+        .map_err(|error| map_sqlx("ingest_mailbox_role", error))?;
+    Ok(role.as_deref() == Some("inbox"))
 }
 
 /// Deletes the message with a matching remote identity in this mailbox.

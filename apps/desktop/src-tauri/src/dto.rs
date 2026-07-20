@@ -27,6 +27,7 @@ mod filter;
 mod folder;
 mod identity;
 mod jobs;
+mod junk;
 mod message;
 mod oauth;
 mod offline;
@@ -61,6 +62,7 @@ pub use filter::{
 pub use folder::{CreateFolderInput, RenameFolderInput, SetFolderSubscribedInput};
 pub use identity::{IdentityDto, IdentityInput};
 pub use jobs::SyncJobDto;
+pub use junk::JunkSettingsDto;
 pub use message::{MessageListItemDto, MessageListPageDto};
 pub use oauth::{OAuthAuthorizeResult, OAuthAuthorizeStatus};
 pub use offline::OfflinePolicyDto;

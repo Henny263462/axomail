@@ -18,6 +18,7 @@ pub mod filters;
 pub mod folders;
 pub mod identities;
 pub mod jobs;
+pub mod junk;
 pub mod messages;
 pub mod meta;
 pub mod oauth;

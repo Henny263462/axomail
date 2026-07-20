@@ -30,6 +30,7 @@ use crate::error_map::{map_migrate, map_sqlx};
 use crate::filters::FilterRepo;
 use crate::identities::IdentityRepo;
 use crate::ingest::IngestRepo;
+use crate::junk::JunkRepo;
 use crate::mailboxes::MailboxRepo;
 use crate::messages::MessageRepo;
 use crate::offline::OfflinePolicyRepo;
@@ -210,6 +211,12 @@ impl Store {
     #[must_use]
     pub fn filters(&self) -> FilterRepo<'_> {
         FilterRepo::new(&self.pool)
+    }
+
+    /// The Bayesian junk-classifier repository.
+    #[must_use]
+    pub fn junk(&self) -> JunkRepo<'_> {
+        JunkRepo::new(&self.pool)
     }
 
     /// The POP3 `UIDL` de-duplication repository.
