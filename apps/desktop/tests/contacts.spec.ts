@@ -1,5 +1,6 @@
 import { flushPromises, mount } from "@vue/test-utils";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { nextTick } from "vue";
 
 import {
   createContact,
@@ -159,6 +160,31 @@ describe("RecipientInput autocomplete", () => {
     expect(searchMock).not.toHaveBeenCalled();
     expect(wrapper.find("[role=listbox]").exists()).toBe(false);
   });
+
+  it("cancels a pending debounced search on blur (no late reopen)", async () => {
+    vi.useFakeTimers();
+    try {
+      searchMock.mockResolvedValue([suggestion("contact", "Ann", "ann@example.org")]);
+      const wrapper = mount(RecipientInput, {
+        props: { fieldId: "to", label: "To", debounceMs: 140 },
+      });
+      const input = wrapper.find("input");
+      await input.setValue("ann");
+      // The debounce is still pending when the field loses focus.
+      await input.trigger("blur");
+      // Let the (now-cancelled) debounce window elapse.
+      vi.advanceTimersByTime(300);
+      await flushPromises();
+
+      // Without clearing the timer on close, the stale search would fire and
+      // reopen the dropdown after the field moved on.
+      expect(searchMock).not.toHaveBeenCalled();
+      expect(wrapper.find("[role=listbox]").exists()).toBe(false);
+      wrapper.unmount();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });
 
 describe("ContactEditor", () => {
@@ -234,6 +260,29 @@ describe("AddressBookDialog", () => {
     await flushPromises();
     expect(importContactsVcard).toHaveBeenCalled();
     expect(wrapper.text()).toContain("Imported 3");
+  });
+
+  it("moves focus into the dialog on open so Escape reaches its trap", async () => {
+    const trigger = document.createElement("button");
+    document.body.appendChild(trigger);
+    trigger.focus();
+    listMock.mockResolvedValue([]);
+
+    const wrapper = mount(AddressBookDialog, { attachTo: document.body });
+    await flushPromises();
+    await nextTick();
+
+    // Focus was pulled inside the dialog (otherwise the overlay keydown trap
+    // never fires and Escape can't close it).
+    const dialog = wrapper.get("[role=dialog]").element;
+    expect(dialog.contains(document.activeElement)).toBe(true);
+
+    await wrapper.get(".overlay").trigger("keydown", { key: "Escape" });
+    expect(wrapper.emitted("close")).toBeTruthy();
+
+    // Focus returns to the invoker on close.
+    wrapper.unmount();
+    expect(document.activeElement).toBe(trigger);
   });
 });
 

@@ -12,9 +12,11 @@ mod reply;
 
 use std::path::Path;
 
-use axomail_core::{IncomingMailProvider, MailError, MessageId};
-use axomail_parser::{CalendarMethod, ParsedMessage, extract_invitation, parse_message};
-use axomail_storage::Store;
+use axomail_core::{AccountId, IncomingMailProvider, MailError, MessageId};
+use axomail_parser::{
+    CalendarEvent, CalendarMethod, ParsedMessage, extract_invitation, parse_message,
+};
+use axomail_storage::{NewInvite, RsvpStatus, Store};
 use axomail_sync::ProviderFactory;
 
 use self::reply::prepare_rsvp;
@@ -27,9 +29,17 @@ use crate::state::{AppState, SharedSecretStore};
 /// Builds the reading-pane invitation card for a parsed message, if it carries
 /// a `text/calendar` invitation.
 ///
-/// A `CANCEL` for the event's UID marks every stored invitation for that UID
-/// cancelled (best-effort). The card's `myStatus`/`cancelled` come from stored
-/// RSVP state; the rest is derived from the message.
+/// A **REQUEST** is tracked as a pending invite the first time it is viewed, so
+/// a later CANCEL can mark it (an un-answered REQUEST would otherwise have no
+/// stored row to cancel, and the card would keep offering an RSVP to a cancelled
+/// meeting). A **CANCEL** records a cancellation marker keyed to its own message
+/// and flips any matching stored REQUEST rows — all scoped to the receiving
+/// account and authenticated against the organizer and SEQUENCE (see
+/// [`CalendarInviteRepo::mark_cancelled`](axomail_storage::CalendarInviteRepo)),
+/// so a forged CANCEL with a colliding UID cannot cancel a victim's invite. The
+/// card's `myStatus`/`cancelled` come from stored state (plus a scoped
+/// cancellation check); the rest is derived from the message. All store writes
+/// are best-effort — a failure never stops the message from rendering.
 ///
 /// # Errors
 ///
@@ -44,16 +54,54 @@ pub(crate) async fn detail_invitation(
     let Some(invitation) = extract_invitation(parsed) else {
         return Ok(None);
     };
+    let event = &invitation.event;
+    let organizer = event
+        .organizer
+        .as_ref()
+        .map(|address| address.email.as_str());
+    // Scope cancellation to the receiving account; best-effort resolution.
+    let account = invite_account(store, message_id).await.unwrap_or(None);
 
-    // A cancellation retires every stored invitation sharing the UID. Best
-    // effort: a failure here must not stop the message from rendering.
-    if invitation.method == CalendarMethod::Cancel
-        && let Err(error) = store
-            .calendar_invites()
-            .mark_cancelled_by_uid(&invitation.event.uid)
-            .await
-    {
-        tracing::warn!(%message_id, %error, "failed to mark invitation cancelled");
+    match invitation.method {
+        CalendarMethod::Cancel => {
+            if let Some(account) = account {
+                // Persist a cancellation marker on the cancel message itself (so a
+                // REQUEST opened later still sees the cancel), then flip matching
+                // stored REQUEST rows — both scoped by account/organizer/SEQUENCE.
+                if let Err(error) = store
+                    .calendar_invites()
+                    .upsert(&pending_invite(message_id, event))
+                    .await
+                {
+                    tracing::warn!(%message_id, %error, "failed to record cancellation marker");
+                }
+                if let Err(error) = store
+                    .calendar_invites()
+                    .mark_cancelled(account, &event.uid, organizer, event.sequence)
+                    .await
+                {
+                    tracing::warn!(%message_id, %error, "failed to mark invitation cancelled");
+                }
+            }
+        }
+        CalendarMethod::Request => {
+            // Track a viewed REQUEST as pending so a later CANCEL can mark it,
+            // but never overwrite an existing (answered/cancelled) row.
+            if matches!(
+                store
+                    .calendar_invites()
+                    .get_by_message(MessageId::new(message_id))
+                    .await,
+                Ok(None)
+            ) && let Err(error) = store
+                .calendar_invites()
+                .upsert(&pending_invite(message_id, event))
+                .await
+            {
+                tracing::warn!(%message_id, %error, "failed to track pending invitation");
+            }
+        }
+        _ => {}
     }
 
     let stored = match store
@@ -68,9 +116,49 @@ pub(crate) async fn detail_invitation(
         }
     };
     let my_status = stored.as_ref().map_or("none", |row| row.my_status.as_str());
-    let cancelled = stored.as_ref().is_some_and(|row| row.cancelled);
+    let mut cancelled = stored.as_ref().is_some_and(|row| row.cancelled);
+    // Reflect a valid cancellation even if this message has no cancelled row yet.
+    if !cancelled && let Some(account) = account {
+        cancelled = store
+            .calendar_invites()
+            .is_event_cancelled(account, &event.uid, organizer, event.sequence)
+            .await
+            .unwrap_or(false);
+    }
 
     InvitationDto::from_invitation(message_id, &invitation, my_status, cancelled).map(Some)
+}
+
+/// The receiving account of an invitation message, resolved via its mailbox.
+async fn invite_account(store: &Store, message_id: i64) -> Result<Option<AccountId>, MailError> {
+    let Some(envelope) = store.messages().get(MessageId::new(message_id)).await? else {
+        return Ok(None);
+    };
+    Ok(store
+        .mailboxes()
+        .get(envelope.mailbox)
+        .await?
+        .map(|mailbox| mailbox.account))
+}
+
+/// A pending (`my_status = none`) invitation row snapshotting an event — used to
+/// track a viewed REQUEST and to record a CANCEL's marker. `cancelled` is left
+/// at its default; only `mark_cancelled` sets it.
+fn pending_invite(message_id: i64, event: &CalendarEvent) -> NewInvite {
+    NewInvite {
+        message_id: MessageId::new(message_id),
+        uid: event.uid.clone(),
+        summary: event.summary.clone(),
+        organizer: event
+            .organizer
+            .as_ref()
+            .map(|address| address.email.clone()),
+        starts_at: event.dtstart.as_ref().map(|dt| dt.to_unix_seconds()),
+        ends_at: event.dtend.as_ref().map(|dt| dt.to_unix_seconds()),
+        location: event.location.clone(),
+        my_status: RsvpStatus::None,
+        sequence: event.sequence,
+    }
 }
 
 /// The outcome of an RSVP: the send [`Submission`] (outcome + any Sent-copy
@@ -160,6 +248,30 @@ where
         .ok_or_else(|| MailError::Configuration {
             message: "the invitation's account no longer exists".to_owned(),
         })?;
+
+    // Refuse to RSVP to a meeting a valid CANCEL retired (scoped to this account,
+    // organizer, and SEQUENCE) — the reading-pane card also reflects this, but
+    // the backend must not send a response to a cancelled event regardless.
+    let organizer = invitation
+        .event
+        .organizer
+        .as_ref()
+        .map(|address| address.email.as_str());
+    if store
+        .calendar_invites()
+        .is_event_cancelled(
+            account.id,
+            &invitation.event.uid,
+            organizer,
+            invitation.event.sequence,
+        )
+        .await?
+    {
+        return Err(MailError::Configuration {
+            message: "this event has been cancelled".to_owned(),
+        });
+    }
+
     let identities = store.identities().list(account.id).await?;
 
     let prepared = prepare_rsvp(

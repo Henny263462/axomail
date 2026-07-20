@@ -133,6 +133,37 @@ describe("createCommandRegistry — keydown dispatch", () => {
     expect(run).not.toHaveBeenCalled();
     expect(event.defaultPrevented).toBe(false);
   });
+
+  it("defers a bare key to an armed chord prefix, but fires it otherwise", () => {
+    const registry = createCommandRegistry();
+    const run = vi.fn();
+    registry.register(cmd({ id: "forward", shortcut: "f", run }));
+    let pending = false;
+    registry.setChordPending(() => pending);
+
+    // Prefix armed: the bare key completes the chord — don't also fire Forward.
+    pending = true;
+    const deferred = keydown({ key: "f" });
+    expect(registry.handleKeydown(deferred)).toBe(false);
+    expect(run).not.toHaveBeenCalled();
+    expect(deferred.defaultPrevented).toBe(false);
+
+    // No prefix armed: the lone key fires normally.
+    pending = false;
+    expect(registry.handleKeydown(keydown({ key: "f" }))).toBe(true);
+    expect(run).toHaveBeenCalledOnce();
+  });
+
+  it("still dispatches a modifier chord while a prefix is armed", () => {
+    const registry = createCommandRegistry();
+    const run = vi.fn();
+    registry.register(cmd({ id: "palette", shortcut: "Mod+K", run }));
+    registry.setChordPending(() => true);
+    expect(registry.handleKeydown(keydown({ key: "k", ctrlKey: true }))).toBe(
+      true,
+    );
+    expect(run).toHaveBeenCalledOnce();
+  });
 });
 
 describe("createCommandRegistry — text-input focus", () => {

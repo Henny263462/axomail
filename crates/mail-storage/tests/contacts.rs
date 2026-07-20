@@ -276,6 +276,34 @@ async fn collect_address_is_idempotent_by_email() {
     );
 }
 
+/// Regression (finding #19): concurrent auto-collects of the same new address
+/// yield exactly one contact — the global unique index + atomic upsert close the
+/// check-then-insert race that could otherwise create duplicates.
+#[tokio::test]
+async fn concurrent_collect_of_the_same_address_yields_one_contact() {
+    let store = store().await;
+    let email = addr("dana@example.org");
+
+    let mut created = 0u32;
+    let mut handles = Vec::new();
+    for _ in 0..8 {
+        let store = store.clone();
+        let email = email.clone();
+        handles.push(tokio::spawn(async move {
+            store.contacts().collect_address(&email, "Dana").await
+        }));
+    }
+    for handle in handles {
+        if handle.await.unwrap().unwrap() {
+            created += 1;
+        }
+    }
+    assert_eq!(created, 1, "exactly one racer creates the contact");
+
+    let contacts = store.contacts().list("", 100).await.unwrap();
+    assert_eq!(contacts.len(), 1, "no duplicate contacts");
+}
+
 #[tokio::test]
 async fn collect_address_derives_name_when_blank() {
     let store = store().await;

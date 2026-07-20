@@ -180,10 +180,12 @@ fn split_source(path: &Path, tx: &tokio::sync::mpsc::Sender<Vec<u8>>) -> Result<
     let file =
         std::fs::File::open(path).map_err(|error| fs_error("opening the import file", &error))?;
     let mut reader = std::io::BufReader::new(file);
-    let looks_like_mbox = reader
-        .fill_buf()
-        .map_err(|error| fs_error("reading the import file", &error))?
-        .starts_with(b"From ");
+    let looks_like_mbox = {
+        let prefix = reader
+            .fill_buf()
+            .map_err(|error| fs_error("reading the import file", &error))?;
+        prefix_looks_like_mbox(prefix)
+    };
     if looks_like_mbox {
         let mut mbox = MboxReader::new(reader);
         while let Some(message) = mbox.next_message()? {
@@ -206,8 +208,29 @@ fn split_source(path: &Path, tx: &tokio::sync::mpsc::Sender<Vec<u8>>) -> Result<
     Ok(())
 }
 
+/// Whether a buffered file prefix looks like an mbox archive: its first
+/// **non-blank** line is a `From ` postmark. Leading blank lines — which a valid
+/// mbox may begin with — are skipped, so an archive that opens with blanks is
+/// recognized and split, rather than being imported whole as a single `.eml`.
+fn prefix_looks_like_mbox(prefix: &[u8]) -> bool {
+    for line in prefix.split_inclusive(|&byte| byte == b'\n') {
+        let trimmed = line.strip_suffix(b"\n").unwrap_or(line);
+        let trimmed = trimmed.strip_suffix(b"\r").unwrap_or(trimmed);
+        if trimmed.is_empty() {
+            continue; // A leading blank line; keep looking for the first postmark.
+        }
+        return trimmed.starts_with(b"From ");
+    }
+    false
+}
+
 /// Ingests one raw message as a local message in `mailbox`: parse the envelope,
 /// insert the row, and cache the raw bytes under `<raw_root>/raw/<id>.eml`.
+///
+/// The raw is written **before** `has_raw` is set: the row is inserted with
+/// `has_raw = false`, and only after the blob is safely on disk does
+/// `offline().mark_downloaded` flip the flag and index the body. A write failure
+/// therefore never leaves a row claiming a cached raw that does not exist.
 async fn ingest_local(
     store: &Store,
     raw_root: &Path,
@@ -227,11 +250,13 @@ async fn ingest_local(
         flags: MessageFlags::default(),
         size_bytes: Some(u64::try_from(raw.len()).unwrap_or(u64::MAX)),
         preview: Some(parsed.preview.clone()),
-        has_raw: true,
+        has_raw: false,
     };
     let envelope = store.messages().insert(&new).await?;
     let path = raw_message_path(raw_root, envelope.id.value());
-    write_raw_atomically(&path, raw).await
+    write_raw_atomically(&path, raw).await?;
+    let body = parsed.text_body.clone().unwrap_or_default();
+    store.offline().mark_downloaded(envelope.id, &body).await
 }
 
 /// Maps an IO error to a redacted [`MailError::Filesystem`] (kind only).

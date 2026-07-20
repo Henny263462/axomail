@@ -136,6 +136,30 @@ describe("CommandPalette", () => {
     await wrapper.find("input").trigger("keydown", { key: "Escape" });
     expect(onClose).toHaveBeenCalledOnce();
   });
+
+  it("keeps aria-expanded true even when nothing matches (popup still shown)", async () => {
+    const { wrapper } = palette(sample());
+    const input = wrapper.get('input[role="combobox"]');
+    expect(input.attributes("aria-expanded")).toBe("true");
+    await input.setValue("zzzzz");
+    expect(wrapper.findAll('[role="option"]')).toHaveLength(0);
+    // The no-results popup is still visible, so it must not report collapsed.
+    expect(input.attributes("aria-expanded")).toBe("true");
+  });
+
+  it("traps Tab so focus cannot escape to the background", () => {
+    const { wrapper } = palette(sample());
+    const input = wrapper.get('input[role="combobox"]').element as HTMLInputElement;
+    input.focus();
+    const event = new KeyboardEvent("keydown", {
+      key: "Tab",
+      bubbles: true,
+      cancelable: true,
+    });
+    input.dispatchEvent(event);
+    expect(event.defaultPrevented).toBe(true);
+    expect(document.activeElement).toBe(input);
+  });
 });
 
 describe("ShortcutHelp", () => {
@@ -164,6 +188,22 @@ describe("ShortcutHelp", () => {
     await wrapper.find('button[aria-label="Close"]').trigger("click");
     await wrapper.find('[role="dialog"]').trigger("keydown", { key: "Escape" });
     expect(onClose).toHaveBeenCalledTimes(2);
+  });
+
+  it("restores focus to the invoker when it closes", async () => {
+    const trigger = document.createElement("button");
+    document.body.appendChild(trigger);
+    trigger.focus();
+    expect(document.activeElement).toBe(trigger);
+
+    const wrapper = hostFor(ShortcutHelp, commands(), { onClose: vi.fn() });
+    await nextTick();
+    // Focus moved into the overlay on open.
+    expect(document.activeElement).not.toBe(trigger);
+
+    wrapper.unmount();
+    // …and returns to the invoker on close.
+    expect(document.activeElement).toBe(trigger);
   });
 });
 

@@ -73,6 +73,29 @@ const CANCEL: &str = concat!(
     "UID:evt-77@example.org\r\n",
     "SEQUENCE:1\r\n",
     "STATUS:CANCELLED\r\n",
+    "ORGANIZER;CN=Ada Lovelace:mailto:ada@example.org\r\n",
+    "END:VEVENT\r\n",
+    "END:VCALENDAR\r\n",
+);
+
+/// A forged CANCEL for the same UID but from a different organizer — an attacker
+/// trying to cancel a victim's meeting by UID collision.
+const FORGED_CANCEL: &str = concat!(
+    "From: Mallory <mallory@evil.example>\r\n",
+    "To: Klaus <klaus@theferbers.eu>\r\n",
+    "Subject: Cancelled: Design sync\r\n",
+    "Date: Mon, 20 Jul 2026 08:00:00 +0000\r\n",
+    "Message-ID: <forged-1@evil.example>\r\n",
+    "MIME-Version: 1.0\r\n",
+    "Content-Type: text/calendar; method=CANCEL; charset=utf-8\r\n",
+    "\r\n",
+    "BEGIN:VCALENDAR\r\n",
+    "METHOD:CANCEL\r\n",
+    "BEGIN:VEVENT\r\n",
+    "UID:evt-77@example.org\r\n",
+    "SEQUENCE:9\r\n",
+    "STATUS:CANCELLED\r\n",
+    "ORGANIZER;CN=Mallory:mailto:mallory@evil.example\r\n",
     "END:VEVENT\r\n",
     "END:VCALENDAR\r\n",
 );
@@ -273,6 +296,123 @@ async fn opening_a_cancel_marks_the_stored_invite_cancelled() {
         .unwrap();
     assert!(stored.cancelled, "the prior invite is now cancelled");
     assert_eq!(stored.my_status, RsvpStatus::Accepted, "response preserved");
+}
+
+/// Regression (finding #16a): a CANCEL cancels an un-answered REQUEST — one that
+/// was merely viewed (tracked as pending), never RSVP'd — so its card no longer
+/// offers a response.
+#[tokio::test]
+async fn a_cancel_retires_an_unanswered_request() {
+    let store = Store::open_in_memory().await.unwrap();
+    let (_concrete, secrets) = secret_stores();
+    let raw_root = tempfile::tempdir().unwrap();
+    let summary = create_account_impl(&store, &secrets, valid_input())
+        .await
+        .unwrap();
+    let inbox = MailboxId::new(summary.mailboxes[0].id);
+
+    // View the REQUEST (never RSVP): it is tracked as a pending invite.
+    let request = insert_with_raw(&store, raw_root.path(), inbox, "Invitation", REQUEST).await;
+    let detail = get_message_detail_impl(
+        &store,
+        &StubFactory,
+        raw_root.path(),
+        request.value(),
+        None,
+        false,
+    )
+    .await
+    .unwrap();
+    assert!(
+        detail.invitation.as_ref().unwrap().can_respond,
+        "live before cancel"
+    );
+
+    // A matching CANCEL arrives and is opened.
+    let cancel = insert_with_raw(&store, raw_root.path(), inbox, "Cancelled", CANCEL).await;
+    get_message_detail_impl(
+        &store,
+        &StubFactory,
+        raw_root.path(),
+        cancel.value(),
+        None,
+        false,
+    )
+    .await
+    .unwrap();
+
+    // Re-opening the REQUEST now shows it cancelled and non-respondable.
+    let after = get_message_detail_impl(
+        &store,
+        &StubFactory,
+        raw_root.path(),
+        request.value(),
+        None,
+        false,
+    )
+    .await
+    .unwrap();
+    let invitation = after.invitation.expect("still an invitation");
+    assert!(invitation.cancelled, "the un-answered request is cancelled");
+    assert!(
+        !invitation.can_respond,
+        "a cancelled meeting is not respondable"
+    );
+}
+
+/// Regression (finding #16b): a forged CANCEL with a colliding UID but a
+/// different organizer does NOT cancel the victim's stored invite.
+#[tokio::test]
+async fn a_forged_cancel_from_another_organizer_does_not_cancel() {
+    let store = Store::open_in_memory().await.unwrap();
+    let (_concrete, secrets) = secret_stores();
+    let raw_root = tempfile::tempdir().unwrap();
+    let summary = create_account_impl(&store, &secrets, valid_input())
+        .await
+        .unwrap();
+    let inbox = MailboxId::new(summary.mailboxes[0].id);
+
+    // The genuine, accepted invite.
+    let request = insert_with_raw(&store, raw_root.path(), inbox, "Invitation", REQUEST).await;
+    store
+        .calendar_invites()
+        .upsert(&NewInvite {
+            message_id: request,
+            uid: "evt-77@example.org".to_owned(),
+            summary: Some("Design sync".to_owned()),
+            organizer: Some("ada@example.org".to_owned()),
+            starts_at: Some(1_784_545_200),
+            ends_at: None,
+            location: None,
+            my_status: RsvpStatus::Accepted,
+            sequence: 0,
+        })
+        .await
+        .unwrap();
+
+    // Opening the forged CANCEL (higher SEQUENCE, wrong organizer) must not cancel.
+    let forged = insert_with_raw(&store, raw_root.path(), inbox, "Cancelled", FORGED_CANCEL).await;
+    get_message_detail_impl(
+        &store,
+        &StubFactory,
+        raw_root.path(),
+        forged.value(),
+        None,
+        false,
+    )
+    .await
+    .unwrap();
+
+    let stored = store
+        .calendar_invites()
+        .get_by_message(request)
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(
+        !stored.cancelled,
+        "a CANCEL from a different organizer must not cancel the victim's invite"
+    );
 }
 
 #[tokio::test]

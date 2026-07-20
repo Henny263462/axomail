@@ -186,6 +186,46 @@ fn numeric_attachment_and_regex_ops() {
     }
 }
 
+/// Regression (finding #7): a regex pattern must be compiled verbatim, never
+/// lowercased — lowercasing corrupts uppercase escape classes (`\D`→`\d`), which
+/// would silently invert the match set of a possibly-destructive rule.
+#[test]
+fn regex_uppercase_escape_class_is_not_corrupted() {
+    let non_digit = FilterMessageFacts {
+        subject: "abc".to_owned(),
+        ..Default::default()
+    };
+    let all_digits = FilterMessageFacts {
+        subject: "12345".to_owned(),
+        ..Default::default()
+    };
+    let re = |pattern: &str| {
+        [star_filter(
+            MatchType::All,
+            vec![cond(
+                ConditionField::Subject,
+                ConditionOp::MatchesRegex,
+                pattern,
+            )],
+        )]
+    };
+    // `\D+` matches non-digits (the correct behaviour), not digits.
+    assert!(
+        matches(&re(r"\D+"), &non_digit),
+        "\\D+ must match non-digits"
+    );
+    assert!(
+        !matches(&re(r"\D+"), &all_digits),
+        "\\D+ must NOT match an all-digit string"
+    );
+    // Case-insensitivity still works for literal patterns (compiled with the
+    // case-insensitive flag rather than by mangling the pattern text).
+    assert!(
+        matches(&re("ABC"), &non_digit),
+        "an uppercase literal still matches case-insensitively"
+    );
+}
+
 #[test]
 fn all_versus_any_combines_conditions() {
     let facts = sample_facts();
@@ -395,6 +435,54 @@ async fn reorder_and_enable_toggle() {
         .map(|f| f.name)
         .collect();
     assert_eq!(active, ["C", "A"]);
+}
+
+/// Regression (finding #11): a partial reorder renumbers the *whole* scope to a
+/// dense, unique sequence, so no stale/duplicate sort_order can leave the
+/// (destructive) rule order ambiguous.
+#[tokio::test]
+async fn partial_reorder_renumbers_all_rules_densely() {
+    let (store, account, _) = setup().await;
+    let a = store
+        .filters()
+        .create(&input(Some(account), "A"))
+        .await
+        .unwrap();
+    let b = store
+        .filters()
+        .create(&input(Some(account), "B"))
+        .await
+        .unwrap();
+    let _c = store
+        .filters()
+        .create(&input(Some(account), "C"))
+        .await
+        .unwrap();
+    let d = store
+        .filters()
+        .create(&input(Some(account), "D"))
+        .await
+        .unwrap();
+
+    // Mention only two ids; the rest must keep their prior relative order after.
+    store
+        .filters()
+        .reorder(Some(account), &[d.id, b.id])
+        .await
+        .unwrap();
+
+    let filters = store.filters().list(Some(account)).await.unwrap();
+    let names: Vec<_> = filters.iter().map(|f| f.name.clone()).collect();
+    assert_eq!(
+        names,
+        ["D", "B", "A", "C"],
+        "requested ids lead, rest follow"
+    );
+    // Every sort_order is unique and contiguous 0..n.
+    let orders: Vec<i64> = filters.iter().map(|f| f.sort_order).collect();
+    assert_eq!(orders, [0, 1, 2, 3], "dense, unique sort orders");
+    // Unrelated ids in the reorder list are ignored (no panic, no effect here).
+    let _ = a;
 }
 
 #[tokio::test]

@@ -197,6 +197,7 @@ async fn run_junk_controls_trusts_a_server_spam_header() {
             threshold: 0.9,
             trust_server_headers: true,
             whitelist_contacts: true,
+            mark_read_on_junk: false,
         })
         .await
         .unwrap();
@@ -238,6 +239,7 @@ async fn run_junk_controls_without_trust_keeps_unscored_mail() {
             threshold: 0.9,
             trust_server_headers: false,
             whitelist_contacts: true,
+            mark_read_on_junk: false,
         })
         .await
         .unwrap();
@@ -266,6 +268,7 @@ async fn junk_settings_round_trip_through_the_command() {
             threshold: 0.7,
             trust_server_headers: false,
             whitelist_contacts: false,
+            mark_read_on_junk: true,
         },
     )
     .await
@@ -275,6 +278,101 @@ async fn junk_settings_round_trip_through_the_command() {
     assert!((loaded.threshold - 0.7).abs() < f64::EPSILON);
     assert!(!loaded.trust_server_headers);
     assert!(!loaded.whitelist_contacts);
+    assert!(loaded.mark_read_on_junk, "the new setting round-trips");
+}
+
+/// Regression (finding #5): `run_junk_controls` never overrides a message the
+/// user explicitly pinned not-junk, even with a spammy server header.
+#[tokio::test]
+async fn run_junk_controls_preserves_a_not_junk_pin() {
+    let store = Store::open_in_memory().await.unwrap();
+    let (_account, inbox, _junk) = account_with_junk(&store).await;
+    let raw_root = tempdir().unwrap();
+    let message = insert(&store, inbox, Some(imap_id(7)), "cheap viagra", "buy now").await;
+    // A server header that would otherwise file it as spam.
+    write_raw_atomically(
+        &raw_message_path(raw_root.path(), message.value()),
+        b"Subject: cheap viagra\r\nX-Spam-Flag: YES\r\n\r\nbody",
+    )
+    .await
+    .unwrap();
+    store
+        .junk()
+        .set_settings(&JunkSettings {
+            enabled: true,
+            threshold: 0.5,
+            trust_server_headers: true,
+            whitelist_contacts: false,
+            mark_read_on_junk: false,
+        })
+        .await
+        .unwrap();
+    let engine = stub_engine(&store);
+
+    // The user explicitly rescues it (pins not-junk).
+    not_junk_impl(&store, &engine, vec![message.value()])
+        .await
+        .unwrap();
+
+    let filed = run_junk_controls_impl(&store, &engine, raw_root.path(), inbox.value())
+        .await
+        .unwrap();
+
+    assert_eq!(filed, 0, "a not-junk pin is never re-filed");
+    assert_eq!(
+        get_mailbox(&store, message).await,
+        inbox,
+        "stays in the Inbox"
+    );
+    // The pinned score (0.0) is not overwritten by the spammy header.
+    assert_eq!(store.junk().score_of(message).await.unwrap().unwrap(), 0.0);
+}
+
+/// Regression (finding #6): the mark-read-on-junk setting marks a message read
+/// when it is filed to Junk (and leaves it unread when the setting is off).
+#[tokio::test]
+async fn mark_read_on_junk_marks_the_filed_message_read() {
+    let store = Store::open_in_memory().await.unwrap();
+    let (_account, inbox, _junk) = account_with_junk(&store).await;
+    let message = insert(&store, inbox, Some(imap_id(8)), "cheap viagra", "buy now").await;
+    store
+        .junk()
+        .set_settings(&JunkSettings {
+            enabled: true,
+            threshold: 0.5,
+            trust_server_headers: false,
+            whitelist_contacts: false,
+            mark_read_on_junk: true,
+        })
+        .await
+        .unwrap();
+    let engine = stub_engine(&store);
+
+    assert!(
+        !store
+            .messages()
+            .get(message)
+            .await
+            .unwrap()
+            .unwrap()
+            .flags
+            .seen,
+        "starts unread"
+    );
+    mark_junk_impl(&store, &engine, vec![message.value()])
+        .await
+        .unwrap();
+    assert!(
+        store
+            .messages()
+            .get(message)
+            .await
+            .unwrap()
+            .unwrap()
+            .flags
+            .seen,
+        "mark-read-on-junk marked it read"
+    );
 }
 
 async fn get_mailbox(store: &Store, message: MessageId) -> MailboxId {
@@ -285,4 +383,57 @@ async fn get_mailbox(store: &Store, message: MessageId) -> MailboxId {
         .unwrap()
         .unwrap()
         .mailbox
+}
+
+/// Regression (finding #2): a forged `X-Spam-Flag: NO` must NOT force a message
+/// to ham. With header trust on, the classifier still decides — an attacker
+/// cannot clear a spammy message by stamping a NO header on it.
+#[tokio::test]
+async fn a_no_spam_header_cannot_force_ham_past_the_classifier() {
+    use axomail_core::junk::message_tokens;
+
+    let store = Store::open_in_memory().await.unwrap();
+    let (account, inbox, _junk) = account_with_junk(&store).await;
+    let raw_root = tempdir().unwrap();
+
+    // Teach the classifier that these tokens are decisively spam.
+    let spam = message_tokens(Some("cheap viagra pills"), &[], "");
+    let ham = message_tokens(Some("project meeting notes"), &[], "");
+    for _ in 0..8 {
+        store.junk().train(account, &spam, true).await.unwrap();
+        store.junk().train(account, &ham, false).await.unwrap();
+    }
+
+    let message = insert(&store, inbox, Some(imap_id(9)), "cheap viagra pills", "").await;
+    // A forged NO header, with header trust ON.
+    write_raw_atomically(
+        &raw_message_path(raw_root.path(), message.value()),
+        b"Subject: cheap viagra pills\r\nX-Spam-Flag: NO\r\n\r\nbody",
+    )
+    .await
+    .unwrap();
+    store
+        .junk()
+        .set_settings(&JunkSettings {
+            enabled: true,
+            threshold: 0.5,
+            trust_server_headers: true,
+            whitelist_contacts: false,
+            mark_read_on_junk: false,
+        })
+        .await
+        .unwrap();
+    let engine = stub_engine(&store);
+
+    run_junk_controls_impl(&store, &engine, raw_root.path(), inbox.value())
+        .await
+        .unwrap();
+
+    // The stored score reflects the classifier (spammy), NOT a forced 0.0: the
+    // NO header never overrode the Bayesian verdict.
+    let score = store.junk().score_of(message).await.unwrap().unwrap();
+    assert!(
+        score >= 0.5,
+        "a NO header must not force the score to ham, got {score}"
+    );
 }

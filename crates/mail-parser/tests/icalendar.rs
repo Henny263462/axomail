@@ -261,8 +261,14 @@ fn reply_carries_method_partstat_and_identity() {
     assert!(reply.contains("mailto:klaus@theferbers.eu"));
     assert!(reply.contains("CN=\"Klaus Ferber\""));
     assert!(reply.contains("ORGANIZER;CN=\"Ada Lovelace\":mailto:ada@example.org"));
-    // The start/end are echoed verbatim (TZID preserved).
-    assert!(reply.contains("DTSTART;TZID=Europe/Berlin:20260720T130000"));
+    // The start/end are emitted as self-contained UTC, never echoed with a bare
+    // TZID (a TZID without its VTIMEZONE is invalid, ambiguous iCalendar).
+    assert!(reply.contains("DTSTART:20260720T130000Z"), "{reply}");
+    assert!(reply.contains("DTEND:20260720T140000Z"), "{reply}");
+    assert!(
+        !reply.contains("TZID"),
+        "the reply must not carry a dangling TZID: {reply}"
+    );
     assert!(reply.contains("\r\n"), "reply uses CRLF line endings");
 }
 

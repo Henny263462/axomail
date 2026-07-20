@@ -186,6 +186,7 @@ describe("JunkSection", () => {
       threshold: 0.8,
       trustServerHeaders: true,
       whitelistContacts: false,
+      markReadOnJunk: false,
     });
     const wrapper = mount(JunkSection, { props: { context: stubContext() } });
     await flushPromises();
@@ -202,6 +203,7 @@ describe("JunkSection", () => {
       threshold: 0.9,
       trustServerHeaders: true,
       whitelistContacts: true,
+      markReadOnJunk: false,
     });
     setJunkSettingsMock.mockResolvedValue(null);
     const wrapper = mount(JunkSection, { props: { context: stubContext() } });
@@ -215,12 +217,47 @@ describe("JunkSection", () => {
     );
   });
 
+  it("reverts the enable checkbox when persistence fails", async () => {
+    getJunkSettingsMock.mockResolvedValue({
+      enabled: false,
+      threshold: 0.9,
+      trustServerHeaders: true,
+      whitelistContacts: true,
+      markReadOnJunk: false,
+    });
+    // Capture the enabled flag at call time — the reactive settings object is
+    // passed by reference and the revert mutates it back afterward.
+    let sentEnabled: boolean | undefined;
+    setJunkSettingsMock.mockImplementation((s) => {
+      sentEnabled = s.enabled;
+      return Promise.reject("persist boom");
+    });
+    const context = stubContext();
+    const wrapper = mount(JunkSection, { props: { context } });
+    await flushPromises();
+
+    const box = wrapper.get<HTMLInputElement>("#settings-junk-enabled");
+    expect(box.element.checked).toBe(false);
+
+    await box.setValue(true);
+    await flushPromises();
+
+    // The optimistic value was submitted…
+    expect(sentEnabled).toBe(true);
+    // …but the write was rejected, so the setting reverts rather than lingering
+    // as an un-persisted change that would ride along with the next edit.
+    expect(box.element.checked).toBe(false);
+    expect(context.reportError).toHaveBeenLastCalledWith("persist boom");
+    wrapper.unmount();
+  });
+
   it("runs junk controls over every inbox and reports the total", async () => {
     getJunkSettingsMock.mockResolvedValue({
       enabled: true,
       threshold: 0.9,
       trustServerHeaders: true,
       whitelistContacts: true,
+      markReadOnJunk: false,
     });
     runJunkControlsMock.mockResolvedValue(3);
     const context = stubContext();

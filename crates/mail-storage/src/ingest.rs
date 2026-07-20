@@ -154,12 +154,21 @@ impl<'a> IngestRepo<'a> {
         // transaction; the routing (server ops) happens in the sync worker. A
         // pass with no new messages (flag-only / empty) skips the role and
         // settings reads entirely.
-        let auto_junk_candidates =
-            if !new_messages.is_empty() && mailbox_is_inbox(&mut tx, mailbox).await? {
-                crate::junk::score_new_inbound(&mut tx, account, &new_messages).await?
-            } else {
-                Vec::new()
-            };
+        //
+        // On a `UIDVALIDITY` wipe every stored message was re-fetched as "new".
+        // Scoring (and persisting the score) still runs so the corpus view is
+        // current, but the candidates are dropped: auto-routing a whole
+        // re-ingested inbox would mass-file existing mail — including messages
+        // the user explicitly rescued — exactly the retroactive sweep the
+        // arrival filter baselines against. A wipe therefore never auto-routes.
+        let auto_junk_candidates = if !new_messages.is_empty()
+            && mailbox_is_inbox(&mut tx, mailbox).await?
+        {
+            let scored = crate::junk::score_new_inbound(&mut tx, account, &new_messages).await?;
+            if wiped { Vec::new() } else { scored }
+        } else {
+            Vec::new()
+        };
 
         tx.commit()
             .await

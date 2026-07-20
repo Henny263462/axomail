@@ -147,11 +147,10 @@ pub struct CalendarEvent {
     pub dtstart: Option<CalDateTime>,
     /// The parsed `DTEND`, if present.
     pub dtend: Option<CalDateTime>,
-    /// The raw, unfolded `DTSTART` content line (echoed verbatim in a reply so
-    /// its `TZID`/value survive round-trips exactly).
-    pub dtstart_line: Option<String>,
-    /// The raw, unfolded `DTEND` content line.
-    pub dtend_line: Option<String>,
+    /// The parsed `RECURRENCE-ID`, if present — the specific occurrence of a
+    /// recurring series this object refers to. Carried so an RSVP reply targets
+    /// the right occurrence rather than the whole series.
+    pub recurrence_id: Option<CalDateTime>,
     /// The `LOCATION`, unescaped.
     pub location: Option<String>,
     /// The `DESCRIPTION` (agenda), unescaped.

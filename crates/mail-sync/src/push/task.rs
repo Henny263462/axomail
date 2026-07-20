@@ -11,6 +11,7 @@
 use std::sync::Arc;
 
 use axomail_core::{IdleOutcome, IncomingMailProvider};
+use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
 
 use crate::backoff::backoff_from;
@@ -27,6 +28,12 @@ use super::{PushConfig, PushTarget};
 /// formula the sync engine uses), resetting the backoff after each successful
 /// connection. Exits early — without retrying — when the server does not
 /// advertise IDLE (the poller covers that account instead).
+///
+/// When this task *replaces* a prior one for the same account (a target change),
+/// `predecessor` is the outgoing task's handle: this task awaits its clean
+/// teardown (DONE + close) **before** opening its own connection, so an account
+/// never holds two IDLE sessions at once (a server with a per-account connection
+/// cap could otherwise reject the new one).
 pub(super) async fn run<P, F>(
     engine: Arc<SyncEngine<P, F>>,
     factory: Arc<F>,
@@ -34,10 +41,19 @@ pub(super) async fn run<P, F>(
     target: PushTarget,
     config: PushConfig,
     token: CancellationToken,
+    predecessor: Option<JoinHandle<()>>,
 ) where
     P: IncomingMailProvider + 'static,
     F: ProviderFactory<P>,
 {
+    if let Some(predecessor) = predecessor {
+        // The outgoing task was already cancelled by the supervisor; wait for it
+        // to finish tearing down its connection before we open ours.
+        let _ = predecessor.await;
+    }
+    if token.is_cancelled() {
+        return;
+    }
     let mut attempt = 0u32;
     loop {
         if token.is_cancelled() {

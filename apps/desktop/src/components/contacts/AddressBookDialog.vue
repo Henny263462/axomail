@@ -6,7 +6,7 @@
  * reloads its own list after each change. Focus is trapped and Escape closes
  * (shared {@link useFocusTrap}). Honest empty states and aria labels throughout.
  */
-import { onBeforeUnmount, onMounted, ref, watch } from "vue";
+import { nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
 
 import {
   createContactGroup,
@@ -53,6 +53,15 @@ onMounted(() => {
   invoker = document.activeElement as HTMLElement | null;
   void load();
   void loadGroups();
+  // Move focus into the dialog so its keydown trap receives events (Escape to
+  // close, Tab to cycle). Without this, focus stays on the invoker outside the
+  // overlay and the handler never fires.
+  void nextTick(() => {
+    const first = root.value?.querySelector<HTMLElement>(
+      "button:not([disabled]), input:not([disabled]), textarea:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex='-1'])",
+    );
+    first?.focus();
+  });
 });
 
 onBeforeUnmount(() => {

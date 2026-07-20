@@ -47,7 +47,7 @@ pub use config::SyncConfig;
 pub use engine::{EngineOptions, SyncEngine};
 pub use event::{PushState, SyncErrorClass, SyncEvent, SyncJobSummary};
 pub use factory::ProviderFactory;
-pub use filter_run::{FilterRunReport, run_filters_on_messages};
+pub use filter_run::{FilterRunReport, FilterRunner, run_filters_on_messages};
 pub use job::{SyncMailbox, WorkRequest};
 // Junk disposition (mark-junk / not-junk) shared by the worker and commands.
 pub use junk::{route_from_junk, route_to_junk};

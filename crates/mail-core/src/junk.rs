@@ -15,6 +15,19 @@
 //! never seen — the classifier has no opinion and returns [`NEUTRAL_SCORE`],
 //! which keeps a fresh install from auto-filing mail before the user has taught
 //! it anything.
+//!
+//! Two guards keep a one-sided or tiny corpus from being decisive (a single
+//! `mark junk` must never auto-file legitimate mail):
+//!
+//! - **Per-token gate + smoothing.** A token is only consulted once it has been
+//!   seen in at least [`MIN_TOKEN_OCCURRENCES`] trained messages, and even then
+//!   its estimate is pulled toward the neutral prior by a Robinson smoothing
+//!   term ([`SMOOTHING_STRENGTH`]) so a rare token cannot be maximally decisive;
+//!   the estimate is additionally clamped to `[MIN_PROB, MAX_PROB]`.
+//! - **Corpus gate for auto-filing.** [`Corpus::can_autofile`] reports whether
+//!   the corpus has trained on enough messages in *both* classes
+//!   ([`MIN_AUTOFILE_MESSAGES`]) to move mail to Junk automatically. Below that
+//!   the caller still scores and persists, but withholds auto-routing.
 
 use std::collections::BTreeSet;
 
@@ -37,6 +50,20 @@ const MAX_PROB: f64 = 0.99;
 /// Ham counts are weighted this much more than spam counts when deriving a
 /// token's spamminess, biasing the filter against false positives (Graham).
 const HAM_BIAS: f64 = 2.0;
+/// Minimum number of trained messages a token must have appeared in before it
+/// carries any weight. A token seen only once or twice is noise, so a single
+/// `mark junk` cannot make a legitimate word maximally spammy.
+const MIN_TOKEN_OCCURRENCES: f64 = 5.0;
+/// Robinson smoothing strength: a token's estimate is blended with
+/// [`NEUTRAL_SCORE`] as if by this many "prior" observations, so a token with
+/// few occurrences stays close to neutral and only a well-seen token approaches
+/// its raw ratio.
+const SMOOTHING_STRENGTH: f64 = 1.0;
+/// Minimum trained messages required **in each class** before auto-filing (a
+/// move to Junk) is allowed. Below this the message is still scored and the
+/// score persisted, but never auto-routed — so a one-sided or tiny corpus cannot
+/// mass-file the inbox. See [`Corpus::can_autofile`].
+pub const MIN_AUTOFILE_MESSAGES: u32 = 20;
 
 /// Per-token corpus counts: how many trained ham and spam messages a token
 /// appeared in (each message counted at most once per token).
@@ -63,6 +90,16 @@ impl Corpus {
     #[must_use]
     pub fn is_empty(self) -> bool {
         self.ham_messages == 0 && self.spam_messages == 0
+    }
+
+    /// Whether the corpus has trained on enough messages in *both* classes
+    /// ([`MIN_AUTOFILE_MESSAGES`] each) to auto-file mail as junk. Below this
+    /// threshold the classifier still scores, but the caller must not move mail
+    /// to Junk automatically — a one-sided or under-trained corpus is far too
+    /// eager and would sweep legitimate mail out of the inbox.
+    #[must_use]
+    pub fn can_autofile(self) -> bool {
+        self.ham_messages >= MIN_AUTOFILE_MESSAGES && self.spam_messages >= MIN_AUTOFILE_MESSAGES
     }
 }
 
@@ -146,19 +183,32 @@ pub fn score(stats: &[TokenStat], corpus: Corpus) -> f64 {
     }
 }
 
-/// The spamminess of one token, or `None` when it carries no evidence (an empty
-/// corpus, or a token seen in neither class).
+/// The spamminess of one token, or `None` when it carries no usable evidence:
+/// an empty corpus, or a token seen in fewer than [`MIN_TOKEN_OCCURRENCES`]
+/// trained messages (too rare to trust). A usable token's estimate is smoothed
+/// toward [`NEUTRAL_SCORE`] and clamped to `[MIN_PROB, MAX_PROB]`, so no single
+/// token can be maximally decisive.
 fn token_prob(stat: TokenStat, corpus: Corpus) -> Option<f64> {
-    if corpus.is_empty() || (stat.ham == 0 && stat.spam == 0) {
+    // Exact for u32 inputs; the sum never overflows f64's integer range.
+    let ham = f64::from(stat.ham);
+    let spam = f64::from(stat.spam);
+    let occurrences = ham + spam;
+    if corpus.is_empty() || occurrences < MIN_TOKEN_OCCURRENCES {
         return None;
     }
-    let ham_ratio = ratio(HAM_BIAS * f64::from(stat.ham), corpus.ham_messages);
-    let spam_ratio = ratio(f64::from(stat.spam), corpus.spam_messages);
+    let ham_ratio = ratio(HAM_BIAS * ham, corpus.ham_messages);
+    let spam_ratio = ratio(spam, corpus.spam_messages);
     let total = ham_ratio + spam_ratio;
     if total == 0.0 {
         return None;
     }
-    Some((spam_ratio / total).clamp(MIN_PROB, MAX_PROB))
+    let raw = spam_ratio / total;
+    // Robinson smoothing: blend the raw ratio with the neutral prior weighted by
+    // SMOOTHING_STRENGTH "prior" observations, so a token with few occurrences
+    // stays near neutral and only a well-seen token approaches its raw ratio.
+    let smoothed = (SMOOTHING_STRENGTH * NEUTRAL_SCORE + occurrences * raw)
+        / (SMOOTHING_STRENGTH + occurrences);
+    Some(smoothed.clamp(MIN_PROB, MAX_PROB))
 }
 
 /// `numerator / messages`, capped at 1.0; `0.0` when the class has no messages
@@ -171,13 +221,22 @@ fn ratio(numerator: f64, messages: u32) -> f64 {
     }
 }
 
-/// Reads a server's spam verdict from a raw RFC 5322 header block, honoring the
-/// widely used SpamAssassin markers. Returns `Some(true)` when a header marks
-/// the message as spam, `Some(false)` when one explicitly clears it, and `None`
-/// when no recognized header is present. Only the header block is scanned
-/// (parsing stops at the first blank line).
+/// Whether a server's spam header *positively* flags this message as spam,
+/// honoring the widely used SpamAssassin markers `X-Spam-Flag: YES` and
+/// `X-Spam-Status: Yes, …`. Only the header block is scanned (parsing stops at
+/// the first blank line).
+///
+/// # Trust model (security boundary)
+///
+/// These headers are attacker-controllable — any sender can stamp an inbound
+/// message with `X-Spam-Flag: NO` — so they may only ever *add* a spam signal,
+/// never remove one. This function therefore reports **only a positive verdict**:
+/// a header that clears the message (`X-Spam-Flag: NO`, `X-Spam-Status: No`) is
+/// deliberately ignored and can never force a message to ham past the local
+/// Bayesian classifier. The caller must additionally gate the whole check on the
+/// user's "trust server junk headers" setting.
 #[must_use]
-pub fn server_spam_verdict(headers: &str) -> Option<bool> {
+pub fn server_spam_verdict(headers: &str) -> bool {
     for line in headers.lines() {
         if line.is_empty() {
             break;
@@ -186,32 +245,28 @@ pub fn server_spam_verdict(headers: &str) -> Option<bool> {
             continue;
         };
         let value = value.trim();
-        let verdict = match name.trim().to_ascii_lowercase().as_str() {
-            "x-spam-flag" => yes_no(value),
+        let flagged = match name.trim().to_ascii_lowercase().as_str() {
+            "x-spam-flag" => is_yes(value),
             // `X-Spam-Status: Yes, score=…` / `No, score=…`.
-            "x-spam-status" => yes_no(value.split([',', ' ']).next().unwrap_or_default()),
-            _ => None,
+            "x-spam-status" => is_yes(value.split([',', ' ']).next().unwrap_or_default()),
+            _ => false,
         };
-        if verdict.is_some() {
-            return verdict;
+        if flagged {
+            return true;
         }
     }
-    None
+    false
 }
 
-/// Interprets a `Yes`/`No` header value (case-insensitive).
-fn yes_no(value: &str) -> Option<bool> {
-    if value.eq_ignore_ascii_case("yes") {
-        Some(true)
-    } else if value.eq_ignore_ascii_case("no") {
-        Some(false)
-    } else {
-        None
-    }
+/// Whether a header value is an affirmative `Yes` (case-insensitive).
+fn is_yes(value: &str) -> bool {
+    value.eq_ignore_ascii_case("yes")
 }
 
 #[cfg(test)]
 mod tests {
+    #![allow(clippy::unwrap_used)]
+
     use super::*;
 
     #[test]
@@ -255,16 +310,63 @@ mod tests {
     }
 
     #[test]
-    fn server_verdict_reads_spamassassin_headers() {
-        assert_eq!(
-            server_spam_verdict("Subject: hi\nX-Spam-Flag: YES\n\nbody"),
-            Some(true)
+    fn rare_tokens_are_gated_and_probabilities_clamped() {
+        let corpus = Corpus {
+            ham_messages: 30,
+            spam_messages: 30,
+        };
+        // A token seen in only four messages is below the occurrence gate, so it
+        // carries no weight and the message stays neutral.
+        let too_rare = [TokenStat { ham: 0, spam: 4 }];
+        assert_eq!(score(&too_rare, corpus), NEUTRAL_SCORE);
+
+        // A one-sided token seen enough times is decisive but never reaches 1.0:
+        // it is smoothed toward neutral and clamped to MAX_PROB.
+        let one_sided = [TokenStat { ham: 0, spam: 30 }];
+        let prob = token_prob(TokenStat { ham: 0, spam: 30 }, corpus).unwrap();
+        assert!(prob <= MAX_PROB, "a token probability must be clamped");
+        assert!(
+            prob >= 0.9,
+            "a well-seen spam token should still be decisive"
         );
-        assert_eq!(
-            server_spam_verdict("X-Spam-Status: No, score=0.1\n\n"),
-            Some(false)
+        assert!(score(&one_sided, corpus) <= MAX_PROB);
+    }
+
+    #[test]
+    fn corpus_gate_requires_both_classes() {
+        assert!(!Corpus::default().can_autofile());
+        // Twenty spam but no ham is one-sided: still not allowed to auto-file.
+        assert!(
+            !Corpus {
+                ham_messages: 0,
+                spam_messages: 40,
+            }
+            .can_autofile()
         );
-        assert_eq!(server_spam_verdict("Subject: hi\n\nX-Spam-Flag: YES"), None);
-        assert_eq!(server_spam_verdict("Subject: only\n"), None);
+        assert!(
+            Corpus {
+                ham_messages: MIN_AUTOFILE_MESSAGES,
+                spam_messages: MIN_AUTOFILE_MESSAGES,
+            }
+            .can_autofile()
+        );
+    }
+
+    #[test]
+    fn server_verdict_flags_only_a_positive_marker() {
+        // A positive marker is honored.
+        assert!(server_spam_verdict("Subject: hi\nX-Spam-Flag: YES\n\nbody"));
+        assert!(server_spam_verdict("X-Spam-Status: Yes, score=9.1\n\n"));
+        // A NO marker must NOT be reported (it can never force ham). This is the
+        // evasion the trust model closes: an attacker-set NO is simply ignored.
+        assert!(!server_spam_verdict("X-Spam-Status: No, score=0.1\n\n"));
+        assert!(!server_spam_verdict("X-Spam-Flag: NO\n\nbody"));
+        // A later positive marker still wins over an earlier NO.
+        assert!(server_spam_verdict(
+            "X-Spam-Flag: NO\nX-Spam-Status: Yes, score=9\n\n"
+        ));
+        // Only the header block is scanned; nothing in the body counts.
+        assert!(!server_spam_verdict("Subject: hi\n\nX-Spam-Flag: YES"));
+        assert!(!server_spam_verdict("Subject: only\n"));
     }
 }

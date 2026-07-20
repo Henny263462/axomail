@@ -99,14 +99,15 @@ async fn get_by_message_is_none_without_a_row() {
 }
 
 #[tokio::test]
-async fn mark_cancelled_by_uid_flags_every_matching_invite() {
-    let (store, _account, mailbox) = setup().await;
+async fn cancel_updates_an_unanswered_request_scoped_to_organizer_and_uid() {
+    let (store, account, mailbox) = setup().await;
     let request = insert_message(&store, mailbox, "Invitation").await;
     let other = insert_message(&store, mailbox, "Unrelated invitation").await;
 
+    // An un-answered (pending) REQUEST — the case a CANCEL must still reach.
     store
         .calendar_invites()
-        .upsert(&new_invite(request, RsvpStatus::Accepted))
+        .upsert(&new_invite(request, RsvpStatus::None))
         .await
         .unwrap();
     // A second invite carrying a different UID must be left untouched.
@@ -116,7 +117,7 @@ async fn mark_cancelled_by_uid_flags_every_matching_invite() {
 
     let count = store
         .calendar_invites()
-        .mark_cancelled_by_uid("event-1@example.org")
+        .mark_cancelled(account, "event-1@example.org", Some("ada@example.org"), 2)
         .await
         .unwrap();
     assert_eq!(count, 1);
@@ -127,10 +128,11 @@ async fn mark_cancelled_by_uid_flags_every_matching_invite() {
         .await
         .unwrap()
         .unwrap();
-    assert!(cancelled.cancelled, "the matching invite is cancelled");
-    // The response survives the cancellation; a later re-upsert would not
-    // resurrect the event (upsert leaves `cancelled` alone).
-    assert_eq!(cancelled.my_status, RsvpStatus::Accepted);
+    assert!(
+        cancelled.cancelled,
+        "an un-answered REQUEST is cancelled by a matching CANCEL"
+    );
+    assert_eq!(cancelled.my_status, RsvpStatus::None);
 
     let untouched = store
         .calendar_invites()
@@ -142,8 +144,138 @@ async fn mark_cancelled_by_uid_flags_every_matching_invite() {
 }
 
 #[tokio::test]
-async fn upsert_does_not_resurrect_a_cancelled_event() {
+async fn cancel_with_a_mismatched_organizer_does_not_cancel() {
+    let (store, account, mailbox) = setup().await;
+    let request = insert_message(&store, mailbox, "Invitation").await;
+    store
+        .calendar_invites()
+        .upsert(&new_invite(request, RsvpStatus::None))
+        .await
+        .unwrap();
+
+    // A forged CANCEL with the right UID but a different organizer is rejected.
+    let count = store
+        .calendar_invites()
+        .mark_cancelled(
+            account,
+            "event-1@example.org",
+            Some("attacker@evil.example"),
+            9,
+        )
+        .await
+        .unwrap();
+    assert_eq!(count, 0, "a mismatched organizer must not cancel");
+    // An organizer-less CANCEL authenticates nothing.
+    assert_eq!(
+        store
+            .calendar_invites()
+            .mark_cancelled(account, "event-1@example.org", None, 9)
+            .await
+            .unwrap(),
+        0
+    );
+    assert!(
+        !store
+            .calendar_invites()
+            .get_by_message(request)
+            .await
+            .unwrap()
+            .unwrap()
+            .cancelled
+    );
+}
+
+#[tokio::test]
+async fn cancel_from_another_account_does_not_cancel() {
     let (store, _account, mailbox) = setup().await;
+    let request = insert_message(&store, mailbox, "Invitation").await;
+    store
+        .calendar_invites()
+        .upsert(&new_invite(request, RsvpStatus::None))
+        .await
+        .unwrap();
+
+    // A second account whose UID happens to collide must not reach this invite.
+    let intruder = store
+        .accounts()
+        .insert(&sample_account("Other", "eve@example.org"))
+        .await
+        .unwrap()
+        .id;
+    let count = store
+        .calendar_invites()
+        .mark_cancelled(intruder, "event-1@example.org", Some("ada@example.org"), 9)
+        .await
+        .unwrap();
+    assert_eq!(count, 0, "a CANCEL scoped to another account cannot cancel");
+}
+
+#[tokio::test]
+async fn a_stale_cancel_sequence_does_not_apply() {
+    let (store, account, mailbox) = setup().await;
+    let request = insert_message(&store, mailbox, "Invitation").await;
+    // Stored REQUEST is at SEQUENCE 2 (see `new_invite`).
+    store
+        .calendar_invites()
+        .upsert(&new_invite(request, RsvpStatus::None))
+        .await
+        .unwrap();
+
+    // A CANCEL for an older revision (SEQUENCE 1) is stale and does not apply.
+    assert_eq!(
+        store
+            .calendar_invites()
+            .mark_cancelled(account, "event-1@example.org", Some("ada@example.org"), 1)
+            .await
+            .unwrap(),
+        0
+    );
+    // A CANCEL at the current revision applies.
+    assert_eq!(
+        store
+            .calendar_invites()
+            .mark_cancelled(account, "event-1@example.org", Some("ada@example.org"), 2)
+            .await
+            .unwrap(),
+        1
+    );
+}
+
+#[tokio::test]
+async fn is_event_cancelled_reflects_a_scoped_marker() {
+    let (store, account, mailbox) = setup().await;
+    let request = insert_message(&store, mailbox, "Invitation").await;
+    store
+        .calendar_invites()
+        .upsert(&new_invite(request, RsvpStatus::None))
+        .await
+        .unwrap();
+    store
+        .calendar_invites()
+        .mark_cancelled(account, "event-1@example.org", Some("ada@example.org"), 2)
+        .await
+        .unwrap();
+
+    assert!(
+        store
+            .calendar_invites()
+            .is_event_cancelled(account, "event-1@example.org", Some("ada@example.org"), 2)
+            .await
+            .unwrap()
+    );
+    // A mismatched organizer sees no cancellation.
+    assert!(
+        !store
+            .calendar_invites()
+            .is_event_cancelled(account, "event-1@example.org", Some("eve@evil.example"), 2)
+            .await
+            .unwrap()
+    );
+}
+
+#[tokio::test]
+async fn upsert_does_not_resurrect_a_cancelled_event() {
+    let (store, account, mailbox) = setup().await;
     let message = insert_message(&store, mailbox, "Invitation").await;
     store
         .calendar_invites()
@@ -152,7 +284,7 @@ async fn upsert_does_not_resurrect_a_cancelled_event() {
         .unwrap();
     store
         .calendar_invites()
-        .mark_cancelled_by_uid("event-1@example.org")
+        .mark_cancelled(account, "event-1@example.org", Some("ada@example.org"), 2)
         .await
         .unwrap();
 

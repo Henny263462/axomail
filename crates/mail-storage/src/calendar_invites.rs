@@ -5,7 +5,7 @@
 //! keyed one row per message. The client keeps no calendar; the invitation's
 //! presentation is re-derived from the message on open. See migration 0018.
 
-use axomail_core::{MailError, MessageId};
+use axomail_core::{AccountId, MailError, MessageId};
 use serde::{Deserialize, Serialize};
 use sqlx::SqlitePool;
 
@@ -202,21 +202,97 @@ impl<'a> CalendarInviteRepo<'a> {
         row.map(InviteRow::into_invite).transpose()
     }
 
-    /// Marks every stored invitation for a UID cancelled (a CANCEL arrived).
-    /// Returns the number of rows updated.
+    /// Marks the stored invitations a CANCEL applies to as cancelled, **scoped**
+    /// to the receiving account and authenticated against the organizer and
+    /// SEQUENCE. Returns the number of rows updated.
+    ///
+    /// A CANCEL is honored only when:
+    /// - it belongs to the same `account` (a bare UID collides across accounts);
+    /// - it carries an `organizer` matching the stored invite's organizer
+    ///   (case-insensitive) — an organizer-less CANCEL authenticates nothing and
+    ///   cancels nothing; and
+    /// - its `cancel_sequence` is at least the stored REQUEST's SEQUENCE (a stale
+    ///   CANCEL for an older revision does not apply).
+    ///
+    /// This closes the forgery where an attacker sends a CANCEL with a colliding
+    /// UID to cancel a victim's unrelated invite.
     ///
     /// # Errors
     ///
     /// Returns [`MailError::Database`] on any query failure.
-    pub async fn mark_cancelled_by_uid(&self, uid: &str) -> Result<u64, MailError> {
+    pub async fn mark_cancelled(
+        &self,
+        account: AccountId,
+        uid: &str,
+        organizer: Option<&str>,
+        cancel_sequence: i64,
+    ) -> Result<u64, MailError> {
+        let Some(organizer) = organizer.map(str::trim).filter(|value| !value.is_empty()) else {
+            return Ok(0);
+        };
         let result = sqlx::query(
-            "UPDATE calendar_invites SET cancelled = 1 WHERE uid = ? AND cancelled = 0",
+            "UPDATE calendar_invites SET cancelled = 1
+             WHERE uid = ?
+               AND cancelled = 0
+               AND sequence <= ?
+               AND organizer IS NOT NULL AND lower(organizer) = lower(?)
+               AND message_id IN (
+                   SELECT m.id FROM messages m
+                   JOIN mailboxes mb ON mb.id = m.mailbox_id
+                   WHERE mb.account_id = ?
+               )",
         )
         .bind(uid)
+        .bind(cancel_sequence)
+        .bind(organizer)
+        .bind(account.value())
         .execute(self.pool)
         .await
         .map_err(|error| map_sqlx("cancel_calendar_invites", error))?;
         Ok(result.rows_affected())
+    }
+
+    /// Whether a valid CANCEL has been recorded for an event: any stored invite
+    /// in `account` sharing the `uid`, cancelled, whose organizer matches (the
+    /// REQUEST's `organizer`, case-insensitive) and whose recorded SEQUENCE is at
+    /// least `request_sequence`.
+    ///
+    /// This lets a REQUEST card reflect a cancellation even if the CANCEL message
+    /// was processed before the REQUEST was ever opened (the CANCEL leaves a
+    /// cancelled marker row of its own).
+    ///
+    /// # Errors
+    ///
+    /// Returns [`MailError::Database`] on any query failure.
+    pub async fn is_event_cancelled(
+        &self,
+        account: AccountId,
+        uid: &str,
+        organizer: Option<&str>,
+        request_sequence: i64,
+    ) -> Result<bool, MailError> {
+        let Some(organizer) = organizer.map(str::trim).filter(|value| !value.is_empty()) else {
+            return Ok(false);
+        };
+        let found: Option<i64> = sqlx::query_scalar(
+            "SELECT 1 FROM calendar_invites ci
+             JOIN messages m ON m.id = ci.message_id
+             JOIN mailboxes mb ON mb.id = m.mailbox_id
+             WHERE ci.uid = ?
+               AND ci.cancelled = 1
+               AND ci.sequence >= ?
+               AND ci.organizer IS NOT NULL AND lower(ci.organizer) = lower(?)
+               AND mb.account_id = ?
+             LIMIT 1",
+        )
+        .bind(uid)
+        .bind(request_sequence)
+        .bind(organizer)
+        .bind(account.value())
+        .fetch_optional(self.pool)
+        .await
+        .map_err(|error| map_sqlx("is_event_cancelled", error))?;
+        Ok(found.is_some())
     }
 }
 

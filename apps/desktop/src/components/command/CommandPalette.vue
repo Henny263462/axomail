@@ -26,6 +26,13 @@ const input = ref<HTMLInputElement | null>(null);
 
 const LIST_ID = "command-palette-listbox";
 
+// The listbox popup is always rendered — it shows an explicit "no matching
+// commands" row when the query matches nothing — so the combobox is always
+// expanded while the palette is open. aria-expanded must track the popup's
+// visibility, not the result count (a visible empty popup with expanded=false
+// misreports state to assistive tech).
+const popupVisible = true;
+
 const results = computed(() => filterCommands(registry.commands.value, query.value));
 
 // Any change to the filtered set resets the highlight to the top match.
@@ -108,6 +115,13 @@ function onKeydown(event: KeyboardEvent): void {
       event.preventDefault();
       emit("close");
       break;
+    case "Tab":
+      // Trap focus: the input is the palette's only focusable control, so keep
+      // focus on it rather than letting Tab escape to the background (which the
+      // palette's deliberate exclusion from isModalOpen would otherwise expose).
+      event.preventDefault();
+      input.value?.focus();
+      break;
     default:
       break;
   }
@@ -136,7 +150,7 @@ function onKeydown(event: KeyboardEvent): void {
         placeholder="Type a command…"
         autocomplete="off"
         aria-autocomplete="list"
-        :aria-expanded="results.length > 0"
+        :aria-expanded="popupVisible"
         :aria-controls="LIST_ID"
         :aria-activedescendant="activeOptionId"
       >

@@ -210,6 +210,66 @@ async fn export_skips_uncached_remote_messages_when_offline() {
     assert_eq!(result.skipped, 1);
 }
 
+/// Regression (finding #13): an mbox that begins with blank lines is still
+/// recognized as an archive and split into its messages, not imported whole as a
+/// single `.eml`.
+#[tokio::test]
+async fn imports_an_mbox_that_starts_with_blank_lines() {
+    let raw_root = tempfile::tempdir().unwrap();
+    let (store, _factory, _inbox, archive) = setup().await;
+    let src_dir = tempfile::tempdir().unwrap();
+    let src = src_dir.path().join("leading-blanks.mbox");
+    // Two postmark-delimited messages preceded by leading blank lines.
+    fs::write(
+        &src,
+        b"\n\nFrom a@b Thu Jan 01 00:00:00 1970\r\nSubject: one\r\n\r\nbody one\r\n\nFrom c@d Thu Jan 01 00:00:00 1970\r\nSubject: two\r\n\r\nbody two\r\n\n",
+    )
+    .unwrap();
+
+    let result = import_mbox_impl(&store, raw_root.path(), archive.value(), &src)
+        .await
+        .unwrap();
+    assert_eq!(result.imported, 2, "the archive split into two messages");
+    let page = store.messages().list_page(archive, None, 50).await.unwrap();
+    assert_eq!(page.items.len(), 2);
+}
+
+/// Regression (finding #15): if the raw-blob write fails, the message row must
+/// not be left claiming `has_raw = true` (a cached body that does not exist).
+#[tokio::test]
+async fn a_raw_write_failure_does_not_leave_a_has_raw_row() {
+    let (store, _factory, inbox, _archive) = setup().await;
+    // A raw root that is actually a *file*, so writing `<root>/raw/<id>.eml`
+    // fails at directory creation.
+    let dir = tempfile::tempdir().unwrap();
+    let bad_root = dir.path().join("not-a-directory");
+    fs::write(&bad_root, b"x").unwrap();
+
+    let src_dir = tempfile::tempdir().unwrap();
+    let src = src_dir.path().join("message.eml");
+    // A single .eml with no Date header (so date is NULL — always "outside" the
+    // offline window, which lets `cached_outside_window` list it *iff* has_raw).
+    fs::write(&src, b"From: a@b.c\r\nSubject: no date\r\n\r\nbody\r\n").unwrap();
+
+    let result = import_mbox_impl(&store, &bad_root, inbox.value(), &src).await;
+    assert!(
+        matches!(result, Err(MailError::Filesystem { .. })),
+        "the raw-write failure propagates: {result:?}"
+    );
+
+    // The row was inserted, but must NOT claim a cached raw. Under the default
+    // `recent` policy a NULL-dated cached message would be listed here; it is not.
+    let cached = store
+        .offline()
+        .cached_outside_window(inbox, 2_000_000_000)
+        .await
+        .unwrap();
+    assert!(
+        cached.is_empty(),
+        "no message may claim has_raw after a failed write: {cached:?}"
+    );
+}
+
 #[tokio::test]
 async fn export_and_import_reject_an_unknown_folder() {
     let raw_root = tempfile::tempdir().unwrap();

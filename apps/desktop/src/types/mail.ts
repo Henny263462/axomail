@@ -347,6 +347,7 @@ export interface JunkSettings {
   threshold: number;
   trustServerHeaders: boolean;
   whitelistContacts: boolean;
+  markReadOnJunk: boolean;
 }
 
 /** Lifecycle events emitted per sync job on the `axomail://sync` channel. */

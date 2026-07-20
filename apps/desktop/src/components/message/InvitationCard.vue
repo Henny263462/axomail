@@ -3,16 +3,28 @@ import { computed } from "vue";
 
 import type { InvitationDto, RsvpChoice } from "../../types/mail";
 
-const props = defineProps<{
-  invitation: InvitationDto;
-  /** True while an RSVP request is in flight (buttons disabled). */
-  busy: boolean;
-  /** A redacted failure reason from the last RSVP attempt, if any. */
-  error: string | null;
-}>();
+const props = withDefaults(
+  defineProps<{
+    invitation: InvitationDto;
+    /** True while an RSVP request is in flight (buttons disabled). */
+    busy: boolean;
+    /** A redacted failure reason from the last RSVP attempt, if any. */
+    error: string | null;
+    /**
+     * The RSVP was stored but its reply failed to send. The card then reflects
+     * the recorded status and offers a resend instead of a fresh Accept, so a
+     * retry never re-records (and duplicates) the response.
+     */
+    sendFailed?: boolean;
+    /** The RSVP bridge is unavailable (browser preview) — show a notice. */
+    unavailable?: boolean;
+  }>(),
+  { sendFailed: false, unavailable: false },
+);
 
 const emit = defineEmits<{
   (event: "rsvp", choice: RsvpChoice): void;
+  (event: "retry-send"): void;
 }>();
 
 const title = computed(() => props.invitation.summary ?? "Invitation");
@@ -85,37 +97,68 @@ const choices: { choice: RsvpChoice; label: string; status: string }[] = [
       v-else-if="invitation.canRespond"
       class="respond"
     >
-      <p
-        class="conflict-note"
-        role="note"
-      >
-        Conflicts are not checked — axomail keeps no calendar.
-      </p>
-      <div
-        class="buttons"
-        role="group"
-        aria-label="Respond to invitation"
-      >
-        <button
-          v-for="option in choices"
-          :key="option.choice"
-          type="button"
-          class="rsvp"
-          :class="{ current: invitation.myStatus === option.status }"
-          :aria-pressed="invitation.myStatus === option.status"
-          :disabled="busy"
-          @click="emit('rsvp', option.choice)"
+      <template v-if="sendFailed">
+        <p
+          v-if="responseLabel"
+          class="response"
+          role="status"
         >
-          {{ option.label }}
-        </button>
-      </div>
-      <p
-        v-if="responseLabel"
-        class="response"
-        role="status"
-      >
-        {{ responseLabel }}
-      </p>
+          {{ responseLabel }}
+        </p>
+        <p
+          class="send-failed"
+          role="status"
+        >
+          Your response was saved, but the reply to the organizer was not sent.
+        </p>
+        <div
+          class="buttons"
+          role="group"
+          aria-label="Retry sending the reply"
+        >
+          <button
+            type="button"
+            class="rsvp retry"
+            :disabled="busy"
+            @click="emit('retry-send')"
+          >
+            Retry send
+          </button>
+        </div>
+      </template>
+      <template v-else>
+        <p
+          class="conflict-note"
+          role="note"
+        >
+          Conflicts are not checked — axomail keeps no calendar.
+        </p>
+        <div
+          class="buttons"
+          role="group"
+          aria-label="Respond to invitation"
+        >
+          <button
+            v-for="option in choices"
+            :key="option.choice"
+            type="button"
+            class="rsvp"
+            :class="{ current: invitation.myStatus === option.status }"
+            :aria-pressed="invitation.myStatus === option.status"
+            :disabled="busy"
+            @click="emit('rsvp', option.choice)"
+          >
+            {{ option.label }}
+          </button>
+        </div>
+        <p
+          v-if="responseLabel"
+          class="response"
+          role="status"
+        >
+          {{ responseLabel }}
+        </p>
+      </template>
     </div>
 
     <p
@@ -124,6 +167,15 @@ const choices: { choice: RsvpChoice; label: string; status: string }[] = [
       role="status"
     >
       {{ responseLabel }}
+    </p>
+
+    <p
+      v-if="unavailable"
+      class="response"
+      role="status"
+    >
+      Responding to invitations needs the desktop app; it is unavailable in the
+      browser preview.
     </p>
 
     <p
@@ -231,6 +283,13 @@ const choices: { choice: RsvpChoice; label: string; status: string }[] = [
   margin-top: var(--space-2);
   font-size: var(--text-sm);
   color: var(--color-text-secondary);
+}
+
+.send-failed {
+  margin-top: var(--space-2);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
+  color: var(--color-danger);
 }
 
 .cancelled {

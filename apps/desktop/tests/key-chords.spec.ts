@@ -124,6 +124,17 @@ describe("createChordDispatcher", () => {
     expect(run).not.toHaveBeenCalled();
   });
 
+  it("reports a pending prefix and clears it once the window expires", () => {
+    const run = vi.fn();
+    const { dispatcher, clock } = setup([{ sequence: ["g", "i"], run }]);
+    expect(dispatcher.isPending()).toBe(false);
+    dispatcher.handleKeydown(keydown({ key: "g" }));
+    // The armed prefix is what the single-key registry dispatcher consults.
+    expect(dispatcher.isPending()).toBe(true);
+    clock.advance(1500); // beyond the 1000ms window
+    expect(dispatcher.isPending()).toBe(false);
+  });
+
   it("does not fire a disabled chord", () => {
     const run = vi.fn();
     const { dispatcher } = setup([

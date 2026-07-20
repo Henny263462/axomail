@@ -85,6 +85,14 @@ function choose(suggestion: RecipientSuggestionDto): void {
 }
 
 function close(): void {
+  // Cancel any pending debounced search so a query scheduled before the field
+  // blurred / a suggestion was chosen cannot fire late and reopen the dropdown
+  // with stale results. The sequence guard (queryToken) covers in-flight
+  // requests; this covers ones not yet started.
+  if (timer !== null) {
+    clearTimeout(timer);
+    timer = null;
+  }
   open.value = false;
   suggestions.value = [];
   activeIndex.value = -1;

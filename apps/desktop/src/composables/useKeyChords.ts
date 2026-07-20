@@ -66,6 +66,13 @@ export interface ChordDispatcher {
   handleKeydown(event: KeyboardEvent): boolean;
   /** Clears any pending prefix. */
   reset(): void;
+  /**
+   * Whether a chord prefix is currently armed (pressed and within the timeout
+   * window). The single-key {@link useCommandRegistry} dispatcher consults this
+   * so it does not fire a bare command for a key that is completing a chord —
+   * e.g. `g` then `f` goes to Folders, it must not also Forward the message.
+   */
+  isPending(): boolean;
 }
 
 interface CoreOptions {
@@ -85,6 +92,17 @@ export function createChordDispatcher(options: CoreOptions): ChordDispatcher {
 
   function reset(): void {
     pending = null;
+  }
+
+  function isPending(): boolean {
+    if (pending === null) return false;
+    // An expired prefix is not pending; clear it so a later completing key does
+    // not resurrect a stale chord.
+    if (now() - pending.at > timeoutMs) {
+      pending = null;
+      return false;
+    }
+    return true;
   }
 
   function handleKeydown(event: KeyboardEvent): boolean {
@@ -135,7 +153,7 @@ export function createChordDispatcher(options: CoreOptions): ChordDispatcher {
     return false;
   }
 
-  return { handleKeydown, reset };
+  return { handleKeydown, reset, isPending };
 }
 
 /**
@@ -146,7 +164,7 @@ export function createChordDispatcher(options: CoreOptions): ChordDispatcher {
 export function useKeyChords(
   bindings: () => ChordBinding[],
   options?: { timeoutMs?: number },
-): void {
+): { isPending: () => boolean } {
   const dispatcher = createChordDispatcher({
     bindings,
     timeoutMs: options?.timeoutMs,
@@ -156,6 +174,7 @@ export function useKeyChords(
   };
   window.addEventListener("keydown", onKeydown);
   onScopeDispose(() => window.removeEventListener("keydown", onKeydown), true);
+  return { isPending: () => dispatcher.isPending() };
 }
 
 function normalizeKey(key: string): string {

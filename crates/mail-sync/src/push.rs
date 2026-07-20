@@ -221,6 +221,11 @@ where
     /// Brings the live task set in line with `enabled` + `targets`: cancels
     /// tasks that should stop, spawns tasks that should start, and restarts a
     /// task whose target mailbox changed.
+    ///
+    /// A restart (an account still wanted but with a changed target) hands the
+    /// outgoing task's handle to its replacement as a `predecessor`, so the new
+    /// task awaits the old connection's clean teardown before opening its own —
+    /// the two IDLE sessions never overlap.
     fn reconcile(&self) {
         let mut inner = lock(&self.inner);
         // Effective targets: none while disabled.
@@ -230,16 +235,26 @@ where
             BTreeMap::new()
         };
 
-        // Stop tasks that are no longer wanted, or whose target changed.
+        // Stop tasks that are no longer wanted, or whose target changed. Cancel
+        // each immediately; if its account will be *restarted*, keep the handle
+        // so the replacement can await teardown, otherwise detach it.
         let to_stop: Vec<AccountId> = inner
             .children
             .iter()
             .filter(|(account, child)| desired.get(*account) != Some(&child.target))
             .map(|(account, _)| *account)
             .collect();
+        let mut predecessors: BTreeMap<AccountId, JoinHandle<()>> = BTreeMap::new();
         for account in to_stop {
             if let Some(child) = inner.children.remove(&account) {
-                stop_gracefully(child);
+                child.token.cancel();
+                if desired.contains_key(&account) {
+                    // Restart: the replacement awaits this handle before it
+                    // connects (no overlapping IDLE session for the account).
+                    predecessors.insert(account, child.handle);
+                }
+                // Otherwise the handle drops here, detaching the cancelled task
+                // to exit cleanly on its own.
             }
         }
 
@@ -256,6 +271,7 @@ where
                 target.clone(),
                 self.config,
                 token.clone(),
+                predecessors.remove(&account),
             ));
             inner.children.insert(
                 account,

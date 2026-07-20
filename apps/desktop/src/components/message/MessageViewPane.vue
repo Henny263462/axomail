@@ -15,6 +15,13 @@ import MessageDetail from "./MessageDetail.vue";
 
 const props = defineProps<{
   messageId: number | null;
+  /**
+   * True while a blocking modal is open. Gates the global Print shortcut so
+   * Mod+P does not print the background message from behind a dialog. Optional
+   * so an isolated unit mount defaults to "no modal". App.vue passes the real
+   * predicate.
+   */
+  isModalOpen?: () => boolean;
 }>();
 
 const emit = defineEmits<{
@@ -40,6 +47,14 @@ const detail = ref<MessageDetailDto | null>(null);
 // RSVP request state for the invitation card, reset per selection.
 const rsvpBusy = ref(false);
 const rsvpError = ref<string | null>(null);
+// The RSVP was stored but the iMIP reply did not send: the card reflects the
+// recorded status and offers "retry send" instead of a fresh Accept.
+const rsvpSendFailed = ref(false);
+// The RSVP bridge is absent (browser preview): show an unavailable state
+// rather than silently dropping the click.
+const rsvpUnavailable = ref(false);
+// The last choice the user picked, so "retry send" re-sends it without asking.
+const rsvpChoice = ref<RsvpChoice | null>(null);
 
 /** Prints the open message as a sanitized, chrome-free document (ADR-0007). */
 function printCurrent(): void {
@@ -49,9 +64,11 @@ function printCurrent(): void {
 }
 
 // Global "Print message" command (Ctrl/Cmd+P); enabled only while a readable
-// message is open. Auto-unregisters when this pane unmounts. Guarded so an
-// isolated unit mount (no app-root command registry) still renders — the Print
-// button keeps working there; only the global shortcut is skipped.
+// message is open AND no modal is covering it (so Mod+P never prints the
+// background from behind a dialog). Auto-unregisters when this pane unmounts.
+// Guarded so an isolated unit mount (no app-root command registry) still
+// renders — the Print button keeps working there; only the global shortcut is
+// skipped.
 try {
   useCommandRegistry().register({
     id: "message.print",
@@ -59,7 +76,10 @@ try {
     keywords: ["print"],
     shortcut: "Mod+P",
     run: printCurrent,
-    isEnabled: () => detail.value !== null && detail.value.offlineUnavailable !== true,
+    isEnabled: () =>
+      !(props.isModalOpen?.() ?? false) &&
+      detail.value !== null &&
+      detail.value.offlineUnavailable !== true,
   });
 } catch {
   // No command-registry ancestor: the pane is mounted in isolation (tests).
@@ -105,19 +125,43 @@ async function alwaysAllowRemote(sender: string): Promise<void> {
  * Records an RSVP for the open invitation and sends the iMIP reply, then
  * reloads the detail so the stored response is reflected. A backend rejection
  * (offline, not a live request) or a failed send is surfaced on the card.
+ *
+ * The failure paths are distinct: a stored-but-not-sent response reflects the
+ * recorded status and offers a resend (so a retry never re-accepts and
+ * duplicates the RSVP), while a null result (no bridge) shows an unavailable
+ * state instead of silently dropping the click.
  */
 async function respond(choice: RsvpChoice): Promise<void> {
   const id = props.messageId;
   if (id === null || rsvpBusy.value) return;
   rsvpBusy.value = true;
   rsvpError.value = null;
+  rsvpUnavailable.value = false;
+  rsvpChoice.value = choice;
   try {
     const result = await respondInvitation(id, choice);
     if (props.messageId !== id) return;
-    if (result === null) return; // browser preview: no bridge
+    if (result === null) {
+      rsvpUnavailable.value = true; // browser preview: no bridge
+      return;
+    }
     if (result.sent) {
+      rsvpSendFailed.value = false;
       await load(id, null); // refresh so myStatus shows the response
+      return;
+    }
+    if (result.myStatus !== "none") {
+      // Stored, but the reply did not send. Reflect the recorded status on the
+      // card so it stops offering a fresh Accept, and expose a retry-send.
+      if (detail.value?.invitation) {
+        detail.value.invitation.myStatus = result.myStatus;
+      }
+      rsvpSendFailed.value = true;
+      rsvpError.value =
+        result.error ?? "Your response was saved, but the reply could not be sent.";
     } else {
+      // Nothing was stored: a plain failure the user can simply retry.
+      rsvpSendFailed.value = false;
       rsvpError.value = result.error ?? "The response could not be sent.";
     }
   } catch (error) {
@@ -128,6 +172,11 @@ async function respond(choice: RsvpChoice): Promise<void> {
   } finally {
     if (props.messageId === id) rsvpBusy.value = false;
   }
+}
+
+/** Re-sends the last RSVP after a send failure (the status is already stored). */
+function retrySend(): void {
+  if (rsvpChoice.value !== null) void respond(rsvpChoice.value);
 }
 
 /**
@@ -153,6 +202,9 @@ watch(
     // A new selection clears any in-flight RSVP feedback.
     rsvpBusy.value = false;
     rsvpError.value = null;
+    rsvpSendFailed.value = false;
+    rsvpUnavailable.value = false;
+    rsvpChoice.value = null;
     if (id === null) {
       state.value = "idle";
       detail.value = null;
@@ -197,10 +249,13 @@ watch(
       :detail="detail"
       :rsvp-busy="rsvpBusy"
       :rsvp-error="rsvpError"
+      :rsvp-send-failed="rsvpSendFailed"
+      :rsvp-unavailable="rsvpUnavailable"
       @show-remote-once="showRemoteOnce"
       @always-allow-remote="alwaysAllowRemote"
       @toggle-star="toggleStar"
       @rsvp="respond"
+      @retry-rsvp="retrySend"
       @print="printCurrent"
       @reply="emit('reply', detail.id)"
       @reply-all="emit('replyAll', detail.id)"

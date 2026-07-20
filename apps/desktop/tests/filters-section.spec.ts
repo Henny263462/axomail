@@ -185,4 +185,37 @@ describe("FiltersSection", () => {
     expect(setArrivalMock).toHaveBeenCalledWith(1, false);
     wrapper.unmount();
   });
+
+  it("reverts the optimistic order when a reorder fails", async () => {
+    const wrapper = await mountWith([filter(1, "Alpha"), filter(2, "Beta")]);
+    reorderFiltersMock.mockRejectedValueOnce("reorder boom");
+
+    await wrapper.get('button[aria-label="Move Alpha down"]').trigger("click");
+    await flushPromises();
+
+    expect(reorderFiltersMock).toHaveBeenCalledWith(1, [2, 1]);
+    // The optimistic swap was rolled back to the original order.
+    expect(wrapper.findAll(".name").map((n) => n.text())).toEqual([
+      "Alpha",
+      "Beta",
+    ]);
+    expect(context.reportError).toHaveBeenCalledWith("reorder boom");
+    wrapper.unmount();
+  });
+
+  it("reverts the enable checkbox when the toggle fails", async () => {
+    const wrapper = await mountWith([filter(1, "Alpha")]);
+    setFilterEnabledMock.mockRejectedValueOnce("toggle boom");
+    const box = wrapper.get<HTMLInputElement>('input[aria-label="Enable Alpha"]');
+    expect(box.element.checked).toBe(true);
+
+    await box.setValue(false); // native toggle flips the DOM and fires change
+    await flushPromises();
+
+    expect(setFilterEnabledMock).toHaveBeenCalledWith(1, false);
+    // The write failed, so the checkbox snaps back to the persisted state.
+    expect(box.element.checked).toBe(true);
+    expect(context.reportError).toHaveBeenCalledWith("toggle boom");
+    wrapper.unmount();
+  });
 });

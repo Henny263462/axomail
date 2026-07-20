@@ -4,6 +4,7 @@ import { computed } from "vue";
 import type { MessageDetailDto, RsvpChoice } from "../../types/mail";
 import { formatDateTime, formatRecipients } from "./format";
 import InvitationCard from "./InvitationCard.vue";
+import MessageActionBar from "./MessageActionBar.vue";
 import MessageActions from "./MessageActions.vue";
 import MessageAttachments from "./MessageAttachments.vue";
 import MessageBody from "./MessageBody.vue";
@@ -16,8 +17,17 @@ const props = withDefaults(
     rsvpBusy?: boolean;
     /** A redacted failure reason from the last RSVP attempt, if any. */
     rsvpError?: string | null;
+    /** The RSVP stored but its reply failed to send — offer a resend. */
+    rsvpSendFailed?: boolean;
+    /** The RSVP bridge is unavailable (browser preview). */
+    rsvpUnavailable?: boolean;
   }>(),
-  { rsvpBusy: false, rsvpError: null },
+  {
+    rsvpBusy: false,
+    rsvpError: null,
+    rsvpSendFailed: false,
+    rsvpUnavailable: false,
+  },
 );
 
 const emit = defineEmits<{
@@ -34,6 +44,7 @@ const emit = defineEmits<{
   (event: "junk"): void;
   (event: "delete"): void;
   (event: "rsvp", choice: RsvpChoice): void;
+  (event: "retry-rsvp"): void;
 }>();
 
 const toLine = computed(() => formatRecipients(props.detail.to));
@@ -55,72 +66,16 @@ function alwaysAllow(): void {
 
 <template>
   <article class="detail">
-    <div
-      class="action-bar"
-      role="toolbar"
-      aria-label="Message actions"
-    >
-      <button
-        type="button"
-        class="action"
-        @click="emit('reply')"
-      >
-        Reply
-      </button>
-      <button
-        type="button"
-        class="action"
-        @click="emit('reply-all')"
-      >
-        Reply all
-      </button>
-      <button
-        type="button"
-        class="action"
-        @click="emit('forward')"
-      >
-        Forward
-      </button>
-      <span
-        class="action-sep"
-        aria-hidden="true"
-      />
-      <button
-        type="button"
-        class="action"
-        @click="emit('archive')"
-      >
-        Archive
-      </button>
-      <button
-        type="button"
-        class="action"
-        @click="emit('move')"
-      >
-        Move to…
-      </button>
-      <button
-        type="button"
-        class="action"
-        @click="emit('copy')"
-      >
-        Copy to…
-      </button>
-      <button
-        type="button"
-        class="action"
-        @click="emit('junk')"
-      >
-        Junk
-      </button>
-      <button
-        type="button"
-        class="action danger"
-        @click="emit('delete')"
-      >
-        Delete
-      </button>
-    </div>
+    <MessageActionBar
+      @reply="emit('reply')"
+      @reply-all="emit('reply-all')"
+      @forward="emit('forward')"
+      @archive="emit('archive')"
+      @move="emit('move')"
+      @copy="emit('copy')"
+      @junk="emit('junk')"
+      @delete="emit('delete')"
+    />
 
     <header class="header">
       <div class="subject-row">
@@ -164,7 +119,10 @@ function alwaysAllow(): void {
       :invitation="detail.invitation"
       :busy="rsvpBusy"
       :error="rsvpError"
+      :send-failed="rsvpSendFailed"
+      :unavailable="rsvpUnavailable"
       @rsvp="(choice) => emit('rsvp', choice)"
+      @retry-send="emit('retry-rsvp')"
     />
 
     <MessageActions
@@ -240,49 +198,6 @@ function alwaysAllow(): void {
 <style scoped>
 .detail {
   padding: var(--space-5);
-}
-
-.action-bar {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-2);
-  margin-bottom: var(--space-4);
-}
-
-.action {
-  padding: var(--space-1) var(--space-3);
-  border: 1px solid var(--color-border-strong);
-  border-radius: var(--radius-sm);
-  background: var(--color-bg);
-  font-size: var(--text-sm);
-  color: var(--color-text);
-  cursor: pointer;
-}
-
-.action:hover {
-  background: var(--color-bg-hover);
-}
-
-.action:focus-visible {
-  outline: 2px solid var(--color-accent);
-  outline-offset: 2px;
-}
-
-.action.danger {
-  color: var(--color-danger);
-  border-color: var(--color-danger);
-}
-
-.action.danger:hover {
-  background: var(--color-danger);
-  color: var(--color-text-inverse);
-}
-
-.action-sep {
-  width: 1px;
-  align-self: stretch;
-  margin: 0 var(--space-1);
-  background: var(--color-border);
 }
 
 .header {

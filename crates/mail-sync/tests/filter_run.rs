@@ -13,7 +13,8 @@ use axomail_core::{
 };
 use axomail_storage::{
     ActionKind, ConditionField, ConditionOp, FilterAction, FilterCondition, FilterInput, MatchType,
-    NewAccount, NewMailbox, NewMessage, PendingOpKind, Store,
+    NewAccount, NewMailbox, NewMessage, PendingOpKind, Store, raw_message_path,
+    write_raw_atomically,
 };
 use axomail_sync::run_filters_on_messages;
 
@@ -50,6 +51,30 @@ fn mailbox_fixture(account: AccountId, name: &str) -> NewMailbox {
         role: MailboxRole::guess_from_name(name),
         uid_validity: Some(1),
         uid_next: Some(1),
+    }
+}
+
+/// A local (POP3-style) inbox message with no server identity, so the filter
+/// runner takes the local-duplicate copy path (not the server COPY op).
+fn local_message(mailbox: MailboxId, subject: &str, has_raw: bool) -> NewMessage {
+    NewMessage {
+        mailbox,
+        remote_id: None,
+        subject: Some(subject.to_owned()),
+        from: vec![Address {
+            display_name: Some("News Bot".to_owned()),
+            email: EmailAddress::parse("news@example.com").unwrap(),
+        }],
+        to: vec![Address::from_email(
+            EmailAddress::parse("klaus@theferbers.eu").unwrap(),
+        )],
+        cc: Vec::new(),
+        bcc: Vec::new(),
+        date: Some(UtcTimestamp::from_unix_seconds(1_700_000_000)),
+        flags: MessageFlags::default(),
+        size_bytes: Some(4096),
+        preview: Some("please unsubscribe".to_owned()),
+        has_raw,
     }
 }
 
@@ -164,7 +189,7 @@ async fn move_filter_relocates_and_enqueues_a_move_op() {
     )
     .await;
 
-    let report = run_filters_on_messages(&world.store, world.account, &[message])
+    let report = run_filters_on_messages(&world.store, world.account, None, &[message])
         .await
         .unwrap();
 
@@ -208,7 +233,7 @@ async fn tag_filter_applies_the_tag_and_enqueues_a_keyword_op() {
     )
     .await;
 
-    let report = run_filters_on_messages(&world.store, world.account, &[message])
+    let report = run_filters_on_messages(&world.store, world.account, None, &[message])
         .await
         .unwrap();
     assert_eq!(report.matched, 1);
@@ -248,12 +273,117 @@ async fn star_and_mark_read_apply_local_flags() {
     )
     .await;
 
-    run_filters_on_messages(&world.store, world.account, &[message])
+    run_filters_on_messages(&world.store, world.account, None, &[message])
         .await
         .unwrap();
 
     let envelope = world.store.messages().get(message).await.unwrap().unwrap();
     assert!(envelope.flags.flagged);
+}
+
+/// Regression (finding #10): a local Copy duplicates the source raw body, so the
+/// copy is displayable/exportable — not a body-less envelope claiming no raw.
+#[tokio::test]
+async fn local_copy_duplicates_the_raw_body() {
+    let raw_dir = tempfile::tempdir().unwrap();
+    let raw_root = raw_dir.path();
+    let world = setup().await;
+
+    let source = world
+        .store
+        .messages()
+        .insert(&local_message(world.inbox, "Copy me", true))
+        .await
+        .unwrap()
+        .id;
+    // Cache the source's raw body in the offline store.
+    let raw = b"Subject: Copy me\r\nFrom: news@example.com\r\n\r\nThe full body text.\r\n";
+    write_raw_atomically(&raw_message_path(raw_root, source.value()), raw)
+        .await
+        .unwrap();
+
+    create_filter(
+        &world.store,
+        world.account,
+        one_condition(ConditionField::Subject, ConditionOp::Contains, "copy me"),
+        FilterAction {
+            kind: ActionKind::Copy,
+            param: world.archive.value().to_string(),
+        },
+    )
+    .await;
+
+    run_filters_on_messages(&world.store, world.account, Some(raw_root), &[source])
+        .await
+        .unwrap();
+
+    // The Archive now holds a copy whose raw body matches the source exactly.
+    let copies = world
+        .store
+        .messages()
+        .list_page(world.archive, None, 10)
+        .await
+        .unwrap()
+        .items;
+    assert_eq!(copies.len(), 1, "the copy landed in Archive");
+    let copy_id = copies[0].id;
+    assert_ne!(copy_id, source, "the copy is a distinct message");
+    let copied_raw = axomail_storage::read_raw(&raw_message_path(raw_root, copy_id.value()))
+        .await
+        .unwrap();
+    assert_eq!(
+        copied_raw.as_deref(),
+        Some(&raw[..]),
+        "the copy's raw body matches the source"
+    );
+}
+
+/// Regression (finding #9): a Forward carries the full message body when the raw
+/// is cached, not just the preview snippet.
+#[tokio::test]
+async fn forward_carries_the_full_body_when_cached() {
+    let raw_dir = tempfile::tempdir().unwrap();
+    let raw_root = raw_dir.path();
+    let world = setup().await;
+
+    let message = world
+        .store
+        .messages()
+        .insert(&local_message(world.inbox, "Forward me", true))
+        .await
+        .unwrap()
+        .id;
+    let raw =
+        b"Subject: Forward me\r\nFrom: news@example.com\r\n\r\nUnique body sentinel content.\r\n";
+    write_raw_atomically(&raw_message_path(raw_root, message.value()), raw)
+        .await
+        .unwrap();
+
+    create_filter(
+        &world.store,
+        world.account,
+        one_condition(ConditionField::Subject, ConditionOp::Contains, "forward me"),
+        FilterAction {
+            kind: ActionKind::Forward,
+            param: "boss@work.example".to_owned(),
+        },
+    )
+    .await;
+
+    let report = run_filters_on_messages(&world.store, world.account, Some(raw_root), &[message])
+        .await
+        .unwrap();
+    assert_eq!(report.forwards_queued, 1);
+
+    let outbox = world.store.outbox().list().await.unwrap();
+    assert_eq!(outbox.len(), 1);
+    assert!(
+        outbox[0]
+            .body_text
+            .contains("Unique body sentinel content."),
+        "the forward carries the full body, not just the preview: {}",
+        outbox[0].body_text
+    );
 }
 
 #[tokio::test]
@@ -306,7 +436,7 @@ async fn arrival_flow_relocates_a_newly_arrived_match() {
         .unwrap();
     assert_eq!(candidates, vec![arrived]);
 
-    let report = run_filters_on_messages(&world.store, world.account, &candidates)
+    let report = run_filters_on_messages(&world.store, world.account, None, &candidates)
         .await
         .unwrap();
     assert_eq!(report.matched, 1);

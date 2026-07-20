@@ -16,6 +16,10 @@ pub struct JunkSettingsDto {
     pub trust_server_headers: bool,
     /// Whether address-book senders are exempt from junking (track 4.1).
     pub whitelist_contacts: bool,
+    /// Whether a message is marked read when it is filed to Junk. Defaulted so a
+    /// frontend that predates this setting can still round-trip the DTO.
+    #[serde(default)]
+    pub mark_read_on_junk: bool,
 }
 
 impl JunkSettingsDto {
@@ -27,6 +31,7 @@ impl JunkSettingsDto {
             threshold: settings.threshold,
             trust_server_headers: settings.trust_server_headers,
             whitelist_contacts: settings.whitelist_contacts,
+            mark_read_on_junk: settings.mark_read_on_junk,
         }
     }
 
@@ -38,6 +43,7 @@ impl JunkSettingsDto {
             threshold: self.threshold.clamp(0.0, 1.0),
             trust_server_headers: self.trust_server_headers,
             whitelist_contacts: self.whitelist_contacts,
+            mark_read_on_junk: self.mark_read_on_junk,
         }
     }
 }

@@ -18,6 +18,8 @@ mod facts;
 mod rows;
 mod types;
 
+use std::collections::BTreeSet;
+
 use axomail_core::{AccountId, MailError};
 use sqlx::SqlitePool;
 
@@ -282,9 +284,16 @@ impl<'a> FilterRepo<'a> {
         self.assemble(rows).await
     }
 
-    /// Sets the `sort_order` of the given filters to their position in
-    /// `ordered_ids`, scoped to filters that belong to `account`. Ids not in the
-    /// scope are ignored.
+    /// Reorders a scope's filters (a specific account, or the global rules when
+    /// `account` is `None`) to follow `ordered_ids`, then **renumbers every rule
+    /// in the scope to a dense, contiguous `0..n` sequence** transactionally.
+    ///
+    /// The caller may pass a partial list: ids in `ordered_ids` that belong to
+    /// the scope lead, in the given order; any scope rules the caller omitted
+    /// follow in their existing order. Ids outside the scope (or unknown) are
+    /// ignored. Renumbering *all* rows — not just the moved ones — guarantees no
+    /// duplicate or stale `sort_order` can survive a partial reorder to leave the
+    /// (destructive) rule order ambiguous.
     ///
     /// # Errors
     ///
@@ -303,15 +312,41 @@ impl<'a> FilterRepo<'a> {
             Some(_) => "account_id = ?",
             None => "account_id IS NULL",
         };
-        for (position, id) in ordered_ids.iter().enumerate() {
-            let sql = format!("UPDATE filters SET sort_order = ? WHERE id = ? AND {predicate}");
-            let mut query = sqlx::query(sqlx::AssertSqlSafe(sql))
-                .bind(i64::try_from(position).unwrap_or(i64::MAX))
-                .bind(id.value());
-            if let Some(account) = account {
-                query = query.bind(account.value());
+
+        // The authoritative set of rules in this scope, in current order.
+        let mut query = sqlx::query_scalar::<_, i64>(sqlx::AssertSqlSafe(format!(
+            "SELECT id FROM filters WHERE {predicate} ORDER BY sort_order, id"
+        )));
+        if let Some(account) = account {
+            query = query.bind(account.value());
+        }
+        let existing: Vec<i64> = query
+            .fetch_all(&mut *tx)
+            .await
+            .map_err(|error| map_sqlx("reorder_filters", error))?;
+        let scope: BTreeSet<i64> = existing.iter().copied().collect();
+
+        // Build the full final order: requested-and-in-scope ids first (deduped,
+        // first occurrence wins), then any scope rules the caller left out.
+        let mut placed: BTreeSet<i64> = BTreeSet::new();
+        let mut final_order: Vec<i64> = Vec::with_capacity(existing.len());
+        for id in ordered_ids {
+            let id = id.value();
+            if scope.contains(&id) && placed.insert(id) {
+                final_order.push(id);
             }
-            query
+        }
+        for id in existing {
+            if placed.insert(id) {
+                final_order.push(id);
+            }
+        }
+
+        // Renumber the whole scope to a dense, unique 0..n sequence.
+        for (position, id) in final_order.iter().enumerate() {
+            sqlx::query("UPDATE filters SET sort_order = ? WHERE id = ?")
+                .bind(i64::try_from(position).unwrap_or(i64::MAX))
+                .bind(id)
                 .execute(&mut *tx)
                 .await
                 .map_err(|error| map_sqlx("reorder_filters", error))?;

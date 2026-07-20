@@ -19,7 +19,7 @@
 //! - Regex matching uses the `regex` crate, whose linear-time engine makes
 //!   user-supplied patterns safe from catastrophic backtracking (ReDoS).
 
-use regex::Regex;
+use regex::{Regex, RegexBuilder};
 
 use super::types::{ConditionField, ConditionOp, Filter, FilterAction, MatchType};
 
@@ -90,11 +90,17 @@ impl FilterProgram {
                         op: condition.op,
                         value: condition.value.to_lowercase(),
                         regex: match condition.op {
-                            // Regex is matched against the lowercased haystack,
-                            // so fold the pattern's ASCII case too.
-                            ConditionOp::MatchesRegex => {
-                                Regex::new(&condition.value.to_lowercase()).ok()
-                            }
+                            // Compile the pattern verbatim with the
+                            // case-insensitive flag — never lowercase the
+                            // pattern text, which would corrupt uppercase escape
+                            // classes (`\D`→`\d`, `\S`→`\s`, `\W`→`\w`, `\B`→`\b`)
+                            // and silently invert a possibly-destructive rule.
+                            // The haystack is already lowercased, so folding case
+                            // only affects the pattern's literal characters.
+                            ConditionOp::MatchesRegex => RegexBuilder::new(&condition.value)
+                                .case_insensitive(true)
+                                .build()
+                                .ok(),
                             _ => None,
                         },
                     })

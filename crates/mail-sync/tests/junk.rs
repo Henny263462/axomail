@@ -60,7 +60,8 @@ async fn ingest_auto_routes_a_spam_message_to_junk() {
         .id;
 
     // Teach the classifier and enable junk control with a permissive threshold.
-    for _ in 0..6 {
+    // Train enough messages in both classes to clear the auto-file corpus gate.
+    for _ in 0..24 {
         store
             .junk()
             .train(account, &spam_tokens(), true)

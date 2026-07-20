@@ -14,9 +14,15 @@
 //! an escaped mboxrd file) is ignored and the message is re-parsed by the
 //! mboxrd rules, so a misleading header can never corrupt an import.
 
-use std::io::{self, BufRead};
+use std::io::{self, BufRead, Read};
 
 use axomail_core::MailError;
+
+/// Upper bound on a `Content-Length` we will honor. A value above this is
+/// treated as bogus and ignored (the message falls back to mboxrd postmark
+/// splitting) — so a hostile header can never drive a gigantic allocation. Well
+/// clear of any real message size; larger messages simply parse via mboxrd.
+const MAX_CONTENT_LENGTH: usize = 512 * 1024 * 1024;
 
 /// Streaming splitter over a buffered reader of mbox bytes.
 pub struct MboxReader<R: BufRead> {
@@ -50,7 +56,7 @@ impl<R: BufRead> MboxReader<R> {
         let (header, content_length) = self.read_header_block()?;
         match content_length {
             Some(n) => self.read_with_content_length(header, n),
-            None => Ok(Some(self.read_mboxrd_body(header))),
+            None => self.read_mboxrd_body(header).map(Some),
         }
     }
 
@@ -67,14 +73,16 @@ impl<R: BufRead> MboxReader<R> {
     }
 
     /// Reads the header block (up to and including the blank separator line),
-    /// returning the raw lines and any `Content-Length` value found.
+    /// returning the raw lines and any honored `Content-Length` value. A value
+    /// above [`MAX_CONTENT_LENGTH`] is ignored (treated as absent), so the
+    /// message falls back to mboxrd splitting instead of trusting a hostile size.
     fn read_header_block(&mut self) -> Result<(Vec<Vec<u8>>, Option<usize>), MailError> {
         let mut header = Vec::new();
         let mut content_length = None;
         while let Some(line) = self.read_line()? {
             let blank = is_blank(&line);
             if content_length.is_none() {
-                content_length = parse_content_length(&line);
+                content_length = parse_content_length(&line).filter(|n| *n <= MAX_CONTENT_LENGTH);
             }
             header.push(line);
             if blank {
@@ -126,13 +134,15 @@ impl<R: BufRead> MboxReader<R> {
 
     /// Reads the body of an mboxrd message: un-escaped lines up to the next
     /// postmark (pushed back) or EOF, with the trailing blank separator trimmed.
-    fn read_mboxrd_body(&mut self, header: Vec<Vec<u8>>) -> Vec<u8> {
+    ///
+    /// A read error mid-body **propagates** rather than being swallowed: a
+    /// truncated message must never be committed as if it were complete (that
+    /// would silently import partial mail), so the caller aborts that message.
+    fn read_mboxrd_body(&mut self, header: Vec<Vec<u8>>) -> Result<Vec<u8>, MailError> {
         let mut msg = concat_unescaped(&header);
-        // A read error here is surfaced as a truncated message rather than
-        // aborting; callers stream message-by-message and a disk error is rare.
-        let _ = self.scan_body_lines(&mut msg);
+        self.scan_body_lines(&mut msg)?;
         trim_separator(&mut msg);
-        msg
+        Ok(msg)
     }
 
     /// Appends un-escaped body lines to `msg` until the next postmark (pushed
@@ -171,17 +181,17 @@ impl<R: BufRead> MboxReader<R> {
 
     /// Reads up to `n` bytes (fewer only at EOF). `pending` is always empty at
     /// this point (it holds only postmarks, set at message boundaries).
+    ///
+    /// Reads **incrementally** so the buffer grows with the bytes actually
+    /// present, never pre-allocating the header's claimed length: a
+    /// `Content-Length` larger than what remains reads only what is there instead
+    /// of eagerly reserving a huge (possibly hostile) buffer.
     fn read_exact_upto(&mut self, n: usize) -> Result<Vec<u8>, MailError> {
-        let mut buf = vec![0u8; n];
-        let mut filled = 0;
-        while filled < n {
-            let got = self.reader.read(&mut buf[filled..]).map_err(io_error)?;
-            if got == 0 {
-                buf.truncate(filled);
-                break;
-            }
-            filled += got;
-        }
+        let mut buf = Vec::new();
+        (&mut self.reader)
+            .take(n as u64)
+            .read_to_end(&mut buf)
+            .map_err(io_error)?;
         Ok(buf)
     }
 
@@ -370,5 +380,55 @@ mod tests {
         let msgs = read_all(mbox);
         assert_eq!(msgs.len(), 1);
         assert_eq!(msgs[0], b"S: x\r\n\r\nbody\r\n");
+    }
+
+    /// Regression (finding #12): a bogus, astronomically large `Content-Length`
+    /// is ignored (over the ceiling) and the archive still splits on postmarks —
+    /// it must never drive a multi-gigabyte allocation or swallow later messages.
+    #[test]
+    fn a_huge_content_length_falls_back_to_postmark_splitting() {
+        let mbox = b"From a@b Thu Jan 01 00:00:00 1970\r\nContent-Length: 9999999999999\r\n\r\nbody line\r\n\nFrom c@d Thu Jan 01 00:00:00 1970\r\nSubject: two\r\n\r\ntwo\r\n\n";
+        let msgs = read_all(mbox);
+        assert_eq!(msgs.len(), 2, "the archive still splits into two messages");
+        assert_eq!(
+            msgs[0],
+            b"Content-Length: 9999999999999\r\n\r\nbody line\r\n"
+        );
+        assert_eq!(msgs[1], b"Subject: two\r\n\r\ntwo\r\n");
+    }
+
+    /// A reader that yields all of `data`, then errors on the next read instead
+    /// of reporting EOF — models a disk read failing mid-message.
+    struct FailAtEnd {
+        data: Vec<u8>,
+        pos: usize,
+    }
+
+    impl Read for FailAtEnd {
+        fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+            if self.pos >= self.data.len() {
+                return Err(io::Error::other("simulated read error"));
+            }
+            let remaining = &self.data[self.pos..];
+            let n = remaining.len().min(buf.len());
+            buf[..n].copy_from_slice(&remaining[..n]);
+            self.pos += n;
+            Ok(n)
+        }
+    }
+
+    /// Regression (finding #14): a read error inside an mboxrd body propagates as
+    /// an error, so a truncated message is never committed as if complete.
+    #[test]
+    fn a_read_error_mid_body_aborts_rather_than_truncating() {
+        let data =
+            b"From a@b Thu Jan 01 00:00:00 1970\r\nSubject: x\r\n\r\nbody line one\r\n".to_vec();
+        let reader = std::io::BufReader::new(FailAtEnd { data, pos: 0 });
+        let mut mbox = MboxReader::new(reader);
+        let result = mbox.next_message();
+        assert!(
+            matches!(result, Err(MailError::Filesystem { .. })),
+            "a mid-body read error must abort, not import a truncated message: {result:?}"
+        );
     }
 }

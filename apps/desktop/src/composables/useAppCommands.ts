@@ -218,5 +218,73 @@ export function useAppCommands(
 ): void {
   const commands = buildAppCommands(deps);
   registry.registerAll(commands);
-  useKeyChords(() => chordBindingsFor(commands));
+  const chords = useKeyChords(() => chordBindingsFor(commands));
+  // Let the single-key dispatcher defer to an armed chord prefix so `g f`
+  // resolves to the chord, never the lone Forward binding (finding: chord-vs-
+  // single-key shadowing).
+  registry.setChordPending(chords.isPending);
+}
+
+/**
+ * Callbacks and gates for the *context* commands — the ones App.vue registers
+ * outside the standard map because they close over dialogs / the list
+ * selection: open address book, mark junk, mark not-junk. Kept here (beside
+ * {@link buildAppCommands}) so their modal-gating is unit-testable rather than
+ * inlined in `App.vue`.
+ */
+export interface ContextCommandDeps {
+  /** True while a blocking modal is open; gates every context command. */
+  isModalOpen: () => boolean;
+  /** The list-selected message id, or `null` when nothing is selected. */
+  getSelectedMessageId: () => number | null;
+  /** Opens the address-book dialog. */
+  openAddressBook: () => void;
+  /** Files the selected message as junk. */
+  junk: (messageId: number) => void;
+  /** Restores the selected message from junk. */
+  notJunk: (messageId: number) => void;
+}
+
+/**
+ * Builds the context commands. Every one is gated on `!isModalOpen()` so a
+ * junk/address-book shortcut never fires behind an open dialog, mirroring
+ * {@link buildAppCommands}. Exported for unit tests.
+ */
+export function buildContextCommands(deps: ContextCommandDeps): Command[] {
+  const notBusy = (): boolean => !deps.isModalOpen();
+  const selectedEnabled = (): boolean =>
+    notBusy() && deps.getSelectedMessageId() !== null;
+  const onSelected =
+    (action: (messageId: number) => void): (() => void) =>
+    () => {
+      const id = deps.getSelectedMessageId();
+      if (id !== null) action(id);
+    };
+
+  return [
+    {
+      id: "contacts.addressBook",
+      title: "Open address book",
+      keywords: ["contacts", "addresses", "people"],
+      shortcut: "Mod+Shift+B",
+      run: deps.openAddressBook,
+      isEnabled: notBusy,
+    },
+    {
+      id: "message.junk",
+      title: "Mark as junk",
+      keywords: ["spam", "junk"],
+      shortcut: "j",
+      run: onSelected(deps.junk),
+      isEnabled: selectedEnabled,
+    },
+    {
+      id: "message.notJunk",
+      title: "Mark as not junk",
+      keywords: ["ham", "not spam"],
+      shortcut: "Shift+J",
+      run: onSelected(deps.notJunk),
+      isEnabled: selectedEnabled,
+    },
+  ];
 }

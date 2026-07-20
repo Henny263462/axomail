@@ -3,10 +3,7 @@
 
 use axomail_core::{EmailAddress, MailError};
 
-use super::{
-    Contact, ContactId, ContactMatch, ContactRepo, MatchRow, NewContact, NewContactEmail,
-    escape_like,
-};
+use super::{Contact, ContactId, ContactMatch, ContactRepo, MatchRow, escape_like, fallback_name};
 use crate::error_map::map_sqlx;
 
 impl ContactRepo<'_> {
@@ -73,8 +70,12 @@ impl ContactRepo<'_> {
     /// nothing; otherwise creates a name-only contact carrying it as its
     /// primary address. Returns `true` when a new contact was created.
     ///
-    /// The address's own case is preserved; the case-insensitive uniqueness of
-    /// `contact_emails.email` makes the existence check case-agnostic.
+    /// Race-safe: the address is inserted atomically, and the global unique
+    /// index on `contact_emails.email` (case-insensitive) means a concurrent
+    /// collect that inserted first trips a unique violation, which is treated as
+    /// "already collected" (`Ok(false)`). This closes the check-then-insert
+    /// window where two concurrent sends to a new address each created a
+    /// duplicate contact.
     ///
     /// # Errors
     ///
@@ -84,6 +85,7 @@ impl ContactRepo<'_> {
         email: &EmailAddress,
         display_name: &str,
     ) -> Result<bool, MailError> {
+        // Fast path: already known (case-insensitive via the column collation).
         let exists: Option<i64> =
             sqlx::query_scalar("SELECT 1 FROM contact_emails WHERE email = ? LIMIT 1")
                 .bind(email.as_str())
@@ -93,16 +95,53 @@ impl ContactRepo<'_> {
         if exists.is_some() {
             return Ok(false);
         }
-        self.create(&NewContact {
-            display_name: display_name.to_owned(),
-            emails: vec![NewContactEmail {
-                email: email.clone(),
-                label: String::new(),
-                is_primary: true,
-            }],
-            note: String::new(),
-        })
-        .await?;
-        Ok(true)
+
+        let display = fallback_name(display_name, Some(email.as_str()));
+        let mut tx = self
+            .pool
+            .begin()
+            .await
+            .map_err(|error| map_sqlx("collect_address", error))?;
+        let contact_id: i64 = sqlx::query_scalar(
+            "INSERT INTO contacts (display_name, primary_email, note) VALUES (?, ?, '') RETURNING id",
+        )
+        .bind(&display)
+        .bind(email.as_str())
+        .fetch_one(&mut *tx)
+        .await
+        .map_err(|error| map_sqlx("collect_address", error))?;
+
+        // The email carries the global unique index; a concurrent collect that
+        // won the race trips a unique violation here.
+        let inserted = sqlx::query(
+            "INSERT INTO contact_emails (contact_id, email, label, is_primary) VALUES (?, ?, '', 1)",
+        )
+        .bind(contact_id)
+        .bind(email.as_str())
+        .execute(&mut *tx)
+        .await;
+        match inserted {
+            Ok(_) => {
+                tx.commit()
+                    .await
+                    .map_err(|error| map_sqlx("collect_address", error))?;
+                Ok(true)
+            }
+            Err(error) if is_unique_violation(&error) => {
+                // Lost the race: another collect already created this contact.
+                // Roll back our half-built one and report "already collected".
+                let _ = tx.rollback().await;
+                Ok(false)
+            }
+            Err(error) => Err(map_sqlx("collect_address", error)),
+        }
     }
+}
+
+/// Whether a query error is a unique-constraint violation (a lost auto-collect
+/// race), as opposed to any other database failure.
+fn is_unique_violation(error: &sqlx::Error) -> bool {
+    error
+        .as_database_error()
+        .is_some_and(sqlx::error::DatabaseError::is_unique_violation)
 }

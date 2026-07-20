@@ -16,11 +16,18 @@ use axomail_core::{AccountId, IncomingMailProvider, MailError, MailboxId, Mailbo
 use axomail_storage::{JobKind, NewSyncJob};
 
 use crate::factory::ProviderFactory;
-use crate::filter_run::run_filters_on_messages;
+use crate::filter_run::{FilterRunReport, FilterRunner};
 use crate::shared::Shared;
 
 /// Applies arrival filters to any messages that reached `synced_mailbox` since
 /// the last pass, when it is the account's inbox.
+///
+/// Candidates are processed **one at a time in ascending id order**, advancing
+/// the per-account high-water to each message as it completes. A mid-batch
+/// failure therefore still advances past every message fully handled before it,
+/// so the next sync never reprocesses them — critical because a re-run would
+/// otherwise re-fire non-idempotent actions like Forward (re-forwarding an
+/// already-forwarded message to a third party).
 pub(super) async fn run<P, F>(
     shared: &Arc<Shared<P, F>>,
     account_id: AccountId,
@@ -56,13 +63,42 @@ where
         return Ok(());
     }
 
-    let report = run_filters_on_messages(&shared.store, account_id, &candidates).await?;
-    // Advance past everything considered this pass (frontier captured the max
-    // inbox id before any action moved a message out).
-    filters.advance_arrival(account_id, frontier).await?;
+    let Some(runner) =
+        FilterRunner::load(&shared.store, account_id, shared.raw_root.as_deref()).await?
+    else {
+        // No active filters: still advance so a later enable does not rescan.
+        filters.advance_arrival(account_id, frontier).await?;
+        return Ok(());
+    };
 
-    for account in report.replay_accounts {
+    // Process ascending, checkpointing the high-water after each message so a
+    // failure part-way through never re-runs the already-handled prefix.
+    let mut report = FilterRunReport::default();
+    let mut processed_through = state.last_message_id;
+    let mut failure = None;
+    for &message_id in &candidates {
+        match runner.apply(message_id, &mut report).await {
+            Ok(()) => processed_through = message_id.value().max(processed_through),
+            Err(error) => {
+                failure = Some(error);
+                break;
+            }
+        }
+    }
+    // On success, jump to the frontier (covers any gap); on failure, advance
+    // only past the messages actually handled.
+    let advance_to = if failure.is_some() {
+        processed_through
+    } else {
+        frontier
+    };
+    filters.advance_arrival(account_id, advance_to).await?;
+
+    for account in std::mem::take(&mut report.replay_accounts) {
         trigger_op_replay(shared, account).await;
+    }
+    if let Some(error) = failure {
+        return Err(error);
     }
     Ok(())
 }

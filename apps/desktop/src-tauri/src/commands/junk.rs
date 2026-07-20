@@ -110,9 +110,12 @@ where
             continue;
         };
         let source = envelope.mailbox;
+        // Idempotent per message: a second mark-junk is a no-op, and a prior
+        // not-junk is reversed. This also records the explicit-pin marker that
+        // `run_junk_controls` honors.
         store
             .junk()
-            .train(account, &tokens_for(&envelope), true)
+            .train_message(account, message, &tokens_for(&envelope), true)
             .await?;
         // Pin the score high so a later ingest pass never re-evaluates it as ham.
         store.junk().set_score(message, 1.0).await?;
@@ -154,9 +157,11 @@ where
             continue;
         };
         let source = envelope.mailbox;
+        // Idempotent per message; reverses a prior mark-junk and records the
+        // not-junk pin that keeps `run_junk_controls` from re-filing it.
         store
             .junk()
-            .train(account, &tokens_for(&envelope), false)
+            .train_message(account, message, &tokens_for(&envelope), false)
             .await?;
         // Pin the score low so it is never auto-junked again.
         store.junk().set_score(message, 0.0).await?;
@@ -199,20 +204,39 @@ where
         return Ok(0);
     };
     let settings = store.junk().settings().await?;
+    // Classifier auto-filing is gated on an adequately trained corpus; a trusted
+    // server verdict is an independent external signal and bypasses that gate.
+    let can_autofile = store.junk().corpus(account).await?.can_autofile();
     let envelopes = collect_folder(store, mailbox).await?;
 
     let mut accounts = BTreeSet::new();
     let mut filed = 0u32;
     for envelope in envelopes {
         let message = envelope.id;
-        let score =
-            match server_verdict(raw_root, message.value(), settings.trust_server_headers).await? {
-                Some(true) => 1.0,
-                Some(false) => 0.0,
-                None => store.junk().score(account, &tokens_for(&envelope)).await?,
-            };
+        // Never re-classify a message the user explicitly pinned (mark-junk /
+        // not-junk): a rescued (not-junk) message survives even with a spammy
+        // score, and a pinned score is never overwritten.
+        if store.junk().is_pinned(account, message).await? {
+            continue;
+        }
+
+        // A server header is trusted only when the setting is on, and only ever
+        // *adds* a spam signal — a `NO`/absent header can never force ham here
+        // (the classifier decides instead).
+        let server_flagged =
+            server_flags_spam(raw_root, message.value(), settings.trust_server_headers).await?;
+        let score = if server_flagged {
+            1.0
+        } else {
+            store.junk().score(account, &tokens_for(&envelope)).await?
+        };
         store.junk().set_score(message, score).await?;
-        if score < settings.threshold || whitelisted(store, &envelope, &settings).await? {
+
+        let classifier_files = can_autofile && score >= settings.threshold;
+        if !(server_flagged || classifier_files) {
+            continue;
+        }
+        if whitelisted(store, &envelope, &settings).await? {
             continue;
         }
         let source = envelope.mailbox;
@@ -245,19 +269,21 @@ async fn whitelisted(
         .await
 }
 
-/// Reads a cached message's server spam verdict, or `None` when trust is off or
-/// no raw is cached.
-async fn server_verdict(
+/// Whether a cached message's server header positively flags it as spam, honored
+/// only when the "trust server junk headers" setting is on. A `NO`/absent header
+/// is never trusted to force ham (see [`junk::server_spam_verdict`]); `false`
+/// here simply means "no positive server signal", so the classifier decides.
+async fn server_flags_spam(
     raw_root: &Path,
     message_id: i64,
     trust: bool,
-) -> Result<Option<bool>, MailError> {
+) -> Result<bool, MailError> {
     if !trust {
-        return Ok(None);
+        return Ok(false);
     }
     let path = axomail_storage::raw_message_path(raw_root, message_id);
     let Some(bytes) = axomail_storage::read_raw(&path).await? else {
-        return Ok(None);
+        return Ok(false);
     };
     Ok(junk::server_spam_verdict(&String::from_utf8_lossy(&bytes)))
 }

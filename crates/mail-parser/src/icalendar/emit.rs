@@ -3,9 +3,18 @@
 //! Given the requested event and the responder's participation status, this
 //! builds a minimal, valid `METHOD:REPLY` object carrying a single `ATTENDEE`
 //! (the responder, with the chosen `PARTSTAT`), the original `UID`/`SEQUENCE`,
-//! the `ORGANIZER`, and the event's start/end echoed verbatim.
+//! the `ORGANIZER`, the event's start/end, and (for a recurring series) the
+//! `RECURRENCE-ID` so the reply targets the right occurrence.
+//!
+//! Times are emitted in **UTC** (`…Z`), never echoed with a bare `TZID`. A
+//! reply that referenced a `TZID` without also carrying its `VTIMEZONE`
+//! definition would be invalid iCalendar and ambiguous; since no timezone
+//! database is bundled, a named/floating wall-clock is normalized to UTC (the
+//! same documented approximation [`CalDateTime::to_unix_seconds`] uses), and an
+//! all-day `VALUE=DATE` is emitted as a bare date. This keeps every emitted
+//! date-time self-contained and valid.
 
-use super::CalendarEvent;
+use super::{CalDateTime, CalendarEvent};
 
 /// Product identifier written into the reply's `PRODID`.
 const PRODID: &str = "-//axomail//iMIP 1.0//EN";
@@ -40,12 +49,19 @@ pub fn build_reply(event: &CalendarEvent, params: &ReplyParams) -> String {
     lines.push(format!("SEQUENCE:{}", event.sequence));
     lines.push(format!("DTSTAMP:{}", ical_utc_stamp(params.dtstamp_unix)));
 
-    // Echo the times verbatim so the organizer's client matches the instance.
-    if let Some(dtstart) = &event.dtstart_line {
-        lines.push(dtstart.clone());
+    // A RECURRENCE-ID makes the reply refer to one occurrence of a recurring
+    // series rather than the whole series; carry it so the organizer's client
+    // matches the right instance.
+    if let Some(recurrence_id) = &event.recurrence_id {
+        lines.push(emit_datetime("RECURRENCE-ID", recurrence_id));
     }
-    if let Some(dtend) = &event.dtend_line {
-        lines.push(dtend.clone());
+    // Emit the times as self-contained UTC (or a bare date), never with a
+    // dangling TZID, so the organizer's client can match the instance.
+    if let Some(dtstart) = &event.dtstart {
+        lines.push(emit_datetime("DTSTART", dtstart));
+    }
+    if let Some(dtend) = &event.dtend {
+        lines.push(emit_datetime("DTEND", dtend));
     }
     if let Some(summary) = &event.summary {
         lines.push(format!("SUMMARY:{}", escape_text(summary)));
@@ -79,6 +95,24 @@ pub fn build_reply(event: &CalendarEvent, params: &ReplyParams) -> String {
         out.push_str("\r\n");
     }
     out
+}
+
+/// Emits a `DTSTART`/`DTEND`/`RECURRENCE-ID` property as a self-contained,
+/// valid value: an all-day date as `;VALUE=DATE:YYYYMMDD`, any timed value as a
+/// UTC `:YYYYMMDDTHHMMSSZ`.
+///
+/// A named `TZID` or floating time is normalized to UTC (its wall-clock treated
+/// as UTC — the documented no-timezone-database approximation), so the reply
+/// never carries a `TZID` without the matching `VTIMEZONE`.
+fn emit_datetime(name: &str, dt: &CalDateTime) -> String {
+    if dt.date_only {
+        format!(
+            "{name};VALUE=DATE:{:04}{:02}{:02}",
+            dt.year, dt.month, dt.day
+        )
+    } else {
+        format!("{name}:{}", ical_utc_stamp(dt.to_unix_seconds()))
+    }
 }
 
 /// Formats Unix seconds as an iCalendar UTC timestamp (`YYYYMMDDTHHMMSSZ`).
@@ -155,4 +189,84 @@ fn fold_line(line: &str) -> String {
         octets += width;
     }
     out
+}
+
+#[cfg(test)]
+mod tests {
+    #![allow(clippy::unwrap_used)]
+
+    use super::*;
+    use crate::icalendar::parse_calendar;
+
+    fn params() -> ReplyParams {
+        ReplyParams {
+            responder_email: "klaus@theferbers.eu".to_owned(),
+            responder_name: Some("Klaus".to_owned()),
+            partstat: "ACCEPTED".to_owned(),
+            dtstamp_unix: 1_784_545_200,
+        }
+    }
+
+    /// A `TZID` DTSTART with no VTIMEZONE must be emitted as UTC, never echoed
+    /// with a dangling `TZID` (invalid iCalendar).
+    #[test]
+    fn tzid_times_are_emitted_as_utc_without_a_dangling_tzid() {
+        let request = concat!(
+            "BEGIN:VCALENDAR\r\nMETHOD:REQUEST\r\nBEGIN:VEVENT\r\n",
+            "UID:evt-tz@example.org\r\nSEQUENCE:0\r\nSUMMARY:Sync\r\n",
+            "DTSTART;TZID=Europe/Berlin:20260720T110000\r\n",
+            "DTEND;TZID=Europe/Berlin:20260720T120000\r\n",
+            "ORGANIZER:mailto:ada@example.org\r\n",
+            "END:VEVENT\r\nEND:VCALENDAR\r\n",
+        );
+        let invitation = parse_calendar(request).unwrap();
+        let ics = build_reply(&invitation.event, &params());
+        assert!(
+            !ics.contains("TZID"),
+            "a reply must not carry a bare TZID without a VTIMEZONE: {ics}"
+        );
+        assert!(
+            ics.contains("DTSTART:20260720T110000Z"),
+            "the start should be normalized to UTC: {ics}"
+        );
+        assert!(ics.contains("DTEND:20260720T120000Z"), "{ics}");
+        // No VTIMEZONE component is emitted at all (UTC route).
+        assert!(!ics.contains("BEGIN:VTIMEZONE"));
+    }
+
+    /// A `RECURRENCE-ID` on a REQUEST must round-trip into the REPLY (as UTC).
+    #[test]
+    fn recurrence_id_round_trips_into_the_reply() {
+        let request = concat!(
+            "BEGIN:VCALENDAR\r\nMETHOD:REQUEST\r\nBEGIN:VEVENT\r\n",
+            "UID:series@example.org\r\nSEQUENCE:2\r\nSUMMARY:Weekly\r\n",
+            "RECURRENCE-ID:20260720T110000Z\r\n",
+            "DTSTART:20260720T110000Z\r\n",
+            "ORGANIZER:mailto:ada@example.org\r\n",
+            "END:VEVENT\r\nEND:VCALENDAR\r\n",
+        );
+        let invitation = parse_calendar(request).unwrap();
+        assert!(invitation.event.recurrence_id.is_some(), "parsed");
+        let ics = build_reply(&invitation.event, &params());
+        assert!(
+            ics.contains("RECURRENCE-ID:20260720T110000Z"),
+            "the reply must echo the occurrence id: {ics}"
+        );
+    }
+
+    /// An all-day (`VALUE=DATE`) start is emitted as a bare date, not a UTC time.
+    #[test]
+    fn all_day_start_is_emitted_as_a_date() {
+        let request = concat!(
+            "BEGIN:VCALENDAR\r\nMETHOD:REQUEST\r\nBEGIN:VEVENT\r\n",
+            "UID:allday@example.org\r\nSUMMARY:Holiday\r\n",
+            "DTSTART;VALUE=DATE:20260720\r\n",
+            "ORGANIZER:mailto:ada@example.org\r\n",
+            "END:VEVENT\r\nEND:VCALENDAR\r\n",
+        );
+        let invitation = parse_calendar(request).unwrap();
+        let ics = build_reply(&invitation.event, &params());
+        assert!(ics.contains("DTSTART;VALUE=DATE:20260720"), "{ics}");
+        assert!(!ics.contains("TZID"));
+    }
 }

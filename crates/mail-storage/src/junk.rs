@@ -18,7 +18,10 @@ use sqlx::SqlitePool;
 use crate::error_map::map_sqlx;
 
 pub use store::JunkSettings;
-pub(crate) use store::{is_whitelisted, load_settings, score_new_inbound, score_on, set_score_on};
+pub(crate) use store::{
+    is_pinned, is_whitelisted, load_settings, score_new_inbound, score_on, set_score_on,
+    train_on_message,
+};
 
 /// Repository over `junk_tokens`, `junk_corpus`, and the `messages.junk_score`
 /// column, plus the junk settings in `app_settings`.
@@ -69,11 +72,38 @@ impl<'a> JunkRepo<'a> {
             store::KEY_WHITELIST_CONTACTS,
             bool_str(settings.whitelist_contacts),
         )
+        .await?;
+        repo.set(
+            store::KEY_MARK_READ_ON_JUNK,
+            bool_str(settings.mark_read_on_junk),
+        )
         .await
     }
 
+    /// Whether a message carries an explicit user junk pin (a mark-junk /
+    /// not-junk training row). "Run junk controls" skips pinned messages so a
+    /// re-score never overrides the user's explicit decision.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`MailError::Database`] on any query failure.
+    pub async fn is_pinned(
+        &self,
+        account: AccountId,
+        message: MessageId,
+    ) -> Result<bool, MailError> {
+        let mut conn = self
+            .pool
+            .acquire()
+            .await
+            .map_err(|error| map_sqlx("junk_is_pinned_acquire", error))?;
+        is_pinned(&mut conn, account, message.value()).await
+    }
+
     /// Trains the account's classifier on one message's token set, as ham
-    /// (`spam = false`) or spam (`spam = true`).
+    /// (`spam = false`) or spam (`spam = true`). Unconditional (non-idempotent):
+    /// this is the low-level corpus-building primitive; the user-facing
+    /// mark-junk / not-junk path uses [`train_message`](Self::train_message).
     ///
     /// # Errors
     ///
@@ -93,6 +123,33 @@ impl<'a> JunkRepo<'a> {
         tx.commit()
             .await
             .map_err(|error| map_sqlx("junk_train_commit", error))
+    }
+
+    /// Idempotently trains the classifier on one message as ham/spam, keyed on a
+    /// per-message ledger so repeat clicks and corrections never poison the
+    /// model: re-training the same message in the same class is a no-op, and
+    /// switching its class fully reverses the prior counts before applying the
+    /// new ones. `tokens` must be the message's stable token set.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`MailError::Database`] on any query failure.
+    pub async fn train_message(
+        &self,
+        account: AccountId,
+        message: MessageId,
+        tokens: &BTreeSet<String>,
+        spam: bool,
+    ) -> Result<(), MailError> {
+        let mut tx = self
+            .pool
+            .begin()
+            .await
+            .map_err(|error| map_sqlx("junk_train_message_begin", error))?;
+        train_on_message(&mut tx, account, message.value(), tokens, spam).await?;
+        tx.commit()
+            .await
+            .map_err(|error| map_sqlx("junk_train_message_commit", error))
     }
 
     /// Scores a token set for `account`, returning a probability in

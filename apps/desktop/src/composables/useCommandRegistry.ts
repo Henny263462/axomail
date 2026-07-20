@@ -59,6 +59,15 @@ export interface CommandRegistry {
   /** Looks a command up by id. */
   get(id: string): Command | undefined;
   /**
+   * Registers a predicate telling the dispatcher whether a two-key chord prefix
+   * is currently armed. While one is, a bare single-key command is **not** fired
+   * — that keystroke completes the chord (handled by {@link useKeyChords}), so
+   * firing the single-key binding too would double-act (e.g. `g` then `f` must
+   * go to Folders, not also Forward). Modifier chords (`Mod+K`) are unaffected.
+   * Wired once by {@link useAppCommands}; defaults to an inert predicate.
+   */
+  setChordPending(predicate: () => boolean): void;
+  /**
    * Dispatches a keydown to the first matching, enabled command. Returns whether
    * a command was run. Exposed for the app root's listener and for tests.
    */
@@ -81,6 +90,10 @@ export function createCommandRegistry(): CommandRegistry {
   const commands = computed(() =>
     Array.from(entries.values(), (entry) => entry.command),
   );
+
+  // Whether a chord prefix is armed (set by useAppCommands from the chord
+  // dispatcher). Inert until wired, so a standalone registry is unaffected.
+  let chordPending: () => boolean = () => false;
 
   function register(command: Command): () => void {
     const entry: Entry = {
@@ -113,6 +126,10 @@ export function createCommandRegistry(): CommandRegistry {
       // only a Ctrl/Alt/Meta chord is allowed through; a bare/Shift key falls
       // to the field. Return, not continue — the keystroke belongs to it.
       if (editable && !hasNonShiftModifier(entry.parsed)) return false;
+      // A chord prefix is armed: this bare key completes the chord (the chord
+      // dispatcher runs right after this listener), so it must not also fire a
+      // single-key command. Modifier chords still dispatch.
+      if (chordPending() && !hasNonShiftModifier(entry.parsed)) return false;
       if (entry.command.isEnabled && !entry.command.isEnabled()) continue;
       event.preventDefault();
       void entry.command.run();
@@ -129,6 +146,9 @@ export function createCommandRegistry(): CommandRegistry {
       entries.delete(id);
     },
     get: (id) => entries.get(id)?.command,
+    setChordPending: (predicate) => {
+      chordPending = predicate;
+    },
     handleKeydown,
   };
 }

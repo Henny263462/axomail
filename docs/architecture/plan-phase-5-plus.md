@@ -52,9 +52,11 @@ fixes, and one commit per wave.
 | 0016 | 4.2 | filters |
 | 0017 | 4.3 | junk (bayes tokens, per-message score) |
 | 0018 | 4.4 | calendar-invitation state |
-| 0019 | 5.1 | pgp key metadata (secrets in keychain) |
-| 0020 | 5.2 | saved searches |
-| 0021 | 5.5 | polish leftovers |
+| 0019 | 4.3-fix | junk training state (idempotent/reversible) — added in the Wave-4 review pass |
+| 0020 | 4.1-fix | contact-email global unique index — added in the Wave-4 review pass |
+| 0021 | 5.1 | pgp key metadata (secrets in keychain) |
+| 0022 | 5.2 | saved searches |
+| 0023 | 5.5 | polish leftovers |
 
 ## Wave 1 — Independent foundations
 
@@ -481,5 +483,5 @@ the first global commands.
 | 1 | done 2026-07-19 (7 tracks + integration + adversarial review: 15 confirmed findings fixed, incl. Gmail offline_access, single-ref OAuth tokens, cancel-send TOCTOU, raw-eml cleanup on account delete, STLS re-CAPA, scam-heuristic hardening, accounts-changed propagation, focus traps) |
 | 2 | done 2026-07-19 (Stage 0 engine plumbing, 4 tracks, integration, CONDSTORE/QRESYNC; adversarial review: 20 confirmed findings fixed, incl. tags-OpReplay wiring, stranded-op recovery, umlaut folder-rename corruption, unsafe reconcile rename-merge, optimistic-flag clobbering, UIDPLUS-less expunge collateral, offline-gate bypass) |
 | 3 | done 2026-07-20 (Stage 0 + A + B: reply/reply-all/forward with threading headers & forward-as-attachment, IMAP APPEND for Sent/Drafts, virtualized+threaded list with multi-select/quick-filter, rich-text compose + attachments, attachment save/inline-cid/view-source, move/copy/archive/delete-to-Trash with undo, Empty Trash scoped EXPUNGE + compact; adversarial review: 18 confirmed findings fixed, incl. Empty-Trash-cascade op preservation, undo UIDVALIDITY adoption, compact TOCTOU, RFC 2231 filenames, References trimming, context-menu selection semantics, archive granularity) |
-| 4 | pending |
+| 4 | done 2026-07-20 (Stage 0 + 7 tracks: contacts + vCard + autocomplete, filter rules engine, Bayesian junk with auto-route, iCalendar/iMIP RSVP, keyboard shortcuts + command palette, print + mbox import/export, IMAP IDLE push; adversarial review: 22 confirmed findings fixed, incl. UIDVALIDITY-wipe junk mass-route guard, arrival-filter re-forward, mbox Content-Length DoS + leading-blank + read-error + has_raw ordering, regex-lowercase corruption, junk corpus-gate/smoothing/idempotent-training/pin-respect + forged-header trust, iMIP CANCEL scoping + RECURRENCE-ID + UTC times, contact-collect race, double-IDLE reconnect, global-shortcut modal gating, chord vs single-key, focus traps, optimistic-revert) |
 | 5 | pending |

@@ -4,9 +4,11 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   buildAppCommands,
+  buildContextCommands,
   chordBindingsFor,
   useAppCommands,
   type AppCommandDeps,
+  type ContextCommandDeps,
 } from "../src/composables/useAppCommands";
 import { provideCommandRegistry } from "../src/composables/useCommandRegistry";
 
@@ -160,6 +162,25 @@ describe("global shortcut dispatch", () => {
     wrapper.unmount();
   });
 
+  it("resolves `g f` to Folders, not the single-key Forward, with a message open", () => {
+    // openMessageId defaults to 5, so the lone Forward binding is enabled and
+    // would shadow the chord unless the dispatcher defers to the armed prefix.
+    const { spies, wrapper } = setup();
+    press({ key: "g" });
+    press({ key: "f" });
+    expect(spies.goFolders).toHaveBeenCalledOnce();
+    expect(spies.forward).not.toHaveBeenCalled();
+    wrapper.unmount();
+  });
+
+  it("still forwards on a lone f when no chord prefix is armed", () => {
+    const { spies, wrapper } = setup();
+    press({ key: "f" });
+    expect(spies.forward).toHaveBeenCalledWith(5);
+    expect(spies.goFolders).not.toHaveBeenCalled();
+    wrapper.unmount();
+  });
+
   it("does not fire a message command when no message is open", () => {
     const { spies, wrapper } = setup({ openMessageId: null });
     press({ key: "r" });
@@ -188,5 +209,64 @@ describe("global shortcut dispatch", () => {
     press({ key: "n" });
     expect(spies.newMessage).not.toHaveBeenCalled();
     wrapper.unmount();
+  });
+});
+
+describe("buildContextCommands (address book / junk gating)", () => {
+  function ctx(over: Partial<ContextCommandDeps> = {}): ContextCommandDeps {
+    return {
+      isModalOpen: () => false,
+      getSelectedMessageId: () => 7,
+      openAddressBook: vi.fn(),
+      junk: vi.fn(),
+      notJunk: vi.fn(),
+      ...over,
+    };
+  }
+
+  it("registers the address book, junk, and not-junk commands", () => {
+    const ids = buildContextCommands(ctx()).map((c) => c.id);
+    expect(ids).toEqual([
+      "contacts.addressBook",
+      "message.junk",
+      "message.notJunk",
+    ]);
+  });
+
+  it("gates every command on the modal state (none fire behind a dialog)", () => {
+    for (const command of buildContextCommands(ctx())) {
+      expect(command.isEnabled?.()).toBe(true);
+    }
+    const gated = buildContextCommands(ctx({ isModalOpen: () => true }));
+    for (const command of gated) {
+      expect(command.isEnabled?.()).toBe(false);
+    }
+  });
+
+  it("dims junk / not-junk when nothing is selected", () => {
+    const commands = buildContextCommands(ctx({ getSelectedMessageId: () => null }));
+    const junk = commands.find((c) => c.id === "message.junk");
+    const notJunk = commands.find((c) => c.id === "message.notJunk");
+    expect(junk?.isEnabled?.()).toBe(false);
+    expect(notJunk?.isEnabled?.()).toBe(false);
+    // The address book has no selection requirement.
+    expect(commands.find((c) => c.id === "contacts.addressBook")?.isEnabled?.()).toBe(
+      true,
+    );
+  });
+
+  it("runs junk / not-junk / address book against the current selection", () => {
+    const junk = vi.fn();
+    const notJunk = vi.fn();
+    const openAddressBook = vi.fn();
+    const commands = buildContextCommands(
+      ctx({ junk, notJunk, openAddressBook, getSelectedMessageId: () => 42 }),
+    );
+    commands.find((c) => c.id === "message.junk")?.run();
+    commands.find((c) => c.id === "message.notJunk")?.run();
+    commands.find((c) => c.id === "contacts.addressBook")?.run();
+    expect(junk).toHaveBeenCalledWith(42);
+    expect(notJunk).toHaveBeenCalledWith(42);
+    expect(openAddressBook).toHaveBeenCalledOnce();
   });
 });

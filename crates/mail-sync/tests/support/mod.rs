@@ -106,6 +106,15 @@ pub struct FakeWorld {
     idle_supported: Mutex<bool>,
     idle_script: Mutex<VecDeque<IdleStep>>,
     idle_calls: Mutex<usize>,
+    // Live-connection gauge: `connect` (on success) increments and `disconnect`
+    // decrements `open_connections`, and `max_open_connections` records the peak.
+    // Used to prove a push restart never holds two IDLE sessions at once.
+    open_connections: Mutex<usize>,
+    max_open_connections: Mutex<usize>,
+    // Optional artificial teardown delay: `disconnect` stays "connected" for this
+    // long before lowering the gauge, widening the window a restart bug would
+    // surface in (a replacement connecting before the old session closed).
+    disconnect_delay: Mutex<Option<Duration>>,
 }
 
 /// One scripted [`IncomingMailProvider::idle`] outcome for [`FakeWorld`].
@@ -256,6 +265,19 @@ impl FakeWorld {
         *lock(&self.idle_calls)
     }
 
+    /// Peak number of connections open at once across every provider on this
+    /// world (a connection spans a successful `connect` until its `disconnect`).
+    #[must_use]
+    pub fn max_open_connections(&self) -> usize {
+        *lock(&self.max_open_connections)
+    }
+
+    /// Makes every `disconnect` linger this long before the connection is
+    /// considered closed, widening the teardown window for overlap tests.
+    pub fn set_disconnect_delay(&self, delay: Duration) {
+        *lock(&self.disconnect_delay) = Some(delay);
+    }
+
     /// The mailbox names the write-back executor selected, in call order.
     #[must_use]
     pub fn select_calls(&self) -> Vec<MailboxName> {
@@ -354,7 +376,14 @@ impl IncomingMailProvider for FakeProvider {
         *lock(&self.world.connect_calls) += 1;
         match lock(&self.world.connect_errors).pop_front() {
             Some(kind) => Err(kind.build()),
-            None => Ok(()),
+            None => {
+                // A connection is now live: bump the gauge and record the peak.
+                let mut open = lock(&self.world.open_connections);
+                *open += 1;
+                let mut max = lock(&self.world.max_open_connections);
+                *max = (*max).max(*open);
+                Ok(())
+            }
         }
     }
 
@@ -524,6 +553,18 @@ impl IncomingMailProvider for FakeProvider {
     }
 
     async fn disconnect(&mut self) -> Result<(), MailError> {
+        // Optionally linger before the connection is considered closed, so an
+        // overlap test can observe a replacement that connects too eagerly.
+        let delay = *lock(&self.world.disconnect_delay);
+        if let Some(delay) = delay {
+            tokio::time::sleep(delay).await;
+        }
+        // The connection is closing: lower the live-connection gauge (saturating,
+        // so a double disconnect can't underflow).
+        {
+            let mut open = lock(&self.world.open_connections);
+            *open = open.saturating_sub(1);
+        }
         // Fire the one-shot injection (if armed) before returning, modelling an
         // op that lands in the drain-completion window.
         let injection = lock(&self.world.inject_on_disconnect).take();

@@ -16,7 +16,7 @@ import OutboxListPane from "./components/list/OutboxListPane.vue";
 import MessageViewPane from "./components/message/MessageViewPane.vue";
 import SidebarPane from "./components/sidebar/SidebarPane.vue";
 import type { SidebarView } from "./components/sidebar/view";
-import { useAppCommands } from "./composables/useAppCommands";
+import { buildContextCommands, useAppCommands } from "./composables/useAppCommands";
 import { provideCommandRegistry } from "./composables/useCommandRegistry";
 import { useComposeWorkflow } from "./composables/useComposeWorkflow";
 import { useDialogs } from "./composables/useDialogs";
@@ -59,18 +59,11 @@ const dialogs = useDialogs<AppDialogMap>();
 
 // App-wide command registry + global keyboard dispatcher. Provided here so the
 // command palette and feature commands register/read via useCommandRegistry()
-// from any descendant. Track 4.1 registers the address-book command here (it
-// owns `dialogs`); track 4.3 registers the junk shortcuts below; the global mail
-// shortcut map (track 4.5) is wired below via useAppCommands(), once the action
-// composables it drives are available.
+// from any descendant. The context commands (address book, junk) are registered
+// below via buildContextCommands() once `dialogs` and `mailboxActions` exist;
+// the global mail shortcut map (track 4.5) is wired via useAppCommands(). Every
+// one is modal-gated so no global key acts on the background behind a dialog.
 const commandRegistry = provideCommandRegistry();
-commandRegistry.register({
-  id: "contacts.addressBook",
-  title: "Open address book",
-  keywords: ["contacts", "addresses", "people"],
-  shortcut: "Mod+Shift+B",
-  run: () => dialogs.open("addressBook"),
-});
 
 // Optimistic star / auto-read / mark-all-read, operating on the shared lists.
 const messageActions = useMessageActions({
@@ -118,45 +111,30 @@ const mailboxActions = useMailboxActions({
   clearSelection: () => (selectionResetKey.value += 1),
 });
 
-// Junk keyboard shortcuts (track 4.3): "j" files the open message as junk,
-// "Shift+J" restores it. Both act on the reading-pane message and dim when none
-// is open. Registration auto-disposes with the app root.
-commandRegistry.registerAll([
-  {
-    id: "message.junk",
-    title: "Mark as junk",
-    keywords: ["spam", "junk"],
-    shortcut: "j",
-    run: () => {
-      if (selectedMessageId.value !== null) {
-        void mailboxActions.junk([selectedMessageId.value]);
-      }
-    },
-    isEnabled: () => selectedMessageId.value !== null,
-  },
-  {
-    id: "message.notJunk",
-    title: "Mark as not junk",
-    keywords: ["ham", "not spam"],
-    shortcut: "Shift+J",
-    run: () => {
-      if (selectedMessageId.value !== null) {
-        void mailboxActions.notJunk([selectedMessageId.value]);
-      }
-    },
-    isEnabled: () => selectedMessageId.value !== null,
-  },
-]);
+// Context commands: address book (Mod+Shift+B), and junk "j" / not-junk
+// "Shift+J" acting on the list selection. All modal-gated via buildContextCommands
+// so none fires behind an open dialog; registration auto-disposes with the root.
+commandRegistry.registerAll(
+  buildContextCommands({
+    isModalOpen,
+    getSelectedMessageId: () => selectedMessageId.value,
+    openAddressBook: () => dialogs.open("addressBook"),
+    junk: (id) => void mailboxActions.junk([id]),
+    notJunk: (id) => void mailboxActions.notJunk([id]),
+  }),
+);
 
 /** True while a blocking modal is open — the palette is excluded so a command
  * run from it stays enabled (bare keys are already suppressed by the palette's
- * focused search input). Gates every global shortcut. */
+ * focused search input). Gates every global shortcut. Any app-level dialog that
+ * should suppress background shortcuts belongs here (address book included). */
 function isModalOpen(): boolean {
   return (
     dialogs.isOpen("composer") ||
     dialogs.isOpen("settings") ||
     dialogs.isOpen("setup") ||
     dialogs.isOpen("activity") ||
+    dialogs.isOpen("addressBook") ||
     dialogs.isOpen("moveToFolder") ||
     dialogs.isOpen("shortcutHelp")
   );
@@ -350,6 +328,7 @@ function onSyncEvent(event: SyncEventDto): void {
       <MessageViewPane
         v-if="view.messageView.value"
         :message-id="view.viewedMessageId.value"
+        :is-modal-open="isModalOpen"
         @flag-changed="messageActions.syncStar($event.messageId, $event.flagged)"
         @reply="compose.openReply"
         @reply-all="compose.openReplyAll"

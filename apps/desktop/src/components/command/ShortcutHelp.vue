@@ -4,7 +4,7 @@
  * every bound shortcut, grouped by area, generated from the command registry.
  * Read-only — it is a reference card, not an editor.
  */
-import { computed, nextTick, onMounted, ref } from "vue";
+import { computed, nextTick, onBeforeUnmount, onMounted, ref } from "vue";
 
 import { shortcutGroups } from "../../commands/display";
 import { useCommandRegistry } from "../../composables/useCommandRegistry";
@@ -16,15 +16,22 @@ const emit = defineEmits<{ close: [] }>();
 const registry = useCommandRegistry();
 const root = ref<HTMLElement | null>(null);
 const closeButton = ref<HTMLButtonElement | null>(null);
+let invoker: HTMLElement | null = null;
 const { onKeydown } = useFocusTrap(root, () => emit("close"));
 
 const groups = computed(() => shortcutGroups(registry.commands.value));
 
 // Move focus into the overlay so Escape / Tab reach the trap (the overlay has
-// no autofocusing input to pull focus in like the palette does).
+// no autofocusing input to pull focus in like the palette does), remembering
+// the invoker so focus can return there on close.
 onMounted(() => {
+  invoker = document.activeElement as HTMLElement | null;
   void nextTick(() => closeButton.value?.focus());
 });
+
+// Restore focus to whatever opened the overlay (the `?` was pressed from there),
+// so keyboard users are not dumped at the top of the document on close.
+onBeforeUnmount(() => invoker?.focus());
 </script>
 
 <template>

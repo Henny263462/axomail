@@ -16,7 +16,7 @@ use axomail_core::{
 };
 use axomail_storage::{NewPendingOp, NewTag, Store};
 
-use crate::op_payload::{keyword_op, move_op};
+use crate::op_payload::{keyword_op, move_op, seen_op};
 
 /// The `$Junk` IMAP keyword. Parsed on demand; the literal is a valid RFC 3501
 /// atom, but the classifier never panics on a parse (clippy-clean).
@@ -93,6 +93,17 @@ async fn apply(
         store.messages().set_mailbox(envelope.id, target).await?;
     }
 
+    // Optionally mark the message read when filing it to Junk (the
+    // "mark-read-on-junk" setting). Only applies when *adding* to junk, and only
+    // for a message not already seen, so restoring from junk never touches it.
+    let mark_read =
+        add_junk && !envelope.flags.seen && store.junk().settings().await?.mark_read_on_junk;
+    if mark_read {
+        let mut flags = envelope.flags.clone();
+        flags.seen = true;
+        store.messages().update_flags(envelope.id, &flags).await?;
+    }
+
     // Only an IMAP message with a server identity propagates; the enqueued ops
     // wait for an OpReplay the caller triggers.
     if !matches!(envelope.remote_id, Some(RemoteMessageId::Imap { .. })) {
@@ -103,6 +114,10 @@ async fn apply(
     if moved {
         let (move_kind, move_payload) = move_op(source, target);
         enqueue(store, account, envelope.id, move_kind, move_payload).await?;
+    }
+    if mark_read {
+        let (seen_kind, seen_payload) = seen_op(true);
+        enqueue(store, account, envelope.id, seen_kind, seen_payload).await?;
     }
     Ok(Some(account))
 }

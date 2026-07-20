@@ -212,7 +212,8 @@ async fn run_on_folder_relocates_a_matching_message() {
     .await
     .unwrap();
 
-    let outcome = run_filters_on_folder_impl(&store, &engine, inbox)
+    let raw_root = tempfile::tempdir().unwrap();
+    let outcome = run_filters_on_folder_impl(&store, &engine, raw_root.path(), inbox)
         .await
         .unwrap();
     assert_eq!(outcome.matched, 1);

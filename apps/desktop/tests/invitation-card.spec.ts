@@ -145,6 +145,63 @@ describe("invitation card", () => {
     expect(alert.text()).toContain("The mail server rejected the reply.");
   });
 
+  it("reflects the stored status and offers a resend when the reply fails to send", async () => {
+    getMessageDetailMock.mockResolvedValue(detailWith(requestInvitation));
+    // Stored (myStatus set) but the iMIP reply did not send.
+    respondInvitationMock.mockResolvedValue({
+      myStatus: "accepted",
+      sent: false,
+      error: "The mail server refused the reply.",
+    });
+
+    const wrapper = mount(MessageViewPane, { props: { messageId: 501 } });
+    await flushPromises();
+
+    const accept = wrapper
+      .findAll("button.rsvp")
+      .find((button) => button.text() === "Accept");
+    if (accept === undefined) throw new Error("Accept button missing");
+    await accept.trigger("click");
+    await flushPromises();
+
+    const card = wrapper.get('[aria-label="Calendar invitation"]');
+    // No reload: the recorded status is reflected locally instead.
+    expect(getMessageDetailMock).toHaveBeenCalledTimes(1);
+    expect(card.text()).toContain("You accepted this invitation.");
+    // The card offers a resend rather than a fresh Accept (which would
+    // re-record and duplicate the RSVP).
+    expect(card.findAll("button.rsvp").map((b) => b.text())).toEqual([
+      "Retry send",
+    ]);
+
+    // Retrying re-sends the same choice, not a new decision.
+    await card
+      .findAll("button.rsvp")
+      .find((b) => b.text() === "Retry send")!
+      .trigger("click");
+    await flushPromises();
+    expect(respondInvitationMock).toHaveBeenCalledTimes(2);
+    expect(respondInvitationMock).toHaveBeenLastCalledWith(501, "accept");
+  });
+
+  it("shows an unavailable state when the RSVP bridge is absent", async () => {
+    getMessageDetailMock.mockResolvedValue(detailWith(requestInvitation));
+    respondInvitationMock.mockResolvedValue(null); // browser preview: no bridge
+
+    const wrapper = mount(MessageViewPane, { props: { messageId: 501 } });
+    await flushPromises();
+
+    const accept = wrapper
+      .findAll("button.rsvp")
+      .find((button) => button.text() === "Accept");
+    if (accept === undefined) throw new Error("Accept button missing");
+    await accept.trigger("click");
+    await flushPromises();
+
+    const card = wrapper.get('[aria-label="Calendar invitation"]');
+    expect(card.text()).toContain("unavailable in the browser preview");
+  });
+
   it("shows a cancelled notice and no RSVP buttons for a cancelled event", async () => {
     getMessageDetailMock.mockResolvedValue(
       detailWith({

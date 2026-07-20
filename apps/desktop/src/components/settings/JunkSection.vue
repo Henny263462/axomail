@@ -21,40 +21,77 @@ const settings = ref<JunkSettings>({
   threshold: 0.9,
   trustServerHeaders: true,
   whitelistContacts: true,
+  markReadOnJunk: false,
 });
 const running = ref(false);
 
 /** The threshold shown as a whole-number percentage (0–100). */
 const thresholdPercent = ref(90);
+/** The last successfully-persisted threshold %, restored if a change fails. */
+const committedPercent = ref(90);
 
 onMounted(async () => {
   const loaded = await getJunkSettings();
   if (loaded !== null) {
     settings.value = loaded;
     thresholdPercent.value = Math.round(loaded.threshold * 100);
+    committedPercent.value = thresholdPercent.value;
   }
 });
 
-/** Persists the current settings, reverting the UI note on failure. */
-async function persist(): Promise<void> {
+/**
+ * Persists the current settings. Returns whether it succeeded so callers revert
+ * their optimistic change on failure or in the browser preview — an un-reverted
+ * control would otherwise silently re-submit a change that never took, combining
+ * it with the next edit.
+ */
+async function persist(): Promise<boolean> {
   props.context.reportStatus("");
   if (!isTauri()) {
     props.context.reportError(
       "Junk settings need the desktop app; they are unavailable in the browser preview.",
     );
-    return;
+    return false;
   }
   try {
     await setJunkSettings(settings.value);
+    committedPercent.value = thresholdPercent.value;
     props.context.reportError("");
+    return true;
   } catch (error) {
     props.context.reportError(messageFrom(error));
+    return false;
+  }
+}
+
+/** Applies a checkbox change optimistically, reverting on failure/preview. */
+async function toggleBoolean(
+  event: Event,
+  key: "enabled" | "trustServerHeaders" | "whitelistContacts" | "markReadOnJunk",
+): Promise<void> {
+  const target = event.target as HTMLInputElement;
+  const previous = settings.value[key];
+  settings.value[key] = target.checked;
+  if (!(await persist())) {
+    settings.value[key] = previous;
+    target.checked = previous;
   }
 }
 
 function onToggleEnabled(event: Event): void {
-  settings.value.enabled = (event.target as HTMLInputElement).checked;
-  void persist();
+  void toggleBoolean(event, "enabled");
+}
+
+function onToggleTrust(event: Event): void {
+  void toggleBoolean(event, "trustServerHeaders");
+}
+
+function onToggleWhitelist(event: Event): void {
+  void toggleBoolean(event, "whitelistContacts");
+}
+
+function onToggleMarkRead(event: Event): void {
+  void toggleBoolean(event, "markReadOnJunk");
 }
 
 function onThresholdInput(event: Event): void {
@@ -64,14 +101,13 @@ function onThresholdInput(event: Event): void {
   settings.value.threshold = clamped / 100;
 }
 
-function onToggleTrust(event: Event): void {
-  settings.value.trustServerHeaders = (event.target as HTMLInputElement).checked;
-  void persist();
-}
-
-function onToggleWhitelist(event: Event): void {
-  settings.value.whitelistContacts = (event.target as HTMLInputElement).checked;
-  void persist();
+/** Commits a threshold drag; restores the last-good value if persistence fails. */
+async function onThresholdCommit(event: Event): Promise<void> {
+  if (!(await persist())) {
+    thresholdPercent.value = committedPercent.value;
+    settings.value.threshold = committedPercent.value / 100;
+    (event.target as HTMLInputElement).value = String(committedPercent.value);
+  }
 }
 
 /** Runs junk controls over every account's Inbox and reports the total filed. */
@@ -128,7 +164,7 @@ async function onRunControls(): Promise<void> {
         :value="thresholdPercent"
         :disabled="!settings.enabled"
         @input="onThresholdInput"
-        @change="persist"
+        @change="onThresholdCommit"
       >
       <p class="hint">
         Mail scoring at or above this confidence is moved to Junk.
@@ -153,6 +189,16 @@ async function onRunControls(): Promise<void> {
         @change="onToggleWhitelist"
       >
       <span>Never mark mail from my contacts as junk</span>
+    </label>
+
+    <label class="toggle">
+      <input
+        id="settings-junk-mark-read"
+        type="checkbox"
+        :checked="settings.markReadOnJunk"
+        @change="onToggleMarkRead"
+      >
+      <span>Mark messages as read when they are filed as junk</span>
     </label>
 
     <div class="field">

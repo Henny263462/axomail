@@ -248,6 +248,55 @@ async fn toggle_disables_and_re_enables_push() {
     assert!(push.active_accounts().is_empty());
 }
 
+/// Regression (finding #20): when an account's push target changes, the
+/// replacement task awaits the outgoing connection's teardown before opening its
+/// own — the two IDLE sessions never overlap.
+#[tokio::test]
+async fn restart_awaits_teardown_before_reconnecting() {
+    let world = FakeWorld::new();
+    world.set_idle_supported(true);
+    // A slow teardown widens the window a too-eager reconnect would overlap in.
+    world.set_disconnect_delay(Duration::from_millis(80));
+    // Empty idle script: the connection parks quietly on the interrupt.
+    let (store, account, inbox) = store_with_mailbox().await;
+
+    let engine = Arc::new(SyncEngine::start(
+        store.clone(),
+        FakeFactory::new(Arc::clone(&world)),
+        test_config(),
+    ));
+    let push = PushSupervisor::start(
+        Arc::clone(&engine),
+        store.clone(),
+        push_config(),
+        true,
+        [inbox_target(account, inbox)],
+    );
+
+    // Wait for the first IDLE connection to come up.
+    wait_until(|| world.idle_calls() >= 1).await;
+    assert_eq!(world.max_open_connections(), 1);
+
+    // Change the account's target (a different remote name): its task restarts.
+    let changed = PushTarget {
+        account_id: account,
+        mailbox_id: inbox,
+        remote_name: MailboxName::new("Archive"),
+    };
+    push.update_targets([changed]);
+
+    // The replacement eventually opens its own connection (a second connect) ...
+    wait_until(|| world.connect_calls() >= 2).await;
+    // ... but the old and new IDLE sessions never overlapped.
+    assert_eq!(
+        world.max_open_connections(),
+        1,
+        "a restart must not hold two IDLE sessions at once"
+    );
+
+    push.shutdown();
+}
+
 #[tokio::test]
 async fn starting_disabled_runs_no_tasks() {
     let world = FakeWorld::new();

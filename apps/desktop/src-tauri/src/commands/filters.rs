@@ -5,6 +5,8 @@
 //! which reuses the shared write-back primitives; the manual command triggers an
 //! `OpReplay` per affected account so any queued server ops are pushed.
 
+use std::path::Path;
+
 use axomail_core::{
     AccountId, EmailAddress, IncomingMailProvider, MailError, MailboxId, MailboxRole,
 };
@@ -154,6 +156,7 @@ pub async fn reorder_filters_impl(
 pub async fn run_filters_on_folder_impl<P, F>(
     store: &Store,
     engine: &SyncEngine<P, F>,
+    raw_root: &Path,
     mailbox_id: i64,
 ) -> Result<FilterRunOutcomeDto, MailError>
 where
@@ -166,7 +169,7 @@ where
         .await?
         .ok_or_else(|| config("the folder does not exist"))?;
     let ids = store.messages().list_ids_in_mailbox(mailbox.id).await?;
-    let report = run_filters_on_messages(store, mailbox.account, &ids).await?;
+    let report = run_filters_on_messages(store, mailbox.account, Some(raw_root), &ids).await?;
     for account in &report.replay_accounts {
         engine
             .enqueue_work(WorkRequest::OpReplay {
@@ -305,7 +308,7 @@ pub async fn run_filters_on_folder(
     state: tauri::State<'_, AppState>,
     mailbox_id: i64,
 ) -> Result<FilterRunOutcomeDto, String> {
-    run_filters_on_folder_impl(state.store(), state.engine(), mailbox_id)
+    run_filters_on_folder_impl(state.store(), state.engine(), state.raw_root(), mailbox_id)
         .await
         .map_err(map_command_error)
 }

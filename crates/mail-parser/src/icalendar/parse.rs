@@ -2,9 +2,10 @@
 //!
 //! The full grammar is large; this parses only what an invitation card and an
 //! RSVP reply require: the `METHOD`, and the first `VEVENT`'s `UID`, `SUMMARY`,
-//! `DTSTART`/`DTEND` (with `TZID`), `ORGANIZER`, `ATTENDEE`s, `LOCATION`,
-//! `DESCRIPTION`, `SEQUENCE`, and `STATUS`. Line unfolding, quoted parameters,
-//! and `TEXT`-value escaping are all handled; everything else is ignored.
+//! `DTSTART`/`DTEND` (with `TZID`), `RECURRENCE-ID`, `ORGANIZER`, `ATTENDEE`s,
+//! `LOCATION`, `DESCRIPTION`, `SEQUENCE`, and `STATUS`. Line unfolding, quoted
+//! parameters, and `TEXT`-value escaping are all handled; everything else is
+//! ignored.
 
 use super::{
     CalAddress, CalAttendee, CalDateTime, CalendarEvent, CalendarMethod, Invitation, TzSpec,
@@ -74,8 +75,7 @@ struct EventBuilder {
     attendees: Vec<CalAttendee>,
     dtstart: Option<CalDateTime>,
     dtend: Option<CalDateTime>,
-    dtstart_line: Option<String>,
-    dtend_line: Option<String>,
+    recurrence_id: Option<CalDateTime>,
     location: Option<String>,
     description: Option<String>,
     sequence: i64,
@@ -98,14 +98,9 @@ impl EventBuilder {
             "STATUS" => self.status = Some(line.value.trim().to_ascii_uppercase()),
             "ORGANIZER" => self.organizer = Some(cal_address(line)),
             "ATTENDEE" => self.attendees.push(cal_attendee(line)),
-            "DTSTART" => {
-                self.dtstart = parse_datetime(line);
-                self.dtstart_line = Some(line.raw.clone());
-            }
-            "DTEND" => {
-                self.dtend = parse_datetime(line);
-                self.dtend_line = Some(line.raw.clone());
-            }
+            "DTSTART" => self.dtstart = parse_datetime(line),
+            "DTEND" => self.dtend = parse_datetime(line),
+            "RECURRENCE-ID" => self.recurrence_id = parse_datetime(line),
             _ => {}
         }
     }
@@ -119,8 +114,7 @@ impl EventBuilder {
             attendees: self.attendees,
             dtstart: self.dtstart,
             dtend: self.dtend,
-            dtstart_line: self.dtstart_line,
-            dtend_line: self.dtend_line,
+            recurrence_id: self.recurrence_id,
             location: self.location,
             description: self.description,
             sequence: self.sequence,
@@ -145,14 +139,12 @@ impl CalendarMethod {
     }
 }
 
-/// One parsed content line: the (uppercased) property name, its parameters,
-/// the raw value, and the whole unfolded line (kept so `DTSTART`/`DTEND` can be
-/// echoed verbatim in a reply).
+/// One parsed content line: the (uppercased) property name, its parameters, and
+/// the raw value.
 struct ContentLine {
     name: String,
     params: Vec<(String, String)>,
     value: String,
-    raw: String,
 }
 
 impl ContentLine {
@@ -193,7 +185,6 @@ fn parse_line(line: &str) -> Option<ContentLine> {
         name,
         params,
         value,
-        raw: line.to_owned(),
     })
 }
 

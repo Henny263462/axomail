@@ -15,6 +15,10 @@ use sqlx::SqliteConnection;
 
 use crate::error_map::map_sqlx;
 
+mod training;
+
+pub(crate) use training::{is_pinned, train_on, train_on_message};
+
 /// Setting key: whether inbound scoring and auto-routing run at all.
 pub(crate) const KEY_ENABLED: &str = "junk.enabled";
 /// Setting key: the score at or above which a message is treated as junk.
@@ -23,6 +27,8 @@ pub(crate) const KEY_THRESHOLD: &str = "junk.threshold";
 pub(crate) const KEY_TRUST_HEADERS: &str = "junk.trust_server_headers";
 /// Setting key: never junk a sender in the address book (track 4.1).
 pub(crate) const KEY_WHITELIST_CONTACTS: &str = "junk.whitelist_contacts";
+/// Setting key: mark a message read when it is filed to Junk.
+pub(crate) const KEY_MARK_READ_ON_JUNK: &str = "junk.mark_read_on_junk";
 
 /// Default: opt-in, so a fresh install never auto-files before the user asks.
 pub(crate) const DEFAULT_ENABLED: bool = false;
@@ -32,6 +38,8 @@ pub(crate) const DEFAULT_THRESHOLD: f64 = 0.9;
 pub(crate) const DEFAULT_TRUST_HEADERS: bool = true;
 /// The address-book whitelist is honored by default.
 pub(crate) const DEFAULT_WHITELIST_CONTACTS: bool = true;
+/// Off by default: junking a message does not silently mark it read.
+pub(crate) const DEFAULT_MARK_READ_ON_JUNK: bool = false;
 
 /// User-tunable junk controls, read from the shared `app_settings` table.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -44,6 +52,8 @@ pub struct JunkSettings {
     pub trust_server_headers: bool,
     /// Whether address-book senders are exempt from junking.
     pub whitelist_contacts: bool,
+    /// Whether a message is marked read when it is filed to Junk.
+    pub mark_read_on_junk: bool,
 }
 
 impl Default for JunkSettings {
@@ -53,6 +63,7 @@ impl Default for JunkSettings {
             threshold: DEFAULT_THRESHOLD,
             trust_server_headers: DEFAULT_TRUST_HEADERS,
             whitelist_contacts: DEFAULT_WHITELIST_CONTACTS,
+            mark_read_on_junk: DEFAULT_MARK_READ_ON_JUNK,
         }
     }
 }
@@ -82,11 +93,15 @@ pub(crate) async fn load_settings(conn: &mut SqliteConnection) -> Result<JunkSet
     let whitelist_contacts = setting(conn, KEY_WHITELIST_CONTACTS)
         .await?
         .map_or(DEFAULT_WHITELIST_CONTACTS, |value| value == "true");
+    let mark_read_on_junk = setting(conn, KEY_MARK_READ_ON_JUNK)
+        .await?
+        .map_or(DEFAULT_MARK_READ_ON_JUNK, |value| value == "true");
     Ok(JunkSettings {
         enabled,
         threshold,
         trust_server_headers,
         whitelist_contacts,
+        mark_read_on_junk,
     })
 }
 
@@ -163,6 +178,12 @@ pub(crate) async fn score_on(
 /// scored (never Sent/Drafts). Scoring uses the envelope's subject and sender
 /// (no body is available at envelope-only ingest); the "run junk controls"
 /// command rescs with body + server headers when the raw is present.
+///
+/// **Auto-file gate:** every message is scored and its score persisted
+/// regardless, but candidates are returned only once the corpus has trained on
+/// enough messages in *both* classes ([`Corpus::can_autofile`]). Below that a
+/// tiny or one-sided corpus is far too eager, so nothing is auto-routed — the
+/// user still sees scores, just no automatic filing.
 pub(crate) async fn score_new_inbound(
     conn: &mut SqliteConnection,
     account: AccountId,
@@ -172,12 +193,13 @@ pub(crate) async fn score_new_inbound(
     if !settings.enabled || messages.is_empty() {
         return Ok(Vec::new());
     }
+    let can_autofile = load_corpus(conn, account).await?.can_autofile();
     let mut candidates = Vec::new();
     for &(message_id, envelope) in messages {
         let tokens = message_tokens(envelope.subject.as_deref(), &envelope.from, "");
         let score = score_on(conn, account, &tokens).await?;
         set_score_on(conn, message_id, score).await?;
-        if score < settings.threshold {
+        if !can_autofile || score < settings.threshold {
             continue;
         }
         if settings.whitelist_contacts
@@ -189,45 +211,6 @@ pub(crate) async fn score_new_inbound(
         candidates.push(MessageId::new(message_id));
     }
     Ok(candidates)
-}
-
-/// Trains `account` on one message: bumps the corpus total for the class and,
-/// per distinct token, its ham or spam count (upserts).
-pub(crate) async fn train_on(
-    conn: &mut SqliteConnection,
-    account: AccountId,
-    tokens: &BTreeSet<String>,
-    spam: bool,
-) -> Result<(), MailError> {
-    let (ham_delta, spam_delta): (i64, i64) = if spam { (0, 1) } else { (1, 0) };
-    sqlx::query(
-        "INSERT INTO junk_corpus (account_id, ham_messages, spam_messages) VALUES (?, ?, ?)
-         ON CONFLICT(account_id) DO UPDATE SET
-             ham_messages = ham_messages + excluded.ham_messages,
-             spam_messages = spam_messages + excluded.spam_messages",
-    )
-    .bind(account.value())
-    .bind(ham_delta)
-    .bind(spam_delta)
-    .execute(&mut *conn)
-    .await
-    .map_err(|error| map_sqlx("junk_train_corpus", error))?;
-    for token in tokens {
-        sqlx::query(
-            "INSERT INTO junk_tokens (account_id, token, ham_count, spam_count) VALUES (?, ?, ?, ?)
-             ON CONFLICT(account_id, token) DO UPDATE SET
-                 ham_count = ham_count + excluded.ham_count,
-                 spam_count = spam_count + excluded.spam_count",
-        )
-        .bind(account.value())
-        .bind(token)
-        .bind(ham_delta)
-        .bind(spam_delta)
-        .execute(&mut *conn)
-        .await
-        .map_err(|error| map_sqlx("junk_train_token", error))?;
-    }
-    Ok(())
 }
 
 /// Persists a message's computed junk score (a probability in `0.0..=1.0`).

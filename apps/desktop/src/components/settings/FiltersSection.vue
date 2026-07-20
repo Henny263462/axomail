@@ -85,13 +85,21 @@ async function onSave(input: FilterInput): Promise<void> {
   }
 }
 
-async function toggle(filter: FilterDto): Promise<void> {
-  if (!guardTauri()) return;
+async function toggle(filter: FilterDto, event: Event): Promise<void> {
+  const target = event.target as HTMLInputElement;
+  const next = !filter.enabled;
+  if (!guardTauri()) {
+    target.checked = filter.enabled; // reject the native toggle (browser preview)
+    return;
+  }
   try {
-    await setFilterEnabled(filter.id, !filter.enabled);
-    filter.enabled = !filter.enabled;
+    await setFilterEnabled(filter.id, next);
+    filter.enabled = next;
     props.context.reportError("");
   } catch (error) {
+    // Persist failed: the native checkbox flipped but the model did not, so
+    // snap the control back to the unchanged model rather than leaving it lying.
+    target.checked = filter.enabled;
     props.context.reportError(messageFrom(error));
   }
 }
@@ -109,32 +117,44 @@ async function remove(filter: FilterDto): Promise<void> {
 
 async function move(index: number, delta: number): Promise<void> {
   const next = index + delta;
-  const reordered = [...filters.value];
-  const current = reordered[index];
-  const other = reordered[next];
+  const previous = filters.value;
+  const current = previous[index];
+  const other = previous[next];
   if (!current || !other) return;
+  const reordered = [...previous];
   reordered[index] = other;
   reordered[next] = current;
   filters.value = reordered;
-  if (!guardTauri()) return;
+  if (!guardTauri()) {
+    filters.value = previous; // no persistence in the browser preview
+    return;
+  }
   try {
     await reorderFilters(
       scope.value,
       reordered.map((f) => f.id),
     );
+    props.context.reportError("");
   } catch (error) {
+    filters.value = previous; // revert the optimistic reorder on failure
     props.context.reportError(messageFrom(error));
   }
 }
 
-async function onArrivalToggle(): Promise<void> {
-  if (scope.value === null || arrivalEnabled.value === null || !guardTauri()) return;
+async function onArrivalToggle(event: Event): Promise<void> {
+  if (scope.value === null || arrivalEnabled.value === null) return;
+  const target = event.target as HTMLInputElement;
   const next = !arrivalEnabled.value;
+  if (!guardTauri()) {
+    target.checked = arrivalEnabled.value; // reject the native toggle
+    return;
+  }
   try {
     await setAccountFilterArrival(scope.value, next);
     arrivalEnabled.value = next;
     props.context.reportError("");
   } catch (error) {
+    target.checked = arrivalEnabled.value; // revert the checkbox on failure
     props.context.reportError(messageFrom(error));
   }
 }
@@ -189,7 +209,7 @@ async function runNow(): Promise<void> {
         type="checkbox"
         :checked="arrivalEnabled"
         aria-label="Run filters on new mail"
-        @change="onArrivalToggle"
+        @change="onArrivalToggle($event)"
       >
       <span>Run these filters automatically on newly-arrived mail</span>
     </label>
@@ -214,7 +234,7 @@ async function runNow(): Promise<void> {
           type="checkbox"
           :checked="filter.enabled"
           :aria-label="`Enable ${filter.name}`"
-          @change="toggle(filter)"
+          @change="toggle(filter, $event)"
         >
         <span class="name">{{ filter.name }}</span>
         <button
