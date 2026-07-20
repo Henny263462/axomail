@@ -85,6 +85,10 @@ pub(super) fn prepare_rsvp(
         // The reply rides as a text/calendar part through the shared attachment
         // path (base64 in, one multipart/mixed out).
         forwarded_attachments: vec![calendar],
+        // An iMIP reply is never PGP-protected.
+        sign: false,
+        encrypt: false,
+        pgp_passphrase: None,
     };
 
     let invite = NewInvite {

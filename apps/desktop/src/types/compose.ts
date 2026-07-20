@@ -46,6 +46,18 @@ export interface ComposeInput {
    * {@link attachments} into one `multipart/mixed`; immediate-send only.
    */
   forwardedAttachments?: ComposeAttachmentDto[];
+  /**
+   * OpenPGP-sign this message (Track 5.1). Immediate-send only; a deferred send
+   * that requests it is rejected by the backend.
+   */
+  sign?: boolean;
+  /** OpenPGP-encrypt this message to its recipients. Immediate-send only. */
+  encrypt?: boolean;
+  /**
+   * Passphrase to unlock the signing key for this send only. Never persisted or
+   * stored beyond the keychain-held secret key.
+   */
+  pgpPassphrase?: string | null;
 }
 
 /**

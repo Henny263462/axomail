@@ -22,5 +22,42 @@
     "deHint": "Always use German.",
     "statusSaved": "Language updated.",
     "statusUnavailable": "Changing the language needs the desktop app; it is unavailable in the browser preview."
+  },
+  "pgp": {
+    "title": "OpenPGP encryption",
+    "hint": "Sign and encrypt mail with OpenPGP. Your secret keys are held in the operating-system keychain, never in the database.",
+    "ownKeys": "Your keys",
+    "recipientKeys": "Recipient keys",
+    "noOwnKeys": "No keys yet. Generate one to start signing and receiving encrypted mail.",
+    "noRecipientKeys": "No recipient keys yet. Import a contact's public key to encrypt to them.",
+    "generate": "Generate key",
+    "importSecret": "Import secret key",
+    "importRecipient": "Import recipient key",
+    "userIdLabel": "Name and email (e.g. Alice <alice{'@'}example.org>)",
+    "passphraseLabel": "Passphrase (optional)",
+    "emailLabel": "Recipient email",
+    "armorLabel": "Armored key block",
+    "default": "Default",
+    "makeDefault": "Make default",
+    "exportPublic": "Export public",
+    "exportSecret": "Export secret",
+    "delete": "Delete",
+    "passphraseProtected": "Passphrase-protected",
+    "sign": "Sign",
+    "encrypt": "Encrypt",
+    "signHint": "Add an OpenPGP signature recipients can verify.",
+    "encryptHint": "Encrypt so only the recipients can read it.",
+    "encryptUnavailable": "Encryption needs a public key for every recipient. Missing: {missing}",
+    "signPassphrase": "Signing key passphrase",
+    "badge": {
+      "signedValid": "Signature valid",
+      "signedInvalid": "Signature invalid",
+      "signedUnknown": "Signed, signer key unknown",
+      "encrypted": "Encrypted",
+      "decrypted": "Decrypted",
+      "needsPassphrase": "Enter your key passphrase to decrypt",
+      "decrypt": "Decrypt",
+      "failed": "Could not decrypt this message"
+    }
   }
 }

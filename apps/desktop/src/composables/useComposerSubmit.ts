@@ -37,6 +37,12 @@ export interface ComposerSubmitContext {
   /** True for a reply/forward whose body already carries a placed signature. */
   hasPrefill: Ref<boolean>;
   currentSignatureText: ComputedRef<string>;
+  /** OpenPGP: sign this message (Track 5.1). */
+  sign: Ref<boolean>;
+  /** OpenPGP: encrypt this message to its recipients. */
+  encrypt: Ref<boolean>;
+  /** Passphrase for a protected signing key; sent, never persisted. */
+  pgpPassphrase: Ref<string>;
   sending: Ref<boolean>;
   savingDraft: Ref<boolean>;
   finished: Ref<boolean>;
@@ -109,6 +115,17 @@ export function useComposerSubmit(ctx: ComposerSubmitContext) {
     }
     if (ctx.forwardedAttachments.value.length > 0) {
       input.forwardedAttachments = ctx.forwardedAttachments.value;
+    }
+    // OpenPGP protection (Track 5.1). Only carried when requested; the backend
+    // applies it on the immediate-send path and rejects a deferred PGP send.
+    if (ctx.sign.value) {
+      input.sign = true;
+      if (ctx.pgpPassphrase.value.length > 0) {
+        input.pgpPassphrase = ctx.pgpPassphrase.value;
+      }
+    }
+    if (ctx.encrypt.value) {
+      input.encrypt = true;
     }
     return input;
   }

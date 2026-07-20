@@ -22,5 +22,42 @@
     "deHint": "Immer Deutsch verwenden.",
     "statusSaved": "Sprache aktualisiert.",
     "statusUnavailable": "Zum Ändern der Sprache wird die Desktop-App benötigt; in der Browservorschau ist sie nicht verfügbar."
+  },
+  "pgp": {
+    "title": "OpenPGP-Verschlüsselung",
+    "hint": "E-Mails mit OpenPGP signieren und verschlüsseln. Ihre geheimen Schlüssel liegen im Schlüsselbund des Betriebssystems, nie in der Datenbank.",
+    "ownKeys": "Ihre Schlüssel",
+    "recipientKeys": "Empfängerschlüssel",
+    "noOwnKeys": "Noch keine Schlüssel. Erzeugen Sie einen, um zu signieren und verschlüsselte E-Mails zu empfangen.",
+    "noRecipientKeys": "Noch keine Empfängerschlüssel. Importieren Sie den öffentlichen Schlüssel eines Kontakts, um an ihn zu verschlüsseln.",
+    "generate": "Schlüssel erzeugen",
+    "importSecret": "Geheimen Schlüssel importieren",
+    "importRecipient": "Empfängerschlüssel importieren",
+    "userIdLabel": "Name und E-Mail (z. B. Alice <alice{'@'}example.org>)",
+    "passphraseLabel": "Passphrase (optional)",
+    "emailLabel": "E-Mail des Empfängers",
+    "armorLabel": "Schlüsselblock (ASCII-Armor)",
+    "default": "Standard",
+    "makeDefault": "Als Standard festlegen",
+    "exportPublic": "Öffentlich exportieren",
+    "exportSecret": "Geheim exportieren",
+    "delete": "Löschen",
+    "passphraseProtected": "Passphrase-geschützt",
+    "sign": "Signieren",
+    "encrypt": "Verschlüsseln",
+    "signHint": "Eine OpenPGP-Signatur hinzufügen, die Empfänger prüfen können.",
+    "encryptHint": "So verschlüsseln, dass nur die Empfänger es lesen können.",
+    "encryptUnavailable": "Für die Verschlüsselung wird ein öffentlicher Schlüssel für jeden Empfänger benötigt. Fehlt: {missing}",
+    "signPassphrase": "Passphrase des Signaturschlüssels",
+    "badge": {
+      "signedValid": "Signatur gültig",
+      "signedInvalid": "Signatur ungültig",
+      "signedUnknown": "Signiert, Schlüssel des Absenders unbekannt",
+      "encrypted": "Verschlüsselt",
+      "decrypted": "Entschlüsselt",
+      "needsPassphrase": "Passphrase eingeben, um zu entschlüsseln",
+      "decrypt": "Entschlüsseln",
+      "failed": "Diese Nachricht konnte nicht entschlüsselt werden"
+    }
   }
 }

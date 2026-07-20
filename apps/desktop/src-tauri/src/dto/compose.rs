@@ -27,7 +27,7 @@ pub struct ComposeAttachmentDto {
 ///
 /// Recipients are plain address strings; the send path parses and validates
 /// them into [`axomail_core::EmailAddress`] values before any network I/O.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[derive(Clone, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ComposeInput {
     /// Account the message is sent from.
@@ -82,6 +82,48 @@ pub struct ComposeInput {
     /// immediate-send path.
     #[serde(default)]
     pub forwarded_attachments: Vec<ComposeAttachmentDto>,
+    /// OpenPGP-sign this message (Track 5.1). Applied only on the immediate-send
+    /// path: like attachments, PGP protection cannot survive the text-only
+    /// outbox row, so a deferred or offline send that requests it is rejected.
+    #[serde(default)]
+    pub sign: bool,
+    /// OpenPGP-encrypt this message to its recipients. Requires a known public
+    /// key for every recipient; the send fails up front otherwise.
+    #[serde(default)]
+    pub encrypt: bool,
+    /// Passphrase to unlock the signing key, entered by the user for this send
+    /// only. Never persisted or stored beyond the keychain-held secret key
+    /// (ADR-0015). Its `Debug` is redacted below so it cannot leak in a trace.
+    #[serde(default)]
+    pub pgp_passphrase: Option<String>,
+}
+
+impl std::fmt::Debug for ComposeInput {
+    /// Redacts the PGP passphrase (ADR-0003); the rest is non-secret metadata
+    /// already visible in the composer.
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ComposeInput")
+            .field("account_id", &self.account_id)
+            .field("identity_id", &self.identity_id)
+            .field("to", &self.to)
+            .field("cc", &self.cc)
+            .field("bcc", &self.bcc)
+            .field("subject", &self.subject)
+            .field("text_body", &self.text_body)
+            .field("html_body", &self.html_body)
+            .field("attachments", &self.attachments)
+            .field("scheduled_at_unix", &self.scheduled_at_unix)
+            .field("in_reply_to", &self.in_reply_to)
+            .field("references", &self.references)
+            .field("forwarded_attachments", &self.forwarded_attachments)
+            .field("sign", &self.sign)
+            .field("encrypt", &self.encrypt)
+            .field(
+                "pgp_passphrase",
+                &self.pgp_passphrase.as_ref().map(|_| "<redacted>"),
+            )
+            .finish()
+    }
 }
 
 /// Metadata for one candidate attachment, returned by `stat_attachments` so the

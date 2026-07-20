@@ -98,6 +98,9 @@ pub fn compose_input(account_id: i64, to: &[&str], subject: &str) -> ComposeInpu
         in_reply_to: None,
         references: Vec::new(),
         forwarded_attachments: Vec::new(),
+        sign: false,
+        encrypt: false,
+        pgp_passphrase: None,
     }
 }
 

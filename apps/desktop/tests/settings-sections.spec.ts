@@ -116,6 +116,7 @@ describe("settings section registry", () => {
       "contacts",
       "filters",
       "junk",
+      "pgp",
       "shortcuts",
       "accounts",
     ]);

@@ -255,4 +255,10 @@ impl Store {
     pub fn contacts(&self) -> ContactRepo<'_> {
         ContactRepo::new(&self.pool)
     }
+
+    /// The OpenPGP key-metadata repository (Track 5.1).
+    #[must_use]
+    pub fn pgp_keys(&self) -> crate::pgp_keys::PgpKeyRepo<'_> {
+        crate::pgp_keys::PgpKeyRepo::new(&self.pool)
+    }
 }
