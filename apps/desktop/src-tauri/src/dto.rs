@@ -19,6 +19,7 @@ use axomail_core::MailError;
 mod account;
 mod actions;
 mod attachments;
+mod autoconfig;
 mod compose;
 mod connection;
 mod contact;
@@ -48,6 +49,7 @@ pub use account::{
 };
 pub use actions::{CompactOutcomeDto, MessageMoveDto, MoveOutcomeDto};
 pub use attachments::SavedAttachmentDto;
+pub use autoconfig::{AutoconfigIncomingDto, AutoconfigOutgoingDto, AutoconfigResultDto};
 pub use compose::{
     AttachmentCandidateDto, ComposeAttachmentDto, ComposeInput, DraftDto, OutboxItemDto,
     SendOutcomeDto,

@@ -139,6 +139,42 @@ export interface ServerEndpointInput {
   security: TransportSecurity;
 }
 
+/** Which discovery source produced an {@link AutoconfigResult}. */
+export type AutoconfigSource = "autoconfig" | "ispdb" | "guess";
+
+/** Suggested incoming (IMAP/POP3) server settings from auto-configuration. */
+export interface AutoconfigIncoming {
+  protocol: IncomingProtocol;
+  host: string;
+  port: number;
+  security: TransportSecurity;
+  username: string;
+}
+
+/** Suggested outgoing (SMTP) server settings from auto-configuration. */
+export interface AutoconfigOutgoing {
+  host: string;
+  port: number;
+  security: TransportSecurity;
+  username: string;
+}
+
+/**
+ * Outcome of the `discover_autoconfig` command. A struct (not a bare optional)
+ * so `found: false` (searched, nothing found) is distinct from the `null` the
+ * api layer returns in the browser preview. Never carries a secret: the
+ * suggestion is reviewed, tested, and editable before an account is created.
+ */
+export interface AutoconfigResult {
+  found: boolean;
+  source: AutoconfigSource | null;
+  /** Whether the provider prefers OAuth2 (a hint for the auth-method field). */
+  oauth: boolean;
+  displayName: string | null;
+  incoming: AutoconfigIncoming | null;
+  outgoing: AutoconfigOutgoing | null;
+}
+
 /**
  * Payload for the `update_account` command. Mirrors the Rust
  * `UpdateAccountInput`: it can change only the display name and each

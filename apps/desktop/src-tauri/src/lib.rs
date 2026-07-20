@@ -5,6 +5,7 @@
 //! crate stays a thin composition layer that wires storage, the keychain,
 //! the protocol adapters, and the sync engine together (ADR-0004).
 
+pub mod autoconfig;
 pub mod commands;
 pub mod composition;
 pub mod dto;
@@ -110,6 +111,7 @@ pub fn run() {
             commands::accounts::delete_account,
             commands::connection::test_connection,
             commands::connection::test_account_connection,
+            commands::autoconfig::discover_autoconfig,
             commands::oauth::oauth_authorize,
             commands::messages::list_messages,
             commands::writeback::mark_message_seen,

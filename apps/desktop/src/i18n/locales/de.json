@@ -11,6 +11,19 @@
       "darkHint": "Immer das dunkle Design verwenden."
     }
   },
+  "setup": {
+    "autoconfig": {
+      "action": "Einstellungen automatisch suchen",
+      "searching": "Einstellungen werden gesucht…",
+      "foundVia": "Einstellungen über {source} gefunden. Bitte unten prüfen.",
+      "sourceAutoconfig": "den Mailanbieter",
+      "sourceIspdb": "die Mozilla-Anbieterdatenbank",
+      "sourceGuess": "eine Schätzung für gängige Anbieter",
+      "notFound": "Keine Einstellungen automatisch gefunden. Bitte unten eingeben.",
+      "unavailable": "Die automatische Suche benötigt die Desktop-App. Bitte unten eingeben.",
+      "needEmail": "Bitte zuerst eine E-Mail-Adresse eingeben."
+    }
+  },
   "language": {
     "title": "Sprache",
     "hint": "Wählen Sie die Sprache von axomail. „Systemstandard“ folgt der Sprache Ihres Betriebssystems.",

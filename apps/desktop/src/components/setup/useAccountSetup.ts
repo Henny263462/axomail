@@ -21,6 +21,7 @@ import type {
   OAuthProvider,
 } from "../../types/mail";
 import type { ServerDraft } from "./draft";
+import { useAutoconfigLookup } from "./useAutoconfigLookup";
 
 /** Shown when a backend action is attempted in the browser preview. */
 const PREVIEW_MESSAGE =
@@ -63,6 +64,11 @@ export function useAccountSetup({ onCreated }: Callbacks) {
   const testing = ref(false);
   const testResult = ref<ConnectionTestResult | null>(null);
   const testMessage = ref("");
+
+  // The "find settings automatically" step fills the fields above; kept in its
+  // own composable so discovery stays separate from account creation.
+  const { autoconfigStatus, autoconfigSource, onFindSettings } =
+    useAutoconfigLookup({ email, incoming, outgoing, mechanism, provider });
 
   // Set once the OAuth2 account row exists, so a retry after a declined or
   // timed-out sign-in reuses the same account rather than creating another.
@@ -301,7 +307,10 @@ export function useAccountSetup({ onCreated }: Callbacks) {
     testing,
     testResult,
     testMessage,
+    autoconfigStatus,
+    autoconfigSource,
     isOAuth,
+    onFindSettings,
     onTest,
     onSubmit,
   };
