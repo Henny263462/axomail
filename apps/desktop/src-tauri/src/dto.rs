@@ -36,6 +36,7 @@ mod offline;
 mod pgp;
 mod push_event;
 mod reply;
+mod saved_search;
 mod search;
 mod settings;
 mod sync_event;
@@ -75,6 +76,10 @@ pub use offline::OfflinePolicyDto;
 pub use pgp::{PgpComposeStatusDto, PgpKeyDto, PgpMessageStatusDto, PgpRecipientKeyDto};
 pub use push_event::PushStatusDto;
 pub use reply::{ComposerPrefillDto, PrefillSourceDto, ReplyMode, SourceMark};
+pub use saved_search::{
+    SavedSearchDto, SavedSearchInputDto, SearchConditionDto, SearchQueryDto, SearchScopeDto,
+    SearchScopeKind,
+};
 pub use search::SearchResultDto;
 pub use settings::{LanguagePreference, Pop3DeletePolicyDto, SettingsDto, ThemePreference};
 pub use sync_event::SyncEventDto;

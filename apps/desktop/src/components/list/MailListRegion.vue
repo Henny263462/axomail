@@ -9,6 +9,7 @@
  * detail exactly as it does for a normal mailbox.
  */
 import { computed, ref, watch } from "vue";
+import { useI18n } from "vue-i18n";
 
 import type { BulkAction } from "../../composables/useMailboxActions";
 import { useSearch } from "../../composables/useSearch";
@@ -52,8 +53,10 @@ const emit = defineEmits<{
   selectionChange: [messageIds: number[]];
   bulkAction: [action: BulkAction, ids: number[]];
   "update:threaded": [value: boolean];
+  advancedSearch: [];
 }>();
 
+const { t } = useI18n({ useScope: "global" });
 const { query, results, active, searching, clear } = useSearch();
 
 // A stale result list must never hide a freshly selected mailbox or the
@@ -96,6 +99,15 @@ const selectedMailboxName = computed(() => {
         v-model="query"
         @escape="clear"
       />
+      <button
+        type="button"
+        class="advanced"
+        :aria-label="t('search.advancedButtonTitle')"
+        :title="t('search.advancedButtonTitle')"
+        @click="emit('advancedSearch')"
+      >
+        {{ t("search.advancedButton") }}
+      </button>
       <button
         v-if="showFolderButton"
         type="button"
@@ -182,6 +194,7 @@ const selectedMailboxName = computed(() => {
   min-width: 0;
 }
 
+.advanced,
 .folder-props {
   flex: none;
   font-size: var(--text-xs);
@@ -192,6 +205,7 @@ const selectedMailboxName = computed(() => {
   transition: background var(--transition-fast);
 }
 
+.advanced:hover,
 .folder-props:hover {
   background: var(--color-bg-hover);
   color: var(--color-text);

@@ -59,5 +59,77 @@
       "decrypt": "Decrypt",
       "failed": "Could not decrypt this message"
     }
+  },
+  "search": {
+    "advancedButton": "Advanced",
+    "advancedButtonTitle": "Advanced search",
+    "command": "Advanced search",
+    "dialog": {
+      "title": "Advanced search",
+      "match": "Match",
+      "matchAll": "all conditions",
+      "matchAny": "any condition",
+      "conditions": "Conditions",
+      "addCondition": "+ Add condition",
+      "removeCondition": "Remove condition",
+      "conditionField": "Condition field",
+      "conditionOperator": "Condition operator",
+      "conditionValue": "Condition value",
+      "yes": "yes",
+      "no": "no",
+      "scope": "Search in",
+      "chooseFolder": "Choose folder…",
+      "sort": "Sort by",
+      "search": "Search",
+      "name": "Name",
+      "namePlaceholder": "e.g. Unread from Ada",
+      "save": "Save this search",
+      "update": "Update saved search",
+      "close": "Close"
+    },
+    "field": {
+      "from": "From",
+      "to": "To",
+      "cc": "Cc",
+      "subject": "Subject",
+      "body": "Body",
+      "date": "Date",
+      "tag": "Tag",
+      "hasAttachment": "Has attachment",
+      "folder": "Folder",
+      "account": "Account",
+      "read": "Read",
+      "starred": "Starred"
+    },
+    "op": {
+      "contains": "contains",
+      "notContains": "does not contain",
+      "is": "is",
+      "isNot": "is not",
+      "startsWith": "starts with",
+      "endsWith": "ends with",
+      "matchesRegex": "matches regex",
+      "greaterThan": "after",
+      "lessThan": "before"
+    },
+    "scope": {
+      "allFolders": "All folders",
+      "folder": "This folder",
+      "folderRecursive": "This folder and subfolders"
+    },
+    "sort": {
+      "dateDesc": "Newest first",
+      "dateAsc": "Oldest first",
+      "subjectAsc": "Subject A–Z",
+      "subjectDesc": "Subject Z–A"
+    },
+    "results": {
+      "title": "Search results"
+    },
+    "saved": {
+      "group": "Saved searches",
+      "edit": "Edit saved search",
+      "delete": "Delete saved search"
+    }
   }
 }

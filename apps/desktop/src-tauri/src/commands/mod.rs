@@ -29,6 +29,7 @@ pub mod outbox_schedule;
 pub mod pgp;
 pub mod remote_content;
 pub mod reply;
+pub mod saved_search;
 pub mod search;
 pub mod settings;
 pub mod sync;

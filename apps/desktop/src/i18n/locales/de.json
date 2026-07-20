@@ -59,5 +59,77 @@
       "decrypt": "Entschlüsseln",
       "failed": "Diese Nachricht konnte nicht entschlüsselt werden"
     }
+  },
+  "search": {
+    "advancedButton": "Erweitert",
+    "advancedButtonTitle": "Erweiterte Suche",
+    "command": "Erweiterte Suche",
+    "dialog": {
+      "title": "Erweiterte Suche",
+      "match": "Treffer",
+      "matchAll": "alle Bedingungen",
+      "matchAny": "beliebige Bedingung",
+      "conditions": "Bedingungen",
+      "addCondition": "+ Bedingung hinzufügen",
+      "removeCondition": "Bedingung entfernen",
+      "conditionField": "Bedingungsfeld",
+      "conditionOperator": "Bedingungsoperator",
+      "conditionValue": "Bedingungswert",
+      "yes": "ja",
+      "no": "nein",
+      "scope": "Suchen in",
+      "chooseFolder": "Ordner wählen …",
+      "sort": "Sortieren nach",
+      "search": "Suchen",
+      "name": "Name",
+      "namePlaceholder": "z. B. Ungelesen von Ada",
+      "save": "Diese Suche speichern",
+      "update": "Gespeicherte Suche aktualisieren",
+      "close": "Schließen"
+    },
+    "field": {
+      "from": "Von",
+      "to": "An",
+      "cc": "Kopie",
+      "subject": "Betreff",
+      "body": "Text",
+      "date": "Datum",
+      "tag": "Etikett",
+      "hasAttachment": "Hat Anhang",
+      "folder": "Ordner",
+      "account": "Konto",
+      "read": "Gelesen",
+      "starred": "Markiert"
+    },
+    "op": {
+      "contains": "enthält",
+      "notContains": "enthält nicht",
+      "is": "ist",
+      "isNot": "ist nicht",
+      "startsWith": "beginnt mit",
+      "endsWith": "endet mit",
+      "matchesRegex": "entspricht Regex",
+      "greaterThan": "nach",
+      "lessThan": "vor"
+    },
+    "scope": {
+      "allFolders": "Alle Ordner",
+      "folder": "Dieser Ordner",
+      "folderRecursive": "Dieser Ordner und Unterordner"
+    },
+    "sort": {
+      "dateDesc": "Neueste zuerst",
+      "dateAsc": "Älteste zuerst",
+      "subjectAsc": "Betreff A–Z",
+      "subjectDesc": "Betreff Z–A"
+    },
+    "results": {
+      "title": "Suchergebnisse"
+    },
+    "saved": {
+      "group": "Gespeicherte Suchen",
+      "edit": "Gespeicherte Suche bearbeiten",
+      "delete": "Gespeicherte Suche löschen"
+    }
   }
 }
