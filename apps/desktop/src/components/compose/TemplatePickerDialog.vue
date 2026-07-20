@@ -5,7 +5,7 @@
  * from the composer's "Save as template". Opened by the `compose.newFromTemplate`
  * command (command palette) via the dialog host.
  */
-import { onMounted, ref } from "vue";
+import { onBeforeUnmount, onMounted, ref } from "vue";
 import { useI18n } from "vue-i18n";
 
 import { deleteTemplate, listTemplates } from "../../api/templates";
@@ -25,9 +25,23 @@ const loaded = ref(false);
 const unavailable = ref(false);
 
 const root = ref<HTMLElement | null>(null);
+/** The control that had focus before the dialog opened, restored on close. */
+let invoker: HTMLElement | null = null;
 const { onKeydown } = useFocusTrap(root, close);
 
-onMounted(load);
+onMounted(() => {
+  // Move focus into the modal so keyboard users are not left behind it, then
+  // load the list.
+  invoker = document.activeElement as HTMLElement | null;
+  root.value
+    ?.querySelector<HTMLElement>(
+      "button, [href], input, select, textarea, [tabindex]",
+    )
+    ?.focus();
+  void load();
+});
+// Return focus to the invoking control when the dialog closes.
+onBeforeUnmount(() => invoker?.focus());
 
 async function load(): Promise<void> {
   if (!isTauri()) {

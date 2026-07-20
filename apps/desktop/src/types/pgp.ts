@@ -34,8 +34,19 @@ export interface PgpComposeStatusDto {
   missingRecipients: string[];
 }
 
-/** Signature verification outcome label for a received message. */
-export type PgpSignatureStatus = "none" | "valid" | "invalid" | "unknownKey";
+/**
+ * Signature verification outcome label for a received message.
+ *
+ * `signerMismatch` is the guarded outcome the backend emits when a signature is
+ * cryptographically valid but made with a key that is NOT the sender's — it must
+ * never be shown as a plain green "valid" badge (see {@link PgpMessageStatusDto.signer}).
+ */
+export type PgpSignatureStatus =
+  | "none"
+  | "valid"
+  | "invalid"
+  | "unknownKey"
+  | "signerMismatch";
 
 /** The OpenPGP security status of a received message, for the reading pane. */
 export interface PgpMessageStatusDto {

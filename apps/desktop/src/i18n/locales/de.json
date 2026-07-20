@@ -1,5 +1,24 @@
 {
   "settings": {
+    "sections": {
+      "notifications": "Benachrichtigungen",
+      "syncInterval": "Synchronisierung",
+      "push": "Push",
+      "autoRead": "Lesen",
+      "receipts": "Lesebestätigungen",
+      "appearance": "Darstellung",
+      "language": "Sprache",
+      "pop3Delete": "POP3-Serverlöschung",
+      "emptyTrash": "Papierkorb beim Beenden leeren",
+      "identities": "Identitäten",
+      "tags": "Schlagwörter",
+      "contacts": "Kontakte",
+      "filters": "Filter",
+      "junk": "Junk",
+      "pgp": "OpenPGP-Verschlüsselung",
+      "shortcuts": "Tastenkürzel",
+      "accounts": "Konten"
+    },
     "appearance": {
       "title": "Darstellung",
       "hint": "Wählen Sie, wie axomail aussieht. „System“ folgt der Hell-/Dunkel-Einstellung Ihres Betriebssystems.",
@@ -62,10 +81,13 @@
     "encryptHint": "So verschlüsseln, dass nur die Empfänger es lesen können.",
     "encryptUnavailable": "Für die Verschlüsselung wird ein öffentlicher Schlüssel für jeden Empfänger benötigt. Fehlt: {missing}",
     "signPassphrase": "Passphrase des Signaturschlüssels",
+    "exportedAria": "Exportierter Schlüssel",
     "badge": {
       "signedValid": "Signatur gültig",
+      "signedValidBy": "Signatur gültig — {signer}",
       "signedInvalid": "Signatur ungültig",
       "signedUnknown": "Signiert, Schlüssel des Absenders unbekannt",
+      "signedMismatch": "Signiert, aber nicht vom Absender",
       "encrypted": "Verschlüsselt",
       "decrypted": "Entschlüsselt",
       "needsPassphrase": "Passphrase eingeben, um zu entschlüsseln",
@@ -98,7 +120,8 @@
       "namePlaceholder": "z. B. Ungelesen von Ada",
       "save": "Diese Suche speichern",
       "update": "Gespeicherte Suche aktualisieren",
-      "close": "Schließen"
+      "close": "Schließen",
+      "unavailable": "Die erweiterte Suche benötigt die Desktop-App; in der Browservorschau ist sie nicht verfügbar."
     },
     "field": {
       "from": "Von",

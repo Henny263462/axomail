@@ -29,6 +29,11 @@ const settings = ref<ReceiptSettings>({
 });
 const loaded = ref(false);
 
+// Monotonic guard: optimistic saves can overlap, so only the latest save's
+// outcome may touch `settings`. A stale save's failure must not revert a newer
+// value that already applied (last-write-wins by token).
+let saveToken = 0;
+
 const policyOptions: { value: ReceiptPolicy; labelKey: string }[] = [
   { value: "never", labelKey: "receipts.settings.policyNever" },
   { value: "ask", labelKey: "receipts.settings.policyAsk" },
@@ -51,12 +56,18 @@ async function persist(
     props.context.reportError(t("receipts.settings.statusUnavailable"));
     return;
   }
+  const token = ++saveToken;
   settings.value = next;
   try {
     await setReceiptSettings(next);
+    // A newer save superseded this one: leave its applied value in place.
+    if (token !== saveToken) return;
     props.context.reportError("");
     props.context.reportStatus(t("receipts.settings.statusSaved"));
   } catch (error) {
+    // Only the latest save may revert; a stale failure must not clobber a newer
+    // value that already applied successfully.
+    if (token !== saveToken) return;
     settings.value = previous;
     props.context.reportError(messageFrom(error));
   }

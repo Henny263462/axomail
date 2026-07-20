@@ -70,15 +70,23 @@ async function run(action: () => Promise<void>): Promise<void> {
 
 function onGenerate(): Promise<void> {
   return run(async () => {
-    const created = await generateKey(
-      newUserId.value.trim(),
-      newPassphrase.value.length > 0 ? newPassphrase.value : null,
-    );
-    if (created === null) return;
-    newUserId.value = "";
+    // Read the passphrase transiently and wipe it from reactive state before
+    // any await resolves, so it does not linger after the key is generated
+    // (success or failure).
+    const passphrase = newPassphrase.value;
     newPassphrase.value = "";
-    props.context.reportStatus(t("pgp.generate"));
-    await refresh();
+    try {
+      const created = await generateKey(
+        newUserId.value.trim(),
+        passphrase.length > 0 ? passphrase : null,
+      );
+      if (created === null) return;
+      newUserId.value = "";
+      props.context.reportStatus(t("pgp.generate"));
+      await refresh();
+    } finally {
+      newPassphrase.value = "";
+    }
   });
 }
 
@@ -309,7 +317,7 @@ function onDeleteRecipient(id: number): Promise<void> {
       readonly
       rows="4"
       :value="exported"
-      aria-label="exported key"
+      :aria-label="t('pgp.exportedAria')"
     />
   </div>
 </template>

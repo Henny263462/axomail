@@ -2,6 +2,7 @@ import { flushPromises, mount } from "@vue/test-utils";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
+  exportPublicKey,
   generateKey,
   listOwnKeys,
   listRecipientKeys,
@@ -26,6 +27,7 @@ vi.mock("../src/api/pgp", () => ({
 const listOwnMock = vi.mocked(listOwnKeys);
 const listRecipientsMock = vi.mocked(listRecipientKeys);
 const generateMock = vi.mocked(generateKey);
+const exportMock = vi.mocked(exportPublicKey);
 
 const context = {
   accounts: [],
@@ -64,6 +66,7 @@ describe("PgpKeysSection", () => {
     listOwnMock.mockReset();
     listRecipientsMock.mockReset();
     generateMock.mockReset();
+    exportMock.mockReset();
     listRecipientsMock.mockResolvedValue([]);
   });
 
@@ -100,5 +103,50 @@ describe("PgpKeysSection", () => {
     await generateButton?.trigger("click");
     await flushPromises();
     expect(generateMock).toHaveBeenCalledWith("Alice <alice@example.org>", null);
+  });
+
+  // Finding 7: the exported-key textarea's aria-label is localized, not the
+  // former hardcoded lowercase "exported key".
+  it("shows an exported key in a localized, labelled textarea", async () => {
+    listOwnMock.mockResolvedValue([key({})]);
+    exportMock.mockResolvedValue(
+      "-----BEGIN PGP PUBLIC KEY BLOCK-----\nabc\n-----END PGP PUBLIC KEY BLOCK-----",
+    );
+    const wrapper = mount(PgpKeysSection, { props: { context } });
+    await flushPromises();
+
+    const exportButton = wrapper
+      .findAll("button")
+      .find((b) => b.text() === "Export public");
+    await exportButton?.trigger("click");
+    await flushPromises();
+
+    const area = wrapper.find('textarea[aria-label="Exported key"]');
+    expect(area.exists()).toBe(true);
+    expect((area.element as HTMLTextAreaElement).value).toContain(
+      "BEGIN PGP PUBLIC KEY",
+    );
+  });
+
+  // Finding 2: the generation passphrase is not retained even when the attempt
+  // fails (it never lingers in reactive state after the operation).
+  it("clears the passphrase field even when key generation fails", async () => {
+    listOwnMock.mockResolvedValue([]);
+    generateMock.mockRejectedValue(new Error("boom"));
+    const wrapper = mount(PgpKeysSection, { props: { context } });
+    await flushPromises();
+
+    await wrapper.find("input[type=text]").setValue("Alice <alice@example.org>");
+    await wrapper.find("input[type=password]").setValue("s3cret");
+    const generateButton = wrapper
+      .findAll("button")
+      .find((b) => b.text() === "Generate key");
+    await generateButton?.trigger("click");
+    await flushPromises();
+
+    expect(generateMock).toHaveBeenCalledWith("Alice <alice@example.org>", "s3cret");
+    expect(
+      (wrapper.find("input[type=password]").element as HTMLInputElement).value,
+    ).toBe("");
   });
 });

@@ -1,5 +1,24 @@
 {
   "settings": {
+    "sections": {
+      "notifications": "Notifications",
+      "syncInterval": "Sync",
+      "push": "Push",
+      "autoRead": "Reading",
+      "receipts": "Read receipts",
+      "appearance": "Appearance",
+      "language": "Language",
+      "pop3Delete": "POP3 server deletion",
+      "emptyTrash": "Empty Trash on exit",
+      "identities": "Identities",
+      "tags": "Tags",
+      "contacts": "Contacts",
+      "filters": "Filters",
+      "junk": "Junk",
+      "pgp": "OpenPGP encryption",
+      "shortcuts": "Keyboard shortcuts",
+      "accounts": "Accounts"
+    },
     "appearance": {
       "title": "Appearance",
       "hint": "Choose how axomail looks. \"System\" follows your operating system's light or dark setting.",
@@ -62,10 +81,13 @@
     "encryptHint": "Encrypt so only the recipients can read it.",
     "encryptUnavailable": "Encryption needs a public key for every recipient. Missing: {missing}",
     "signPassphrase": "Signing key passphrase",
+    "exportedAria": "Exported key",
     "badge": {
       "signedValid": "Signature valid",
+      "signedValidBy": "Signature valid — {signer}",
       "signedInvalid": "Signature invalid",
       "signedUnknown": "Signed, signer key unknown",
+      "signedMismatch": "Signed, but not by the sender",
       "encrypted": "Encrypted",
       "decrypted": "Decrypted",
       "needsPassphrase": "Enter your key passphrase to decrypt",
@@ -98,7 +120,8 @@
       "namePlaceholder": "e.g. Unread from Ada",
       "save": "Save this search",
       "update": "Update saved search",
-      "close": "Close"
+      "close": "Close",
+      "unavailable": "Advanced search needs the desktop app; it is unavailable in the browser preview."
     },
     "field": {
       "from": "From",

@@ -42,6 +42,27 @@ function keywords(name: string): string[] {
   return i18n.global.t(`app.command.${name}.keywords`).split(",");
 }
 
+/**
+ * Wraps a command whose i18n `name` resolves its title and keywords LIVE on
+ * every access rather than being frozen at registration. The palette and help
+ * overlay read `title`/`keywords` inside a reactive render, so a runtime locale
+ * switch re-localizes the command list with no re-registration.
+ */
+function localizedCommand(
+  name: string,
+  rest: Omit<Command, "title" | "keywords">,
+): Command {
+  return {
+    ...rest,
+    get title() {
+      return title(name);
+    },
+    get keywords() {
+      return keywords(name);
+    },
+  };
+}
+
 /** The callbacks and state gates the global commands drive. */
 export interface AppCommandDeps {
   /** True while a blocking modal (not the palette) is open; gates every command. */
@@ -95,110 +116,84 @@ export function buildAppCommands(deps: AppCommandDeps): Command[] {
     };
 
   return [
-    {
+    localizedCommand("commandPalette", {
       id: "app.commandPalette",
-      title: title("commandPalette"),
-      keywords: keywords("commandPalette"),
       shortcut: "Mod+K",
       run: deps.openCommandPalette,
       isEnabled: notBusy,
-    },
-    {
+    }),
+    localizedCommand("shortcutHelp", {
       id: "app.shortcutHelp",
-      title: title("shortcutHelp"),
-      keywords: keywords("shortcutHelp"),
       shortcut: "Shift+?",
       run: deps.openShortcutHelp,
       isEnabled: notBusy,
-    },
-    {
+    }),
+    localizedCommand("newMessage", {
       id: "compose.new",
-      title: title("newMessage"),
-      keywords: keywords("newMessage"),
       shortcut: "n",
       run: deps.newMessage,
       isEnabled: () => notBusy() && deps.hasAccounts(),
-    },
-    {
+    }),
+    localizedCommand("reply", {
       id: "message.reply",
-      title: title("reply"),
-      keywords: keywords("reply"),
       shortcut: "r",
       run: onMessage(deps.reply),
       isEnabled: messageEnabled,
-    },
-    {
+    }),
+    localizedCommand("replyAll", {
       id: "message.replyAll",
-      title: title("replyAll"),
-      keywords: keywords("replyAll"),
       shortcut: "Shift+R",
       run: onMessage(deps.replyAll),
       isEnabled: messageEnabled,
-    },
-    {
+    }),
+    localizedCommand("forward", {
       id: "message.forward",
-      title: title("forward"),
-      keywords: keywords("forward"),
       shortcut: "f",
       run: onMessage(deps.forward),
       isEnabled: messageEnabled,
-    },
-    {
+    }),
+    localizedCommand("archive", {
       id: "message.archive",
-      title: title("archive"),
-      keywords: keywords("archive"),
       shortcut: "e",
       run: onMessage(deps.archive),
       isEnabled: messageEnabled,
-    },
-    {
+    }),
+    localizedCommand("delete", {
       id: "message.delete",
-      title: title("delete"),
-      keywords: keywords("delete"),
       shortcut: "Delete",
       run: onMessage(deps.deleteToTrash),
       isEnabled: messageEnabled,
-    },
-    {
+    }),
+    localizedCommand("toggleStar", {
       id: "message.toggleStar",
-      title: title("toggleStar"),
-      keywords: keywords("toggleStar"),
       shortcut: "s",
       run: onMessage(deps.toggleStar),
       isEnabled: messageEnabled,
-    },
-    {
+    }),
+    localizedCommand("toggleUnread", {
       id: "message.toggleUnread",
-      title: title("toggleUnread"),
-      keywords: keywords("toggleUnread"),
       shortcut: "u",
       run: onMessage(deps.toggleUnread),
       isEnabled: messageEnabled,
-    },
-    {
+    }),
+    localizedCommand("search", {
       id: "nav.focusSearch",
-      title: title("search"),
-      keywords: keywords("search"),
       shortcut: "/",
       run: deps.focusSearch,
       isEnabled: notBusy,
-    },
-    {
+    }),
+    localizedCommand("goInbox", {
       id: "nav.goInbox",
-      title: title("goInbox"),
-      keywords: keywords("goInbox"),
       shortcut: "g i",
       run: deps.goInbox,
       isEnabled: notBusy,
-    },
-    {
+    }),
+    localizedCommand("goFolders", {
       id: "nav.goFolders",
-      title: title("goFolders"),
-      keywords: keywords("goFolders"),
       shortcut: "g f",
       run: deps.goFolders,
       isEnabled: notBusy,
-    },
+    }),
   ];
 }
 
@@ -273,29 +268,23 @@ export function buildContextCommands(deps: ContextCommandDeps): Command[] {
     };
 
   return [
-    {
+    localizedCommand("addressBook", {
       id: "contacts.addressBook",
-      title: title("addressBook"),
-      keywords: keywords("addressBook"),
       shortcut: "Mod+Shift+B",
       run: deps.openAddressBook,
       isEnabled: notBusy,
-    },
-    {
+    }),
+    localizedCommand("markJunk", {
       id: "message.junk",
-      title: title("markJunk"),
-      keywords: keywords("markJunk"),
       shortcut: "j",
       run: onSelected(deps.junk),
       isEnabled: selectedEnabled,
-    },
-    {
+    }),
+    localizedCommand("markNotJunk", {
       id: "message.notJunk",
-      title: title("markNotJunk"),
-      keywords: keywords("markNotJunk"),
       shortcut: "Shift+J",
       run: onSelected(deps.notJunk),
       isEnabled: selectedEnabled,
-    },
+    }),
   ];
 }

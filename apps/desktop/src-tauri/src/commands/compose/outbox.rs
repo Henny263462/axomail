@@ -35,6 +35,25 @@ pub async fn retry_outbox_impl(
             message: "no such outbox item".to_owned(),
         })?;
 
+    // A PGP-protected send is non-retryable: the protection plan and any
+    // passphrase are never persisted, so a rebuilt retry would transmit the
+    // plaintext. Refuse it before touching the row's state — the user must
+    // re-compose from the composer, which still holds the protected content.
+    if record.pgp_protected {
+        return Ok(Submission {
+            outcome: SendOutcomeDto::new(
+                outbox_id,
+                false,
+                Some(
+                    "this message was signed or encrypted and cannot be retried; \
+                     re-compose and send it again so it is never transmitted unprotected"
+                        .to_owned(),
+                ),
+            )?,
+            sent_copy: None,
+        });
+    }
+
     if !store.outbox().begin_send(id).await? {
         // Already sending or sent: never submit a second time.
         let (sent, error) = match record.state {

@@ -5,6 +5,7 @@
 
 mod common;
 
+use axomail_core::MailError;
 use axomail_desktop_lib::commands::pgp::{
     compose_status_impl, generate_key_impl, import_recipient_impl, list_own_impl,
 };
@@ -101,5 +102,34 @@ async fn compose_status_reflects_key_availability() {
     assert_eq!(
         status.missing_recipients,
         vec!["carol@example.org".to_owned()]
+    );
+}
+
+#[tokio::test]
+async fn importing_a_recipient_key_under_a_mismatched_address_is_rejected() {
+    // SECURITY (finding #9): a key must actually certify the address it is
+    // imported for. Importing Bob's key labelled as alice@ would let an
+    // attacker's key be encrypted to when the user mails alice@ — so it is
+    // rejected. A label the key *does* certify is accepted.
+    let store = Store::open_in_memory().await.unwrap();
+    let bob = generate_keypair("Bob <bob@example.org>", None).unwrap();
+
+    let rejected = import_recipient_impl(
+        &store,
+        "alice@example.org".to_owned(),
+        bob.public_armored.clone(),
+    )
+    .await;
+    assert!(
+        matches!(rejected, Err(MailError::Configuration { .. })),
+        "a key not certifying alice@ must not bind to it, got {rejected:?}"
+    );
+
+    // The same key imported under an address it certifies succeeds.
+    let accepted =
+        import_recipient_impl(&store, "bob@example.org".to_owned(), bob.public_armored).await;
+    assert!(
+        accepted.is_ok(),
+        "a matching label is accepted: {accepted:?}"
     );
 }

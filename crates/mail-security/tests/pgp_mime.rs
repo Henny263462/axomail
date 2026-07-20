@@ -19,6 +19,10 @@ Content-Transfer-Encoding: 7bit\r\n\
 \r\n\
 The treaty is ready for your signature.\r\n";
 
+/// The sender's address, as it appears in `SOURCE`'s `From`. Verification binds
+/// a "valid" result to this identity.
+const ALICE: &str = "alice@example.org";
+
 fn to_str(bytes: &[u8]) -> String {
     String::from_utf8(bytes.to_vec()).unwrap()
 }
@@ -26,7 +30,7 @@ fn to_str(bytes: &[u8]) -> String {
 #[test]
 fn sign_only_produces_verifiable_multipart_signed() {
     let key = generate_keypair("Alice <alice@example.org>", None).unwrap();
-    let wrapped = apply_pgp_mime(SOURCE, Some((&key.secret_armored, None)), &[]).unwrap();
+    let wrapped = apply_pgp_mime(SOURCE, Some((&key.secret_armored, None)), &[], &[]).unwrap();
     let text = to_str(&wrapped);
 
     // Top-level envelope headers survive; the content becomes multipart/signed.
@@ -45,7 +49,7 @@ fn sign_only_produces_verifiable_multipart_signed() {
     };
 
     // The signed entity is exactly the inner MIME entity (content headers +
-    // body), and it verifies against the signer's public key.
+    // body), and it verifies against the signer's public key and sender.
     let signed_text = to_str(&signed_entity);
     assert!(signed_text.contains("Content-Type: text/plain"));
     assert!(signed_text.contains("The treaty is ready"));
@@ -54,14 +58,15 @@ fn sign_only_produces_verifiable_multipart_signed() {
         "envelope leaked into signed body"
     );
 
-    let status = verify_detached(&[key.public_armored], &signature, &signed_entity).unwrap();
-    assert_eq!(status, SignatureVerification::Valid);
+    let out = verify_detached(&[key.public_armored], &signature, &signed_entity, ALICE).unwrap();
+    assert_eq!(out.verification, SignatureVerification::Valid);
+    assert_eq!(out.signer.as_deref(), Some("Alice <alice@example.org>"));
 }
 
 #[test]
 fn tampering_with_the_signed_body_is_detected() {
     let key = generate_keypair("Alice <alice@example.org>", None).unwrap();
-    let wrapped = apply_pgp_mime(SOURCE, Some((&key.secret_armored, None)), &[]).unwrap();
+    let wrapped = apply_pgp_mime(SOURCE, Some((&key.secret_armored, None)), &[], &[]).unwrap();
     let PgpMimeMessage::SignedMime {
         signed_entity,
         signature,
@@ -74,31 +79,61 @@ fn tampering_with_the_signed_body_is_detected() {
     let mut tampered = signed_entity.clone();
     let pos = tampered.len() - 5;
     tampered[pos] ^= 0x20;
-    let status = verify_detached(&[key.public_armored], &signature, &tampered).unwrap();
-    assert_eq!(status, SignatureVerification::Invalid);
+    let out = verify_detached(&[key.public_armored], &signature, &tampered, ALICE).unwrap();
+    assert_eq!(out.verification, SignatureVerification::Invalid);
 }
 
 #[test]
-fn encrypt_only_round_trips_the_inner_entity() {
+fn encrypt_only_preserves_inner_content_headers() {
+    // SECURITY (finding #4): an encrypt-only message must not duplicate the
+    // inner Content-Type / push the real content headers into the body. Use a
+    // base64 body so a corrupted header block would be observable.
     let recipient = generate_keypair("Bob <bob@example.org>", None).unwrap();
+    let source: &[u8] = b"From: Alice <alice@example.org>\r\n\
+To: Bob <bob@example.org>\r\n\
+Subject: Binary\r\n\
+MIME-Version: 1.0\r\n\
+Content-Type: text/plain; charset=utf-8\r\n\
+Content-Transfer-Encoding: base64\r\n\
+\r\n\
+w6TDtsO8IGdyw7zDn2UK\r\n";
     let wrapped = apply_pgp_mime(
-        SOURCE,
+        source,
         None,
         std::slice::from_ref(&recipient.public_armored),
+        &[],
     )
     .unwrap();
     let text = to_str(&wrapped);
-    assert!(text.contains("Subject: Treaty"));
+    assert!(text.contains("Subject: Binary"));
     assert!(text.contains("multipart/encrypted"));
-    assert!(text.contains("protocol=\"application/pgp-encrypted\""));
 
     let PgpMimeMessage::EncryptedMime { ciphertext } = parse_pgp_mime(&wrapped).unwrap() else {
         panic!("expected EncryptedMime");
     };
     let decrypted = decrypt_message(&recipient.secret_armored, None, &ciphertext).unwrap();
     let inner = to_str(&decrypted.bytes);
-    assert!(inner.contains("Content-Type: text/plain"));
-    assert!(inner.contains("The treaty is ready"));
+
+    // The decrypted entity must be a single, well-formed MIME entity: the
+    // Content-Transfer-Encoding header lives in the header block (before the
+    // first blank line), NOT in the body, and there is exactly one Content-Type.
+    let (header_block, body) = inner
+        .split_once("\r\n\r\n")
+        .expect("decrypted entity has a header/body boundary");
+    assert!(
+        header_block.contains("Content-Transfer-Encoding: base64"),
+        "CTE header must be in the header block, was:\n{inner}"
+    );
+    assert!(
+        !body.contains("Content-Type"),
+        "content headers leaked into the body:\n{inner}"
+    );
+    assert_eq!(
+        inner.matches("Content-Type").count(),
+        1,
+        "the inner Content-Type must not be duplicated:\n{inner}"
+    );
+    assert!(body.contains("w6TDtsO8IGdyw7zDn2UK"));
 }
 
 #[test]
@@ -111,6 +146,7 @@ fn sign_then_encrypt_round_trips_and_verifies() {
         SOURCE,
         Some((&alice.secret_armored, None)),
         &[bob.public_armored.clone(), alice.public_armored.clone()],
+        &[],
     )
     .unwrap();
     assert!(to_str(&wrapped).contains("multipart/encrypted"));
@@ -129,16 +165,18 @@ fn sign_then_encrypt_round_trips_and_verifies() {
         panic!("expected inner SignedMime");
     };
 
-    // The signature verifies against Alice's key, and the plaintext is intact.
-    let status = verify_detached(&[alice.public_armored], &signature, &signed_entity).unwrap();
-    assert_eq!(status, SignatureVerification::Valid);
+    // The signature verifies against Alice's key and sender, and the plaintext
+    // is intact.
+    let out = verify_detached(&[alice.public_armored], &signature, &signed_entity, ALICE).unwrap();
+    assert_eq!(out.verification, SignatureVerification::Valid);
     assert!(to_str(&signed_entity).contains("The treaty is ready"));
 }
 
 #[test]
 fn passphrase_protected_signer_round_trips() {
     let key = generate_keypair("Alice <alice@example.org>", Some("pass")).unwrap();
-    let wrapped = apply_pgp_mime(SOURCE, Some((&key.secret_armored, Some("pass"))), &[]).unwrap();
+    let wrapped =
+        apply_pgp_mime(SOURCE, Some((&key.secret_armored, Some("pass"))), &[], &[]).unwrap();
     let PgpMimeMessage::SignedMime {
         signed_entity,
         signature,
@@ -146,12 +184,12 @@ fn passphrase_protected_signer_round_trips() {
     else {
         panic!("expected SignedMime");
     };
-    let status = verify_detached(&[key.public_armored], &signature, &signed_entity).unwrap();
-    assert_eq!(status, SignatureVerification::Valid);
+    let out = verify_detached(&[key.public_armored], &signature, &signed_entity, ALICE).unwrap();
+    assert_eq!(out.verification, SignatureVerification::Valid);
 }
 
 #[test]
 fn no_protection_returns_the_message_unchanged() {
-    let unchanged = apply_pgp_mime(SOURCE, None, &[]).unwrap();
+    let unchanged = apply_pgp_mime(SOURCE, None, &[], &[]).unwrap();
     assert_eq!(unchanged, SOURCE);
 }

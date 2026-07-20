@@ -195,6 +195,7 @@ async fn retry_outbox_sends_queued_row_then_guards_a_sent_row() {
             cc: Vec::new(),
             bcc: Vec::new(),
             next_attempt_unix: None,
+            pgp_protected: false,
         })
         .await
         .unwrap();
@@ -232,6 +233,65 @@ async fn retry_outbox_rejects_an_unknown_id() {
         error,
         axomail_core::MailError::Configuration { .. }
     ));
+}
+
+#[tokio::test]
+async fn retry_of_a_pgp_protected_row_never_resends_as_cleartext() {
+    // SECURITY (finding #2): a failed send that was PGP-protected must never be
+    // retried, because the protection plan and passphrase are not persisted and a
+    // rebuilt retry would transmit the plaintext. The row is marked
+    // `pgp_protected`; retry refuses it without contacting any server, and the
+    // row is not resubmitted.
+    let store = Store::open_in_memory().await.unwrap();
+    let (_concrete, secrets) = secret_stores();
+    let summary = create_account_impl(&store, &secrets, outgoing_account_input(2525))
+        .await
+        .unwrap();
+
+    // A protected row left in `failed` (as an interrupted/failed protected send
+    // would be).
+    let record = store
+        .outbox()
+        .create(&NewOutbox {
+            account: AccountId::new(summary.id),
+            draft_id: None,
+            identity_id: None,
+            subject: "Encrypted".to_owned(),
+            body_text: "ciphertext-would-go-here".to_owned(),
+            to: vec!["bob@example.org".to_owned()],
+            cc: Vec::new(),
+            bcc: Vec::new(),
+            next_attempt_unix: None,
+            pgp_protected: true,
+        })
+        .await
+        .unwrap();
+    store
+        .outbox()
+        .mark_failed(record.id, "smtp error")
+        .await
+        .unwrap();
+
+    // No SMTP server exists at port 2525: if the guard did not fire, the retry
+    // would attempt a send. Instead it must refuse up front.
+    let outcome = retry_outbox_impl(&store, &secrets, &[], record.id.value())
+        .await
+        .unwrap()
+        .outcome;
+    assert!(!outcome.sent, "a protected row must not be re-sent");
+    assert!(
+        outcome
+            .error
+            .as_deref()
+            .is_some_and(|e| e.contains("re-compose")),
+        "the outcome should tell the user to re-compose: {:?}",
+        outcome.error
+    );
+
+    // The row was never transitioned back to `sending`: no resubmission occurred.
+    let after = store.outbox().get(record.id).await.unwrap().unwrap();
+    assert_eq!(after.state, OutboxState::Failed, "row stays failed");
+    assert_eq!(after.attempts, 0, "no send attempt was made on retry");
 }
 
 #[tokio::test]

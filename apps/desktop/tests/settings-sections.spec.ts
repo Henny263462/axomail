@@ -1,6 +1,7 @@
 import { flushPromises, mount } from "@vue/test-utils";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { i18n } from "../src/i18n";
 import { getSettings, setPop3DeletePolicy } from "../src/api/settings";
 import AccountsSection from "../src/components/settings/AccountsSection.vue";
 import type { SettingsSectionContext } from "../src/components/settings/context";
@@ -121,6 +122,19 @@ describe("settings section registry", () => {
       "shortcuts",
       "accounts",
     ]);
+  });
+
+  // Finding 6: section titles resolve from the catalogue, reactive to locale.
+  it("localizes section titles and follows a runtime locale switch", () => {
+    const receipts = settingsSections.find((s) => s.id === "receipts");
+    if (receipts === undefined) throw new Error("expected the receipts section");
+    expect(receipts.title).toBe("Read receipts");
+    try {
+      i18n.global.locale.value = "de";
+      expect(receipts.title).toBe("Lesebestätigungen");
+    } finally {
+      i18n.global.locale.value = "en";
+    }
   });
 
   it("mounts every registered section from just its context prop", () => {

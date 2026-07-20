@@ -326,6 +326,7 @@ async fn forward(
             cc: Vec::new(),
             bcc: Vec::new(),
             next_attempt_unix: None,
+            pgp_protected: false,
         })
         .await?;
     report.forwards_queued += 1;

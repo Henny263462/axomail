@@ -7,7 +7,7 @@ use std::sync::{Arc, Mutex};
 
 use axomail_core::{ConnectionSecurity, IncomingProtocol};
 use axomail_desktop_lib::autoconfig::{
-    AutoconfigSource, discover_from_sources, guess_config, parse_autoconfig,
+    AutoconfigSource, FetchPolicy, discover_from_sources, guess_config, parse_autoconfig,
 };
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpListener;
@@ -103,9 +103,14 @@ fn parses_representative_ispdb_response() {
 async fn found_via_stub_server() {
     let (url, _captured) = stub(vec![(200, ISPDB_GMAIL)]).await;
     let sources = vec![(AutoconfigSource::Ispdb, format!("{url}/v1.1/gmail.com"))];
-    let outcome = discover_from_sources(&client(), &sources, "klaus@gmail.com")
-        .await
-        .expect("a 200 with valid XML is found");
+    let outcome = discover_from_sources(
+        &client(),
+        &sources,
+        "klaus@gmail.com",
+        FetchPolicy::Unrestricted,
+    )
+    .await
+    .expect("a 200 with valid XML is found");
     assert_eq!(outcome.source, AutoconfigSource::Ispdb);
     assert_eq!(outcome.config.incoming.host, "imap.gmail.com");
 }
@@ -117,7 +122,13 @@ async fn not_found_when_server_404s() {
         AutoconfigSource::Ispdb,
         format!("{url}/v1.1/nobody.example"),
     )];
-    let outcome = discover_from_sources(&client(), &sources, "a@nobody.example").await;
+    let outcome = discover_from_sources(
+        &client(),
+        &sources,
+        "a@nobody.example",
+        FetchPolicy::Unrestricted,
+    )
+    .await;
     assert!(outcome.is_none(), "a 404 yields no configuration");
 }
 
@@ -125,7 +136,13 @@ async fn not_found_when_server_404s() {
 async fn malformed_body_yields_none() {
     let (url, _captured) = stub(vec![(200, "<this is not autoconfig>")]).await;
     let sources = vec![(AutoconfigSource::Autoconfig, format!("{url}/mail/config"))];
-    let outcome = discover_from_sources(&client(), &sources, "a@x.example").await;
+    let outcome = discover_from_sources(
+        &client(),
+        &sources,
+        "a@x.example",
+        FetchPolicy::Unrestricted,
+    )
+    .await;
     assert!(outcome.is_none(), "unparseable XML yields no configuration");
 }
 
@@ -137,9 +154,14 @@ async fn falls_through_to_the_next_source() {
         (AutoconfigSource::Autoconfig, format!("{url}/mail/config")),
         (AutoconfigSource::Ispdb, format!("{url}/v1.1/gmail.com")),
     ];
-    let outcome = discover_from_sources(&client(), &sources, "klaus@gmail.com")
-        .await
-        .expect("the second source succeeds");
+    let outcome = discover_from_sources(
+        &client(),
+        &sources,
+        "klaus@gmail.com",
+        FetchPolicy::Unrestricted,
+    )
+    .await
+    .expect("the second source succeeds");
     assert_eq!(outcome.source, AutoconfigSource::Ispdb);
 }
 
@@ -148,7 +170,13 @@ async fn no_credentials_are_sent() {
     let (url, captured) = stub(vec![(200, ISPDB_GMAIL)]).await;
     // A distinctive local part and password so leakage would be obvious.
     let sources = vec![(AutoconfigSource::Ispdb, format!("{url}/v1.1/gmail.com"))];
-    let _ = discover_from_sources(&client(), &sources, "secretlocal@gmail.com").await;
+    let _ = discover_from_sources(
+        &client(),
+        &sources,
+        "secretlocal@gmail.com",
+        FetchPolicy::Unrestricted,
+    )
+    .await;
 
     let requests = captured.lock().unwrap();
     let request = requests.first().expect("the stub received one request");

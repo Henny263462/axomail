@@ -1,5 +1,6 @@
 import type { Component } from "vue";
 
+import { i18n } from "../../i18n";
 import AccountsSection from "./AccountsSection.vue";
 import AppearanceSection from "./AppearanceSection.vue";
 import AutoReadSection from "./AutoReadSection.vue";
@@ -26,10 +27,29 @@ import TagsSection from "./TagsSection.vue";
 export interface SettingsSection {
   /** Stable identifier; also the section's list key. */
   id: string;
-  /** Human-readable section name (for docs and the section's own chrome). */
-  title: string;
+  /**
+   * Human-readable section name (for docs and the section's own chrome). A
+   * live getter resolving `settings.sections.<key>`, so a runtime locale switch
+   * re-localizes it — never a frozen English string.
+   */
+  readonly title: string;
   /** The section body component (props: `{ context }`). */
   component: Component;
+}
+
+/**
+ * Builds a section whose `title` resolves from the i18n catalogue on every
+ * access (via `settings.sections.<key>`), keeping it reactive to a locale
+ * switch while still satisfying `title: string`.
+ */
+function section(id: string, key: string, component: Component): SettingsSection {
+  return {
+    id,
+    get title() {
+      return i18n.global.t(`settings.sections.${key}`);
+    },
+    component,
+  };
 }
 
 /**
@@ -38,33 +58,21 @@ export interface SettingsSection {
  * register by creating a `context`-driven SFC and appending one entry here.
  */
 export const settingsSections: SettingsSection[] = [
-  {
-    id: "notifications",
-    title: "Notifications",
-    component: NotificationsSection,
-  },
-  { id: "sync-interval", title: "Sync", component: SyncIntervalSection },
-  { id: "push", title: "Push", component: PushSection },
-  { id: "auto-read", title: "Reading", component: AutoReadSection },
-  { id: "receipts", title: "Read receipts", component: ReceiptsSection },
-  { id: "appearance", title: "Appearance", component: AppearanceSection },
-  { id: "language", title: "Language", component: LanguageSection },
-  {
-    id: "pop3-delete",
-    title: "POP3 server deletion",
-    component: Pop3DeleteSection,
-  },
-  {
-    id: "empty-trash-on-exit",
-    title: "Empty Trash on exit",
-    component: EmptyTrashSection,
-  },
-  { id: "identities", title: "Identities", component: IdentitiesSection },
-  { id: "tags", title: "Tags", component: TagsSection },
-  { id: "contacts", title: "Contacts", component: ContactsSection },
-  { id: "filters", title: "Filters", component: FiltersSection },
-  { id: "junk", title: "Junk", component: JunkSection },
-  { id: "pgp", title: "OpenPGP encryption", component: PgpKeysSection },
-  { id: "shortcuts", title: "Keyboard shortcuts", component: ShortcutsSection },
-  { id: "accounts", title: "Accounts", component: AccountsSection },
+  section("notifications", "notifications", NotificationsSection),
+  section("sync-interval", "syncInterval", SyncIntervalSection),
+  section("push", "push", PushSection),
+  section("auto-read", "autoRead", AutoReadSection),
+  section("receipts", "receipts", ReceiptsSection),
+  section("appearance", "appearance", AppearanceSection),
+  section("language", "language", LanguageSection),
+  section("pop3-delete", "pop3Delete", Pop3DeleteSection),
+  section("empty-trash-on-exit", "emptyTrash", EmptyTrashSection),
+  section("identities", "identities", IdentitiesSection),
+  section("tags", "tags", TagsSection),
+  section("contacts", "contacts", ContactsSection),
+  section("filters", "filters", FiltersSection),
+  section("junk", "junk", JunkSection),
+  section("pgp", "pgp", PgpKeysSection),
+  section("shortcuts", "shortcuts", ShortcutsSection),
+  section("accounts", "accounts", AccountsSection),
 ];

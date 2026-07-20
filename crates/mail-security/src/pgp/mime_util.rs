@@ -102,6 +102,13 @@ pub(super) fn boundary_of(content_type: &str) -> Option<String> {
 
 /// Splits a multipart body into the exact byte range of each part's content,
 /// between consecutive `--boundary` delimiter lines.
+///
+/// A delimiter is recognised only when `--boundary` both **starts** a line and
+/// **ends** it: the token must be followed by end-of-line (optionally with a
+/// closing `--` and/or trailing whitespace), per RFC 2046. A line such as
+/// `--boundaryX` is *body text*, not a delimiter — accepting it would let
+/// attacker-chosen content re-split a signed message and shift the bytes the
+/// signature covers.
 pub(super) fn multipart_parts<'a>(body: &'a [u8], boundary: &str) -> Vec<&'a [u8]> {
     let dash = format!("--{boundary}");
     let needle = dash.as_bytes();
@@ -110,7 +117,7 @@ pub(super) fn multipart_parts<'a>(body: &'a [u8], boundary: &str) -> Vec<&'a [u8
     while let Some(pos) = find(body, needle, i) {
         let at_line_start =
             pos == 0 || body[pos - 1] == b'\n' || (pos >= 2 && &body[pos - 2..pos] == b"\r\n");
-        if at_line_start {
+        if at_line_start && is_delimiter_terminator(&body[pos + needle.len()..]) {
             delims.push(pos);
         }
         i = pos + needle.len();
@@ -118,13 +125,21 @@ pub(super) fn multipart_parts<'a>(body: &'a [u8], boundary: &str) -> Vec<&'a [u8
     let mut parts = Vec::new();
     for window in delims.windows(2) {
         let (d0, d1) = (window[0], window[1]);
+        // The part's content begins after the whole d0 delimiter line: skip the
+        // token, any trailing linear whitespace (transport padding), and the
+        // line's CRLF/LF.
         let token_end = d0 + needle.len();
-        let content_start = if body[token_end..].starts_with(b"\r\n") {
-            token_end + 2
-        } else if body.get(token_end) == Some(&b'\n') {
-            token_end + 1
+        let after_wsp = token_end
+            + body[token_end..]
+                .iter()
+                .position(|&b| b != b' ' && b != b'\t')
+                .unwrap_or(body.len() - token_end);
+        let content_start = if body[after_wsp..].starts_with(b"\r\n") {
+            after_wsp + 2
+        } else if body.get(after_wsp) == Some(&b'\n') {
+            after_wsp + 1
         } else {
-            token_end
+            after_wsp
         };
         let content_end = if d1 >= 2 && &body[d1 - 2..d1] == b"\r\n" {
             d1 - 2
@@ -138,6 +153,19 @@ pub(super) fn multipart_parts<'a>(body: &'a [u8], boundary: &str) -> Vec<&'a [u8
         }
     }
     parts
+}
+
+/// Whether the bytes immediately after a `--boundary` token terminate a valid
+/// delimiter line: an optional closing `--`, then optional linear whitespace
+/// (transport padding), then CRLF / LF / end-of-input. Anything else (e.g. a
+/// non-whitespace suffix) means the token is body text, not a delimiter.
+fn is_delimiter_terminator(rest: &[u8]) -> bool {
+    let rest = rest.strip_prefix(b"--").unwrap_or(rest);
+    let after_wsp = rest
+        .iter()
+        .position(|&b| b != b' ' && b != b'\t')
+        .unwrap_or(rest.len());
+    matches!(rest.get(after_wsp), None | Some(b'\n') | Some(b'\r'))
 }
 
 /// Extracts the first ASCII-armored OpenPGP block of the given kind (e.g.
@@ -213,5 +241,33 @@ mod tests {
         assert_eq!(parts.len(), 2);
         assert_eq!(parts[0], b"Content-Type: text/plain\r\n\r\nhi");
         assert_eq!(parts[1], b"sig");
+    }
+
+    #[test]
+    fn boundary_with_suffix_is_not_a_delimiter() {
+        // SECURITY (finding #10): a line beginning `--B` but continuing with a
+        // non-whitespace suffix is body text, not a delimiter. If it were mis-
+        // read as a delimiter it would re-split the signed part and shift the
+        // bytes the signature covers. The signed body here contains `--Bx`; the
+        // message must still split into exactly its two real parts, with the
+        // fake delimiter preserved inside the first part.
+        let body = b"--B\r\nContent-Type: text/plain\r\n\r\nline\r\n--Bx still body\r\n--B\r\nsig\r\n--B--\r\n";
+        let parts = multipart_parts(body, "B");
+        assert_eq!(parts.len(), 2);
+        assert_eq!(
+            parts[0],
+            b"Content-Type: text/plain\r\n\r\nline\r\n--Bx still body"
+        );
+        assert_eq!(parts[1], b"sig");
+    }
+
+    #[test]
+    fn delimiter_allows_trailing_whitespace_and_close() {
+        // Transport padding (trailing spaces/tabs) is permitted on a delimiter,
+        // and the closing `--B--` still terminates the last part.
+        let body = b"--B  \r\nbody\r\n--B--  \r\n";
+        let parts = multipart_parts(body, "B");
+        assert_eq!(parts.len(), 1);
+        assert_eq!(parts[0], b"body");
     }
 }

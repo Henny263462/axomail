@@ -25,6 +25,25 @@ const labelKey: Record<FolderViewMode, string> = {
   tags: "folderView.tags",
   recent: "folderView.recent",
 };
+
+/**
+ * Roving arrow-key navigation for the radio group: Left/Up and Right/Down move
+ * the selection (and focus) to the adjacent mode, wrapping, as ARIA
+ * `radiogroup` semantics require. Selection follows focus.
+ */
+function onArrow(event: KeyboardEvent, current: number): void {
+  const forward = event.key === "ArrowRight" || event.key === "ArrowDown";
+  const back = event.key === "ArrowLeft" || event.key === "ArrowUp";
+  if (!forward && !back) return;
+  event.preventDefault();
+  const count = FOLDER_VIEW_MODES.length;
+  const next = (current + (forward ? 1 : -1) + count) % count;
+  const option = FOLDER_VIEW_MODES[next];
+  if (option === undefined) return;
+  emit("select", option);
+  const group = (event.currentTarget as HTMLElement).parentElement;
+  (group?.children[next] as HTMLElement | undefined)?.focus();
+}
 </script>
 
 <template>
@@ -34,14 +53,16 @@ const labelKey: Record<FolderViewMode, string> = {
     :aria-label="t('folderView.label')"
   >
     <button
-      v-for="option in FOLDER_VIEW_MODES"
+      v-for="(option, index) in FOLDER_VIEW_MODES"
       :key="option"
       type="button"
       class="mode"
       :class="{ active: mode === option }"
       role="radio"
       :aria-checked="mode === option"
+      :tabindex="mode === option ? 0 : -1"
       @click="emit('select', option)"
+      @keydown="onArrow($event, index)"
     >
       {{ t(labelKey[option]) }}
     </button>

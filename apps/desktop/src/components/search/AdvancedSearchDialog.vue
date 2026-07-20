@@ -117,7 +117,13 @@ async function onSearch(): Promise<void> {
   busy.value = true;
   try {
     const hits = await runAdvancedSearch(buildQuery());
-    emit("run", { title: draft.name.trim(), results: hits ?? [] });
+    // A null result is the browser-preview signal (ADR-0005), not an empty
+    // result set: report it as unavailable rather than emitting "no results".
+    if (hits === null) {
+      error.value = t("search.dialog.unavailable");
+      return;
+    }
+    emit("run", { title: draft.name.trim(), results: hits });
     emit("close");
   } catch (e) {
     error.value = String(e);

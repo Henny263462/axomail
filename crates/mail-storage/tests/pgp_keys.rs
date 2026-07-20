@@ -64,9 +64,10 @@ async fn first_own_key_becomes_default_and_switching_works() {
 }
 
 #[tokio::test]
-async fn own_key_lookup_matches_by_email_then_default() {
+async fn own_key_lookup_matches_by_email_and_never_falls_back() {
     let store = Store::open_in_memory().await.unwrap();
     let repo = store.pgp_keys();
+    // The first-inserted key is the default.
     repo.insert_own(&own(
         "aaaa000000000000000000000000000000000001",
         "Alice <alice@example.org>",
@@ -82,19 +83,23 @@ async fn own_key_lookup_matches_by_email_then_default() {
         .unwrap();
 
     let by_email = repo
-        .own_for_email("bob@example.org")
+        .own_key_for_address("bob@example.org")
         .await
         .unwrap()
         .unwrap();
     assert_eq!(by_email.id, alt.id);
 
-    // An address with no matching key falls back to the default.
-    let fallback = repo
-        .own_for_email("nobody@example.org")
+    // SECURITY (finding #5): an address with no matching key returns None — it
+    // must NEVER fall back to the (unrelated) default key, or a message sent as
+    // `nobody@` would be signed / encrypted-to-self under Alice's default key.
+    let no_match = repo
+        .own_key_for_address("nobody@example.org")
         .await
-        .unwrap()
         .unwrap();
-    assert!(fallback.is_default);
+    assert!(
+        no_match.is_none(),
+        "no matching key must not fall back to the default"
+    );
 }
 
 #[tokio::test]

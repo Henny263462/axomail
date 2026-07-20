@@ -34,6 +34,7 @@ fn scheduled(account: AccountId, subject: &str, next_attempt_unix: Option<i64>) 
         cc: Vec::new(),
         bcc: Vec::new(),
         next_attempt_unix,
+        pgp_protected: false,
     }
 }
 

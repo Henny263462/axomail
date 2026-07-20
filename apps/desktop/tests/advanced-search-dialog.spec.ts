@@ -92,6 +92,20 @@ describe("AdvancedSearchDialog", () => {
     expect(wrapper.emitted("close")).toBeTruthy();
   });
 
+  // Finding 10: a null result is the browser-preview signal, not "no results".
+  it("reports unavailable (not empty results) when the search returns null", async () => {
+    runMock.mockResolvedValue(null);
+    const wrapper = mountDialog();
+    await wrapper.find('input[aria-label="Condition value"]').setValue("invoice");
+    await wrapper.findAll(".buttons .action")[0]!.trigger("click");
+    await flushPromises();
+
+    // No empty result set is emitted, and the dialog stays open with a notice.
+    expect(wrapper.emitted("run")).toBeFalsy();
+    expect(wrapper.emitted("close")).toBeFalsy();
+    expect(wrapper.find(".error").text()).toContain("browser preview");
+  });
+
   it("saves a new search from the builder", async () => {
     const wrapper = mountDialog();
     await wrapper.find(".name-input").setValue("Invoices");

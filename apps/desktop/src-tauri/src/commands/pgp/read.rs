@@ -7,7 +7,7 @@ use axomail_core::{IncomingMailProvider, MailError};
 use axomail_parser::parse_message;
 use axomail_security::pgp::{
     PgpMimeMessage, SignatureVerification, credential_ref_for_pgp, decrypt_message, parse_pgp_mime,
-    verify_detached,
+    public_key_can_encrypt, verify_detached,
 };
 use axomail_security::sanitize_message_html;
 use axomail_storage::Store;
@@ -28,7 +28,7 @@ pub async fn compose_status_impl(
 ) -> Result<PgpComposeStatusDto, MailError> {
     let can_sign = store
         .pgp_keys()
-        .own_for_email(&normalize_email(&from_email))
+        .own_key_for_address(&normalize_email(&from_email))
         .await?
         .is_some();
 
@@ -38,13 +38,22 @@ pub async fn compose_status_impl(
         if email.is_empty() {
             continue;
         }
-        let has_recipient = store.pgp_keys().has_recipient_key(&email).await?;
-        let has_own = store
+        // Encryption is only actually possible when a held key for this recipient
+        // has a *usable* encryption (sub)key (finding #8): a recipient key first,
+        // else one of our own keys for a self-address. A key present but with no
+        // valid (non-revoked/expired) encryption subkey does not count — offering
+        // Encrypt there would only make the send fail.
+        let recipient_key = store.pgp_keys().recipient_public_for(&email).await?;
+        let own_key = store
             .pgp_keys()
             .own_key_for_address(&email)
             .await?
-            .is_some();
-        if !has_recipient && !has_own {
+            .map(|key| key.public_armored);
+        let can_encrypt_to = recipient_key
+            .into_iter()
+            .chain(own_key)
+            .any(|armored| public_key_can_encrypt(&armored));
+        if !can_encrypt_to {
             missing.push(recipient.clone());
         }
     }
@@ -77,31 +86,60 @@ where
         return Ok(PgpMessageStatusDto::not_pgp());
     };
 
+    // The claimed sender: a signature is only "valid" when the signing key's
+    // identity matches this address (finding #1). Taken from the outer message's
+    // From, which is the identity the reader sees.
+    let from_email = sender_email(&raw);
+
     match parsed {
         PgpMimeMessage::SignedMime {
             signed_entity,
             signature,
-        } => verified_status(store, &signed_entity, &signature).await,
+        } => verified_status(store, &signed_entity, &signature, &from_email).await,
         PgpMimeMessage::EncryptedMime { ciphertext }
         | PgpMimeMessage::InlineEncrypted { ciphertext } => {
-            decrypt_status(store, secrets, &ciphertext, passphrase.as_deref()).await
+            decrypt_status(
+                store,
+                secrets,
+                &ciphertext,
+                passphrase.as_deref(),
+                &from_email,
+            )
+            .await
         }
     }
 }
 
-/// Builds the status for a signed (unencrypted) message: verify and render.
+/// The sender email from a raw message's `From`, or the empty string. Used to
+/// bind signature verification to the claimed sender.
+fn sender_email(raw: &[u8]) -> String {
+    parse_message(raw)
+        .ok()
+        .and_then(|parsed| {
+            parsed
+                .from
+                .first()
+                .map(|address| address.email.as_str().to_owned())
+        })
+        .unwrap_or_default()
+}
+
+/// Builds the status for a signed (unencrypted) message: verify against the
+/// sender and render.
 async fn verified_status(
     store: &Store,
     signed_entity: &[u8],
     signature: &str,
+    from_email: &str,
 ) -> Result<PgpMessageStatusDto, MailError> {
     let candidates = candidate_public_keys(store).await?;
-    let verification = verify_detached(&candidates, signature, signed_entity)?;
+    let verified = verify_detached(&candidates, signature, signed_entity, from_email)?;
     let (body_html, body_text) = render_entity(signed_entity);
     Ok(PgpMessageStatusDto {
         is_pgp: true,
         signed: true,
-        signature_status: status_label(verification).to_owned(),
+        signature_status: status_label(verified.verification).to_owned(),
+        signer: verified.signer,
         body_html,
         body_text,
         ..PgpMessageStatusDto::default()
@@ -115,6 +153,7 @@ async fn decrypt_status(
     secrets: &SharedSecretStore,
     ciphertext: &str,
     passphrase: Option<&str>,
+    from_email: &str,
 ) -> Result<PgpMessageStatusDto, MailError> {
     let encrypted_base = PgpMessageStatusDto {
         is_pgp: true,
@@ -136,7 +175,7 @@ async fn decrypt_status(
         };
         match decrypt_message(&secret, passphrase, ciphertext) {
             Ok(decrypted) => {
-                return decrypted_status(store, &decrypted.bytes, encrypted_base).await;
+                return decrypted_status(store, &decrypted.bytes, from_email, encrypted_base).await;
             }
             Err(_) => continue,
         }
@@ -154,6 +193,7 @@ async fn decrypt_status(
 async fn decrypted_status(
     store: &Store,
     plaintext: &[u8],
+    from_email: &str,
     base: PgpMessageStatusDto,
 ) -> Result<PgpMessageStatusDto, MailError> {
     // A signed-then-encrypted message reveals a multipart/signed inner entity.
@@ -163,11 +203,12 @@ async fn decrypted_status(
     }) = parse_pgp_mime(plaintext)
     {
         let candidates = candidate_public_keys(store).await?;
-        let verification = verify_detached(&candidates, &signature, &signed_entity)?;
+        let verified = verify_detached(&candidates, &signature, &signed_entity, from_email)?;
         let (body_html, body_text) = render_entity(&signed_entity);
         return Ok(PgpMessageStatusDto {
             signed: true,
-            signature_status: status_label(verification).to_owned(),
+            signature_status: status_label(verified.verification).to_owned(),
+            signer: verified.signer,
             decrypted: true,
             body_html,
             body_text,
@@ -218,10 +259,13 @@ fn render_entity(bytes: &[u8]) -> (Option<String>, Option<String>) {
     }
 }
 
-/// Maps a verification result to its wire label.
+/// Maps a verification result to its wire label. `signerMismatch` is a distinct
+/// status from `valid`: the signature is cryptographically sound but the signing
+/// key's identity does not match the sender, so the badge must not read green.
 fn status_label(verification: SignatureVerification) -> &'static str {
     match verification {
         SignatureVerification::Valid => "valid",
+        SignatureVerification::SignerMismatch => "signerMismatch",
         SignatureVerification::Invalid => "invalid",
         SignatureVerification::UnknownKey => "unknownKey",
     }

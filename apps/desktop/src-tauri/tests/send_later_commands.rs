@@ -76,6 +76,7 @@ fn new_outbox(
         cc: Vec::new(),
         bcc: Vec::new(),
         next_attempt_unix,
+        pgp_protected: false,
     }
 }
 

@@ -119,34 +119,16 @@ impl<'a> PgpKeyRepo<'a> {
         Ok(row.map(OwnKeyRow::into_key))
     }
 
-    /// The own key whose user id contains `email`, else the default key. Used to
-    /// pick the signing key that matches the composer's From address.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`MailError::Database`] on any query failure.
-    pub async fn own_for_email(&self, email: &str) -> Result<Option<PgpOwnKey>, MailError> {
-        let pattern = format!("%{}%", email.to_lowercase());
-        let row = sqlx::query_as::<_, OwnKeyRow>(sqlx::AssertSqlSafe(format!(
-            "SELECT {OWN_COLUMNS} FROM pgp_own_keys
-             WHERE LOWER(user_id) LIKE ? ORDER BY is_default DESC, id DESC LIMIT 1"
-        )))
-        .bind(pattern)
-        .fetch_optional(self.pool)
-        .await
-        .map_err(|error| map_sqlx("own_pgp_key_for_email", error))?;
-        match row {
-            Some(row) => Ok(Some(row.into_key())),
-            None => self.default_own().await,
-        }
-    }
-
     /// The own key whose user id contains `email`, with **no** fallback to the
-    /// default — used to decide whether a specific address is one of ours (e.g.
-    /// encrypt-to-self), where the default-key fallback of [`own_for_email`] would
-    /// wrongly match every address.
+    /// default. This is the only address→own-key lookup: it is used both to pick
+    /// the signing key that matches the composer's `From` and to decide whether
+    /// an address is one of ours (e.g. encrypt-to-self).
     ///
-    /// [`own_for_email`]: Self::own_for_email
+    /// A default-key fallback here would be a security hole — sending as
+    /// `alias@` would sign (or encrypt-to-self) under the unrelated default key,
+    /// misrepresenting the signer's identity — so no such fallback exists. A
+    /// caller that requires a key must treat `None` as "fail", not "use the
+    /// default".
     ///
     /// # Errors
     ///

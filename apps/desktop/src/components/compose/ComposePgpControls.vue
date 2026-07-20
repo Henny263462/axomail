@@ -36,9 +36,18 @@ const canSign = ref(false);
 const canEncrypt = ref(false);
 const missing = ref<string[]>([]);
 
+// Monotonic guard: recipient-key lookups can resolve out of order, so a lookup
+// for an earlier recipient set must never clobber a newer one. Each refresh
+// takes a token and only the latest applies — Encrypt always reflects the LATEST
+// recipients, never a stale "canEncrypt:true" for a set that lacked a key.
+let lookupToken = 0;
+
 /** Re-evaluates availability whenever the sender or recipients change. */
 async function refresh(): Promise<void> {
+  const token = ++lookupToken;
   const status = await composeStatus(props.fromEmail, props.recipients);
+  // A newer recipient set was requested while this was in flight: discard.
+  if (token !== lookupToken) return;
   if (status === null) {
     canSign.value = false;
     canEncrypt.value = false;

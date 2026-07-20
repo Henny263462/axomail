@@ -124,12 +124,32 @@ pub(super) async fn import_secret_impl(
 }
 
 /// Imports a recipient's armored public key for `email`.
+///
+/// The key must actually carry a User-ID whose email matches `email`; otherwise
+/// the import is rejected (finding #9). Binding an arbitrary caller-supplied
+/// address to a key whose identities do not include it would let an attacker's
+/// key be stored under a victim's address, and the composer would then encrypt
+/// to the attacker when mailing that victim.
 pub async fn import_recipient_impl(
     store: &Store,
     email: String,
     armored: String,
 ) -> Result<PgpRecipientKeyDto, MailError> {
     let (public_armored, metadata) = import_public_key(&armored)?;
+
+    let label = super::normalize_email(&email);
+    let identity_matches = metadata
+        .user_ids
+        .iter()
+        .any(|uid| super::normalize_email(uid) == label);
+    if !identity_matches {
+        return Err(MailError::Configuration {
+            message: "the key's user IDs do not include the email address it is being imported \
+                      for; import it under an address the key actually certifies"
+                .to_owned(),
+        });
+    }
+
     let now = now_unix();
     let key = store
         .pgp_keys()

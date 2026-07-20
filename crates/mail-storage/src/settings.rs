@@ -51,4 +51,40 @@ impl<'a> SettingsRepo<'a> {
         .map_err(|error| map_sqlx("set_setting", error))?;
         Ok(())
     }
+
+    /// Atomically sets `key` to `value` **only if it is not already set**,
+    /// returning `true` when this call performed the insert and `false` when the
+    /// key already existed. SQLite serializes writers, so among concurrent
+    /// callers exactly one observes `true` — the basis for a single-claim guard
+    /// (e.g. sending a read receipt at most once).
+    ///
+    /// # Errors
+    ///
+    /// Returns [`MailError::Database`] on any query failure.
+    pub async fn set_if_absent(&self, key: &str, value: &str) -> Result<bool, MailError> {
+        let result = sqlx::query(
+            "INSERT INTO app_settings (key, value) VALUES (?, ?)
+             ON CONFLICT (key) DO NOTHING",
+        )
+        .bind(key)
+        .bind(value)
+        .execute(self.pool)
+        .await
+        .map_err(|error| map_sqlx("set_setting_if_absent", error))?;
+        Ok(result.rows_affected() > 0)
+    }
+
+    /// Removes `key` if present. Idempotent.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`MailError::Database`] on any query failure.
+    pub async fn delete(&self, key: &str) -> Result<(), MailError> {
+        sqlx::query("DELETE FROM app_settings WHERE key = ?")
+            .bind(key)
+            .execute(self.pool)
+            .await
+            .map_err(|error| map_sqlx("delete_setting", error))?;
+        Ok(())
+    }
 }

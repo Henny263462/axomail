@@ -38,17 +38,27 @@ impl std::fmt::Debug for PgpSigner {
 }
 
 /// A resolved PGP protection plan for one send: optional signer plus the
-/// recipient public keys to encrypt to (empty ⇒ sign only).
+/// recipient public keys to encrypt to (all empty ⇒ sign only).
 #[derive(Debug, Clone)]
 pub(crate) struct PgpSendPlan {
     /// Signing key material, when signing was requested.
     pub signer: Option<PgpSigner>,
-    /// Armored recipient public keys, when encryption was requested.
+    /// Armored public keys of the *visible* recipients (To/Cc) plus ourselves.
     pub encrypt_to: Vec<String>,
+    /// Armored public keys of the *hidden* (Bcc) recipients. These are encrypted
+    /// to with a wildcard key id so the ciphertext never discloses a Bcc'd
+    /// party.
+    pub encrypt_to_hidden: Vec<String>,
 }
 
-/// Resolves the sign/encrypt plan for a message from `from_email` to
-/// `recipients`, or `None` when neither protection is requested.
+/// Resolves the sign/encrypt plan for a message from `from_email` to its
+/// `visible_recipients` (To/Cc) and `bcc_recipients` (Bcc), or `None` when
+/// neither protection is requested.
+///
+/// Signing requires a key whose User-ID matches `from_email` — there is **no**
+/// fallback to a default key, so a message is never signed (or encrypted-to-self)
+/// under an identity other than the one it is sent as. Bcc recipients are
+/// carried separately from To/Cc so encryption can hide them.
 ///
 /// # Errors
 ///
@@ -56,11 +66,16 @@ pub(crate) struct PgpSendPlan {
 /// key matches the sender, or encryption is requested but a recipient has no
 /// known public key; and [`MailError::Keychain`] if the signer's secret cannot
 /// be read.
+// Each argument is a distinct resource or independent flag (store, secrets,
+// sender, the two recipient sets, sign/encrypt, passphrase); grouping them into
+// a struct would not add clarity, so they are passed individually.
+#[allow(clippy::too_many_arguments)]
 pub(crate) async fn resolve_send_plan(
     store: &Store,
     secrets: &SharedSecretStore,
     from_email: &str,
-    recipients: &[String],
+    visible_recipients: &[String],
+    bcc_recipients: &[String],
     sign: bool,
     encrypt: bool,
     passphrase: Option<String>,
@@ -70,7 +85,9 @@ pub(crate) async fn resolve_send_plan(
     }
 
     let from = normalize_email(from_email);
-    let own = store.pgp_keys().own_for_email(&from).await?;
+    // Strict: the signing/self key must actually belong to the sending From —
+    // never the unrelated default key.
+    let own = store.pgp_keys().own_key_for_address(&from).await?;
 
     let signer = if sign {
         let key = own.clone().ok_or_else(|| MailError::Configuration {
@@ -89,31 +106,104 @@ pub(crate) async fn resolve_send_plan(
         None
     };
 
-    let encrypt_to = if encrypt {
-        let mut keys = Vec::new();
-        for recipient in recipients {
-            let email = normalize_email(recipient);
-            let public = match store.pgp_keys().recipient_public_for(&email).await? {
-                Some(public) => public,
-                None => store
-                    .pgp_keys()
-                    .own_key_for_address(&email)
-                    .await?
-                    .map(|key| key.public_armored)
-                    .ok_or_else(|| MailError::Configuration {
-                        message: format!("no OpenPGP public key is known for {recipient}"),
-                    })?,
-            };
-            keys.push(public);
-        }
-        // Encrypt to ourselves too, so the filed Sent copy stays readable.
+    let (encrypt_to, encrypt_to_hidden) = if encrypt {
+        let mut visible = resolve_recipient_keys(store, visible_recipients).await?;
+        let hidden = resolve_recipient_keys(store, bcc_recipients).await?;
+        // Encrypt to ourselves too (as a visible recipient — it is our own key),
+        // so the filed Sent copy stays readable.
         if let Some(own) = own {
-            keys.push(own.public_armored);
+            visible.push(own.public_armored);
         }
-        keys
+        (visible, hidden)
     } else {
-        Vec::new()
+        (Vec::new(), Vec::new())
     };
 
-    Ok(Some(PgpSendPlan { signer, encrypt_to }))
+    Ok(Some(PgpSendPlan {
+        signer,
+        encrypt_to,
+        encrypt_to_hidden,
+    }))
+}
+
+/// Resolves the armored public key for each recipient address, failing if any
+/// recipient has no known key. A recipient key takes precedence; an own key for
+/// the address is accepted as a fallback (encrypting to a self-address).
+async fn resolve_recipient_keys(
+    store: &Store,
+    recipients: &[String],
+) -> Result<Vec<String>, MailError> {
+    let mut keys = Vec::with_capacity(recipients.len());
+    for recipient in recipients {
+        let email = normalize_email(recipient);
+        let public = match store.pgp_keys().recipient_public_for(&email).await? {
+            Some(public) => public,
+            None => store
+                .pgp_keys()
+                .own_key_for_address(&email)
+                .await?
+                .map(|key| key.public_armored)
+                .ok_or_else(|| MailError::Configuration {
+                    message: format!("no OpenPGP public key is known for {recipient}"),
+                })?,
+        };
+        keys.push(public);
+    }
+    Ok(keys)
+}
+
+#[cfg(test)]
+mod tests {
+    #![allow(clippy::unwrap_used, clippy::expect_used)]
+
+    use std::sync::Arc;
+
+    use axomail_security::InMemorySecretStore;
+    use axomail_storage::{NewPgpOwnKey, Store};
+
+    use super::*;
+
+    fn own_key(user_id: &str) -> NewPgpOwnKey {
+        NewPgpOwnKey {
+            fingerprint: "aaaa000000000000000000000000000000000001".to_owned(),
+            key_id: "0000000000000001".to_owned(),
+            user_id: user_id.to_owned(),
+            algorithm: "EdDSALegacy".to_owned(),
+            public_armored: "unused-in-this-test".to_owned(),
+            has_passphrase: false,
+            created_at_unix: 0,
+            added_at_unix: 0,
+        }
+    }
+
+    #[tokio::test]
+    async fn signing_without_a_matching_key_errors_instead_of_using_the_default() {
+        // SECURITY (finding #5): the only (default) key belongs to personal@;
+        // sending as alias@ (no matching key) must FAIL rather than silently sign
+        // under the default personal@ key.
+        let store = Store::open_in_memory().await.unwrap();
+        store
+            .pgp_keys()
+            .insert_own(&own_key("Personal <personal@example.org>"))
+            .await
+            .unwrap();
+        let secrets: SharedSecretStore = Arc::new(InMemorySecretStore::new());
+
+        let result = resolve_send_plan(
+            &store,
+            &secrets,
+            "alias@example.org",
+            &["bob@example.org".to_owned()],
+            &[],
+            true,  // sign
+            false, // encrypt
+            None,
+        )
+        .await;
+
+        assert!(
+            matches!(result, Err(MailError::Configuration { .. })),
+            "signing as an address with no matching key must error, got {result:?}"
+        );
+    }
 }

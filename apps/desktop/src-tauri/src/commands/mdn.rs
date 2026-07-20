@@ -107,13 +107,23 @@ where
 
     let provider = build_provider(secrets, extra_roots, &account).await?;
     let envelope_message = envelope_for(&report);
+
+    // Atomically claim the send just before delivering: the "already sent?"
+    // check and the marker write are a single atomic operation, so two
+    // concurrent `send_mdn` calls for the same message cannot both send — exactly
+    // one wins the claim and sends. A loser reports it was already sent.
+    if !receipts::claim_mdn_send(store, message_id).await? {
+        return Ok(MdnOutcomeDto::already_sent());
+    }
     if let Err(error) = provider.send_body(&envelope_message, &rendered.bytes).await {
+        // The send failed: release the claim so a later retry may send.
+        receipts::release_mdn_claim(store, message_id).await?;
         return Ok(MdnOutcomeDto::failed(error.to_string()));
     }
 
-    // Delivered: file a local copy, mark it locally, and propagate the keyword.
+    // Delivered (the claim already recorded $MDNSent locally): file a local copy
+    // and propagate the keyword.
     file_receipt_copy(store, &account, &report, &rendered.bytes).await;
-    receipts::mark_mdn_sent(store, message_id).await?;
     propagate_keyword(store, engine, &account, &envelope, id).await?;
     Ok(MdnOutcomeDto::sent())
 }

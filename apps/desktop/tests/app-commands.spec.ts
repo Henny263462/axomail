@@ -2,6 +2,7 @@ import { defineComponent, h } from "vue";
 import { mount } from "@vue/test-utils";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import { i18n } from "../src/i18n";
 import {
   buildAppCommands,
   buildContextCommands,
@@ -107,6 +108,22 @@ describe("buildAppCommands catalogue", () => {
       ["g", "i"],
       ["g", "f"],
     ]);
+  });
+
+  // Finding 5: titles resolve live, so a runtime locale switch re-localizes the
+  // palette/help without re-registration.
+  it("re-localizes command titles and keywords when the locale switches", () => {
+    const commands = buildAppCommands(deps);
+    const reply = commands.find((c) => c.id === "message.reply");
+    if (reply === undefined) throw new Error("expected the reply command");
+    expect(reply.title).toBe("Reply");
+    try {
+      i18n.global.locale.value = "de";
+      expect(reply.title).toBe("Antworten");
+      expect(reply.keywords).toContain("beantworten");
+    } finally {
+      i18n.global.locale.value = "en";
+    }
   });
 });
 

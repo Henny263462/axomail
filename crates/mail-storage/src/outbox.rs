@@ -103,6 +103,11 @@ pub struct NewOutbox {
     /// means "as soon as possible"; a future value defers a "send later"
     /// message until that instant.
     pub next_attempt_unix: Option<i64>,
+    /// Whether this send was submitted with OpenPGP protection (sign and/or
+    /// encrypt). A protected row must never be retried, since the protection
+    /// plan (and any passphrase) is not persisted and a retry would rebuild and
+    /// send the plaintext.
+    pub pgp_protected: bool,
 }
 
 /// A persisted outbox row.
@@ -133,6 +138,9 @@ pub struct OutboxRecord {
     /// Earliest Unix second at which the worker may submit this row; a future
     /// value marks a scheduled "send later" message.
     pub next_attempt_unix: Option<i64>,
+    /// Whether this send was submitted with OpenPGP protection. A `true` row is
+    /// non-retryable: it must never be re-sent (which would leak the plaintext).
+    pub pgp_protected: bool,
     /// Last-updated timestamp (Unix seconds).
     pub updated_unix: i64,
 }
@@ -140,7 +148,7 @@ pub struct OutboxRecord {
 /// Columns selected when reading an outbox row, in [`OutboxRow`] order.
 const OUTBOX_COLUMNS: &str = "id, account_id, identity_id, subject, body_text, \
     to_json, cc_json, bcc_json, state, attempts, last_error, \
-    next_attempt_unix, updated_at_unix";
+    next_attempt_unix, pgp_protected, updated_at_unix";
 
 /// Repository over the `outbox` table.
 #[derive(Debug)]
@@ -165,8 +173,8 @@ impl<'a> OutboxRepo<'a> {
         let row = sqlx::query_as::<_, OutboxRow>(sqlx::AssertSqlSafe(format!(
             "INSERT INTO outbox
                  (account_id, draft_id, identity_id, subject, body_text,
-                  to_json, cc_json, bcc_json, next_attempt_unix)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                  to_json, cc_json, bcc_json, next_attempt_unix, pgp_protected)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
              RETURNING {OUTBOX_COLUMNS}"
         )))
         .bind(new.account.value())
@@ -178,6 +186,7 @@ impl<'a> OutboxRepo<'a> {
         .bind(cc_json)
         .bind(bcc_json)
         .bind(new.next_attempt_unix)
+        .bind(i64::from(new.pgp_protected))
         .fetch_one(self.pool)
         .await
         .map_err(|error| map_sqlx("create_outbox", error))?;
@@ -389,6 +398,7 @@ struct OutboxRow {
     attempts: i64,
     last_error: Option<String>,
     next_attempt_unix: Option<i64>,
+    pgp_protected: i64,
     updated_at_unix: i64,
 }
 
@@ -407,6 +417,7 @@ impl OutboxRow {
             attempts: self.attempts,
             last_error: self.last_error,
             next_attempt_unix: self.next_attempt_unix,
+            pgp_protected: self.pgp_protected != 0,
             updated_unix: self.updated_at_unix,
         })
     }

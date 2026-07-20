@@ -98,6 +98,7 @@ pub async fn send_message_impl(
     // Resolve the sign/encrypt plan up front, so a missing signing key or a
     // recipient without a public key fails the command before any row is
     // written — never a message sent unprotected when protection was requested.
+    // Bcc recipients are passed separately so encryption can hide them.
     let pgp_plan = if deferred || !wants_pgp {
         None
     } else {
@@ -105,17 +106,23 @@ pub async fn send_message_impl(
             .as_ref()
             .map(|identity| identity.fields.email.clone())
             .unwrap_or_else(|| account.email.as_str().to_owned());
+        let visible: Vec<String> = input.to.iter().chain(&input.cc).cloned().collect();
         crate::commands::pgp::resolve_send_plan(
             store,
             secrets,
             &from_email,
-            &recipients,
+            &visible,
+            &input.bcc,
             input.sign,
             input.encrypt,
             input.pgp_passphrase.clone(),
         )
         .await?
     };
+    // Record on the durable row that this send is PGP-protected, so a later
+    // retry (which cannot rebuild the protection plan or re-obtain the
+    // passphrase) refuses to re-send it in the clear — see `retry_outbox_impl`.
+    let pgp_protected = pgp_plan.is_some();
 
     // Read attachments and sanitize the HTML only for an immediate send. Reading
     // up front means an unreadable or oversized attachment fails the command
@@ -157,6 +164,7 @@ pub async fn send_message_impl(
             cc: input.cc,
             bcc: input.bcc,
             next_attempt_unix: scheduled,
+            pgp_protected,
         })
         .await?;
 

@@ -48,6 +48,7 @@ fn new_outbox(account: AccountId, subject: &str) -> NewOutbox {
         cc: Vec::new(),
         bcc: Vec::new(),
         next_attempt_unix: None,
+        pgp_protected: false,
     }
 }
 

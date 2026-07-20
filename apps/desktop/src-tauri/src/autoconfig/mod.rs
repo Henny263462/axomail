@@ -13,9 +13,14 @@
 //!
 //! # Security
 //!
-//! - **HTTPS only.** [`candidate_sources`] emits `https://` URLs exclusively,
-//!   and the production client's redirect policy refuses to follow a redirect
-//!   to any non-`https` scheme, so a hostile server cannot downgrade the fetch.
+//! - **HTTPS only + SSRF guard.** [`candidate_sources`] emits `https://` URLs
+//!   exclusively, and every fetch (initial and each redirect hop) is validated
+//!   under [`FetchPolicy::Guarded`]: the scheme must be `https`, the target host
+//!   must not resolve to a loopback / private / link-local address, and a
+//!   redirect is followed only when it stays on the same host over `https`. An
+//!   attacker who controls the email domain (and thus `autoconfig.<domain>` /
+//!   `<domain>`), or a hostile redirect, therefore cannot make the client reach
+//!   `127.0.0.1` or an internal service, nor downgrade the fetch.
 //! - **No credentials are ever sent.** Only the email *domain* appears in a
 //!   lookup URL; the local part, password, and email address itself never
 //!   leave the machine during discovery. The result is a *suggestion* the user
@@ -23,12 +28,17 @@
 //! - Response bodies are size-capped ([`MAX_BODY_BYTES`]) to bound a malicious
 //!   or runaway endpoint, and only the domain (never the address) is logged.
 
+mod guard;
 mod guess;
 mod xml;
 
 use std::time::Duration;
 
 use axomail_core::{ConnectionSecurity, IncomingProtocol, MailError};
+use reqwest::Url;
+use reqwest::header::LOCATION;
+
+use guard::{may_follow_redirect, url_target_is_safe};
 
 use crate::oauth::install_crypto_provider;
 
@@ -44,6 +54,22 @@ const MAX_BODY_BYTES: usize = 128 * 1024;
 
 /// Upper bound on redirects followed during a single fetch.
 const MAX_REDIRECTS: usize = 5;
+
+/// How strictly a fetch validates its target host.
+///
+/// Production discovery uses [`Guarded`](FetchPolicy::Guarded): `https`-only, no
+/// loopback/private/link-local targets, and same-host `https` redirects only —
+/// the SSRF guard for a URL host that an attacker can steer via the email
+/// domain. [`Unrestricted`](FetchPolicy::Unrestricted) exists only for tests that
+/// drive a plaintext loopback stub server and must not be used in production.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FetchPolicy {
+    /// SSRF guard on: https-only, no private/loopback targets, no cross-host or
+    /// scheme-downgrading redirects.
+    Guarded,
+    /// No guard — for tests driving a loopback HTTP stub.
+    Unrestricted,
+}
 
 /// Which discovery source produced a configuration.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -166,7 +192,15 @@ pub async fn discover(email: &str) -> Option<AutoconfigOutcome> {
     tracing::debug!(%domain, "autoconfig lookup started");
 
     let network = match http_client() {
-        Ok(client) => discover_from_sources(&client, &candidate_sources(&domain), email).await,
+        Ok(client) => {
+            discover_from_sources(
+                &client,
+                &candidate_sources(&domain),
+                email,
+                FetchPolicy::Guarded,
+            )
+            .await
+        }
         Err(_) => None,
     };
     if let Some(found) = network {
@@ -186,16 +220,18 @@ pub async fn discover(email: &str) -> Option<AutoconfigOutcome> {
     None
 }
 
-/// Fetches each source in order, returning the first that yields a parseable
-/// configuration. The HTTP client is injected so tests can drive this against
-/// a local stub without contacting the network.
+/// Fetches each source in order under `policy`, returning the first that yields
+/// a parseable configuration. The HTTP client is injected so tests can drive
+/// this against a local stub without contacting the network; production passes
+/// [`FetchPolicy::Guarded`] so every hop is SSRF-checked.
 pub async fn discover_from_sources(
     client: &reqwest::Client,
     sources: &[(AutoconfigSource, String)],
     email: &str,
+    policy: FetchPolicy,
 ) -> Option<AutoconfigOutcome> {
     for (source, url) in sources {
-        let Some(body) = fetch_body(client, url).await else {
+        let Some(body) = fetch_body(client, url, policy).await else {
             continue;
         };
         if let Some(config) = parse_autoconfig(&body, email) {
@@ -208,34 +244,64 @@ pub async fn discover_from_sources(
     None
 }
 
-/// Builds the production HTTP client: HTTPS-only redirects, a per-request
-/// timeout, and the ring crypto provider installed for rustls.
+/// Builds the production HTTP client: automatic redirects **disabled** (each hop
+/// is validated by [`fetch_body`] instead), a per-request timeout, and the ring
+/// crypto provider installed for rustls.
 fn http_client() -> Result<reqwest::Client, MailError> {
     install_crypto_provider();
-    let redirect = reqwest::redirect::Policy::custom(|attempt| {
-        if attempt.url().scheme() != "https" || attempt.previous().len() >= MAX_REDIRECTS {
-            attempt.stop()
-        } else {
-            attempt.follow()
-        }
-    });
     reqwest::Client::builder()
         .timeout(FETCH_TIMEOUT)
-        .redirect(redirect)
+        // Redirects are handled manually so every hop can be re-validated for
+        // scheme, host, and target-IP safety (SSRF guard). reqwest's own policy
+        // cannot resolve+reject private targets or forbid cross-host hops.
+        .redirect(reqwest::redirect::Policy::none())
         .build()
         .map_err(|_| MailError::Network {
             message: "could not initialize the HTTP client".to_owned(),
         })
 }
 
-/// Performs one GET, returning the body on a 2xx or `None` on any other status
-/// or transport failure. The body is read with a hard size cap.
-async fn fetch_body(client: &reqwest::Client, url: &str) -> Option<String> {
-    let response = client.get(url).send().await.ok()?;
-    if !response.status().is_success() {
-        return None;
+/// Performs a guarded GET, following at most [`MAX_REDIRECTS`] redirects, and
+/// returns the body on a final 2xx or `None` on any other status, an unsafe
+/// target, or a transport failure. The body is read with a hard size cap.
+///
+/// Every hop is validated before the request is issued: the URL must be
+/// `https`, and its host must not resolve to a loopback, private, or link-local
+/// address (SSRF guard — an attacker who controls the email domain, or a hostile
+/// redirect, must not be able to reach `127.0.0.1` or an internal service). A
+/// redirect is followed only when it stays on the **same host** over `https`.
+/// Under [`FetchPolicy::Unrestricted`] (tests only) the guard is skipped and a
+/// single plain GET is performed against a loopback stub.
+async fn fetch_body(client: &reqwest::Client, url: &str, policy: FetchPolicy) -> Option<String> {
+    if policy == FetchPolicy::Unrestricted {
+        let response = client.get(url).send().await.ok()?;
+        if !response.status().is_success() {
+            return None;
+        }
+        return read_capped(response).await;
     }
-    read_capped(response).await
+
+    let mut current = Url::parse(url).ok()?;
+    for _ in 0..=MAX_REDIRECTS {
+        if !url_target_is_safe(&current).await {
+            return None;
+        }
+        let response = client.get(current.clone()).send().await.ok()?;
+        if response.status().is_redirection() {
+            let location = response.headers().get(LOCATION)?.to_str().ok()?;
+            let next = current.join(location).ok()?;
+            if !may_follow_redirect(&current, &next) {
+                return None;
+            }
+            current = next;
+            continue;
+        }
+        if !response.status().is_success() {
+            return None;
+        }
+        return read_capped(response).await;
+    }
+    None
 }
 
 /// Reads a response body up to [`MAX_BODY_BYTES`], returning `None` if the body
@@ -259,6 +325,8 @@ async fn read_capped(mut response: reqwest::Response) -> Option<String> {
 
 #[cfg(test)]
 mod tests {
+    #![allow(clippy::unwrap_used, clippy::expect_used)]
+
     use super::*;
 
     #[test]

@@ -270,3 +270,64 @@ async fn send_mdn_delivers_report_marks_sent_and_does_not_resend() {
     .unwrap();
     assert_eq!(again.status, "alreadySent", "a receipt is sent only once");
 }
+
+#[tokio::test]
+async fn concurrent_send_mdn_sends_exactly_one_receipt() {
+    // SECURITY (finding #12): two concurrent send_mdn calls for the same message
+    // must not both deliver a receipt. The atomic claim ensures exactly one wins
+    // and sends; the other reports it was already sent. The scripted server
+    // replays its script for every accepted connection, so a double-send would
+    // record two transcripts.
+    let store = Store::open_in_memory().await.unwrap();
+    let (_concrete, secrets) = secret_stores();
+    let identity = TestTlsIdentity::generate().unwrap();
+    let server = ScriptedServer::spawn_tls(smtp_steps(), &identity)
+        .await
+        .unwrap();
+    let roots = vec![identity.root_der().to_vec()];
+    let raw_root = tempfile::tempdir().unwrap();
+
+    let summary =
+        account_with_folders(&store, &secrets, outgoing_account_input(server.port())).await;
+    let inbox = inbox_mailbox_id(&summary.mailboxes);
+    let message_id = insert_source(&store, inbox).await;
+    cache_raw(raw_root.path(), message_id, SOURCE);
+
+    let engine = stub_engine(&store);
+    let factory = StubFactory;
+    let raw = raw_root.path();
+    // Two concurrent send attempts for the same message.
+    let (a, b) = tokio::join!(
+        send_mdn_impl(
+            &store, &secrets, &engine, &factory, raw, &roots, message_id, false
+        ),
+        send_mdn_impl(
+            &store, &secrets, &engine, &factory, raw, &roots, message_id, false
+        ),
+    );
+    let a = a.unwrap();
+    let b = b.unwrap();
+
+    let sent = [&a, &b].iter().filter(|o| o.status == "sent").count();
+    let already = [&a, &b]
+        .iter()
+        .filter(|o| o.status == "alreadySent")
+        .count();
+    assert_eq!(
+        sent,
+        1,
+        "exactly one call sends: {:?}",
+        (&a.status, &b.status)
+    );
+    assert_eq!(
+        already,
+        1,
+        "the other call sees it already sent: {:?}",
+        (&a.status, &b.status)
+    );
+    assert_eq!(
+        server.transcripts().len(),
+        1,
+        "exactly one receipt reaches the wire"
+    );
+}

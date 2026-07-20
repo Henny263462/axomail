@@ -24,13 +24,16 @@
 //! `with_deadline` wrapping is needed; callers on an async runtime should still
 //! offload the heavier ones (key generation, decrypt) to a blocking context.
 
+mod enc_select;
 mod encrypt;
 mod keys;
 mod mime;
 mod mime_util;
 mod secret;
 mod sign;
+mod sign_verify;
 
+pub use enc_select::public_key_can_encrypt;
 pub use encrypt::{DecryptedMessage, decrypt_message, encrypt_message};
 pub use keys::{
     GeneratedKey, KeyMetadata, generate_keypair, import_public_key, import_secret_key,
@@ -38,7 +41,7 @@ pub use keys::{
 };
 pub use mime::{PgpMimeMessage, apply_pgp_mime, parse_pgp_mime};
 pub use secret::credential_ref_for_pgp;
-pub use sign::{SignatureVerification, sign_detached, verify_detached};
+pub use sign::{SignatureVerification, VerifiedSignature, sign_detached, verify_detached};
 
 use axomail_core::MailError;
 

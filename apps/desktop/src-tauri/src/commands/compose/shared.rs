@@ -158,7 +158,12 @@ fn apply_pgp_plan(
         .signer
         .as_ref()
         .map(|signer| (signer.secret_armored.as_str(), signer.passphrase.as_deref()));
-    let bytes = apply_pgp_mime(&rendered.bytes, signer, &plan.encrypt_to)?;
+    let bytes = apply_pgp_mime(
+        &rendered.bytes,
+        signer,
+        &plan.encrypt_to,
+        &plan.encrypt_to_hidden,
+    )?;
     Ok(RenderedMessage {
         bytes,
         message_id: rendered.message_id,

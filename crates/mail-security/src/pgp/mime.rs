@@ -52,9 +52,12 @@ const ENC_PROTOCOL: &str = "application/pgp-encrypted";
 /// The transform preserves the envelope headers (From/To/Subject/Date/
 /// Message-ID/MIME-Version, …) and moves the `Content-*` headers plus the body
 /// into the protected inner MIME entity. `signer` is `(secret_armored,
-/// passphrase)` for signing; `encrypt_to` is the recipient public keys (empty =
-/// no encryption). Signing and encryption compose as `encrypt(sign(content))`
-/// (RFC 3156 §6.1). With neither requested, the message is returned unchanged.
+/// passphrase)` for signing; `encrypt_to` are the *visible* recipient public
+/// keys (To/Cc and ourselves) and `encrypt_to_hidden` the *hidden* (Bcc) ones,
+/// which are encrypted to with a wildcard key id so the ciphertext does not
+/// disclose them. Both empty ⇒ no encryption. Signing and encryption compose as
+/// `encrypt(sign(content))` (RFC 3156 §6.1). With neither requested, the message
+/// is returned unchanged.
 ///
 /// # Errors
 ///
@@ -64,8 +67,10 @@ pub fn apply_pgp_mime(
     message: &[u8],
     signer: Option<(&str, Option<&str>)>,
     encrypt_to: &[String],
+    encrypt_to_hidden: &[String],
 ) -> Result<Vec<u8>, MailError> {
-    if signer.is_none() && encrypt_to.is_empty() {
+    let encrypting = !encrypt_to.is_empty() || !encrypt_to_hidden.is_empty();
+    if signer.is_none() && !encrypting {
         return Ok(message.to_vec());
     }
     let canonical = canonicalize_crlf(message);
@@ -78,26 +83,38 @@ pub fn apply_pgp_mime(
 
     let inner_entity = build_entity(&content, &body);
 
-    // Sign first, if requested, producing a self-contained multipart/signed
-    // MIME entity; then optionally encrypt that (or the plain inner entity).
-    let (protected_ct, protected_body) = if let Some((secret, passphrase)) = signer {
-        let signature = sign_detached(secret, passphrase, &inner_entity)?;
-        signed_multipart(&inner_entity, &signature)
-    } else {
-        // Encryption-only: the protected payload is the inner entity itself.
-        let ct = content_type_of(&content);
-        (ct, inner_entity.clone())
-    };
-
-    let (top_ct, top_body) = if encrypt_to.is_empty() {
-        (protected_ct, protected_body)
-    } else {
-        let payload = assemble_entity(&protected_ct, &protected_body);
-        let ciphertext = encrypt_message(encrypt_to, &payload)?;
-        encrypted_multipart(&ciphertext)
-    };
-
-    Ok(reassemble(&envelope, &top_ct, &top_body))
+    match (signer, encrypting) {
+        // Sign-only: the top-level entity is the multipart/signed block itself.
+        (Some((secret, passphrase)), false) => {
+            let signature = sign_detached(secret, passphrase, &inner_entity)?;
+            let (ct, body) = signed_multipart(&inner_entity, &signature);
+            Ok(reassemble(&envelope, &ct, &body))
+        }
+        // Encryption requested (with or without signing). The payload to encrypt
+        // is a *complete* MIME entity: the multipart/signed block when signing,
+        // or the inner entity used as-is otherwise. The inner entity is already
+        // headers + blank line + body, so it must NOT be re-wrapped with
+        // `assemble_entity` — doing so would prepend a duplicate Content-Type and
+        // push the real content headers (including Content-Transfer-Encoding)
+        // below the first blank line, where they would be parsed as body and
+        // corrupt any base64/quoted-printable content.
+        (signer, true) => {
+            let payload = match signer {
+                Some((secret, passphrase)) => {
+                    let signature = sign_detached(secret, passphrase, &inner_entity)?;
+                    let (ct, body) = signed_multipart(&inner_entity, &signature);
+                    assemble_entity(&ct, &body)
+                }
+                None => inner_entity,
+            };
+            let ciphertext = encrypt_message(encrypt_to, encrypt_to_hidden, &payload)?;
+            let (top_ct, top_body) = encrypted_multipart(&ciphertext);
+            Ok(reassemble(&envelope, &top_ct, &top_body))
+        }
+        // No protection: handled by the early return above; kept total for
+        // exhaustiveness without a panic.
+        (None, false) => Ok(message.to_vec()),
+    }
 }
 
 /// Recognises the OpenPGP structure of a received message, if any.

@@ -87,7 +87,10 @@ export function useComposerSubmit(ctx: ComposerSubmitContext) {
    * forwarded message rides `forwardedAttachments` (inline base64) — the backend
    * merges both.
    */
-  function buildInput(scheduledAtUnix?: number): ComposeInput {
+  function buildInput(
+    scheduledAtUnix?: number,
+    persistable = false,
+  ): ComposeInput {
     const signature = ctx.hasPrefill.value ? "" : ctx.currentSignatureText.value;
     const html =
       ctx.bodyHtml.value === null
@@ -124,7 +127,9 @@ export function useComposerSubmit(ctx: ComposerSubmitContext) {
     // applies it on the immediate-send path and rejects a deferred PGP send.
     if (ctx.sign.value) {
       input.sign = true;
-      if (ctx.pgpPassphrase.value.length > 0) {
+      // The signing passphrase rides only the live send, never a persisted
+      // draft (a passphrase must not be written to disk in the drafts store).
+      if (!persistable && ctx.pgpPassphrase.value.length > 0) {
         input.pgpPassphrase = ctx.pgpPassphrase.value;
       }
     }
@@ -225,6 +230,10 @@ export function useComposerSubmit(ctx: ComposerSubmitContext) {
       ctx.errorMessage.value = outcome.error ?? "The message could not be sent.";
     } finally {
       ctx.sending.value = false;
+      // Wipe the signing passphrase after the send attempt (success or
+      // failure); the in-flight payload already captured it, so this only
+      // clears the lingering reactive copy.
+      ctx.pgpPassphrase.value = "";
     }
   }
 
@@ -241,7 +250,7 @@ export function useComposerSubmit(ctx: ComposerSubmitContext) {
     ctx.errorMessage.value = "";
     ctx.savingDraft.value = true;
     try {
-      const id = await saveDraft(buildInput(), ctx.draftId.value);
+      const id = await saveDraft(buildInput(undefined, true), ctx.draftId.value);
       if (id === null) {
         ctx.errorMessage.value =
           "Saving needs the desktop app; it is unavailable in the browser preview.";
@@ -257,7 +266,7 @@ export function useComposerSubmit(ctx: ComposerSubmitContext) {
 
   /** Timer-driven save used by `useDraftAutosave`; quiet on failure. */
   async function autosave(): Promise<void> {
-    const id = await saveDraft(buildInput(), ctx.draftId.value);
+    const id = await saveDraft(buildInput(undefined, true), ctx.draftId.value);
     if (id !== null) {
       ctx.draftId.value = id;
       ctx.statusMessage.value = "Draft autosaved.";

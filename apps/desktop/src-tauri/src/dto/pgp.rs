@@ -116,9 +116,13 @@ pub struct PgpMessageStatusDto {
     pub encrypted: bool,
     /// Whether the message is signed.
     pub signed: bool,
-    /// Signature outcome: `none`, `valid`, `invalid`, or `unknownKey`.
+    /// Signature outcome: `none`, `valid`, `signerMismatch`, `invalid`, or
+    /// `unknownKey`. `signerMismatch` means the signature is cryptographically
+    /// sound but the signing key's identity does not match the sender — it must
+    /// never be shown as a plain "valid" badge.
     pub signature_status: String,
-    /// The matched signer's user id, when a signing key was found.
+    /// The matched signer's user id, when a signing key was found. For
+    /// `signerMismatch` this names the actual signer (who is *not* the sender).
     pub signer: Option<String>,
     /// Whether an encrypted message was successfully decrypted.
     pub decrypted: bool,

@@ -57,6 +57,11 @@ export function useAutoconfigLookup(form: AutoconfigForm) {
   const autoconfigStatus = ref<AutoconfigStatus>("idle");
   const autoconfigSource = ref<AutoconfigSource | null>(null);
 
+  // Monotonic guard: a lookup is bound to the email it was started for, so a
+  // response that resolves after the user edits the address never overwrites
+  // the newer form.
+  let lookupToken = 0;
+
   /**
    * Runs auto-configuration for the typed email and, on success, fills the
    * server fields (and the auth method for OAuth2 providers). Every branch
@@ -69,9 +74,17 @@ export function useAutoconfigLookup(form: AutoconfigForm) {
       return;
     }
     if (autoconfigStatus.value === "searching") return;
+    const token = ++lookupToken;
     autoconfigStatus.value = "searching";
     autoconfigSource.value = null;
     const result = await discoverAutoconfig(trimmed);
+    // The address was edited (or another lookup began) while this was in
+    // flight: abandon the stale result rather than write it into the new form,
+    // and return to idle so a fresh search can run for the current address.
+    if (token !== lookupToken || form.email.value.trim() !== trimmed) {
+      if (token === lookupToken) autoconfigStatus.value = "idle";
+      return;
+    }
     if (result === null) {
       autoconfigStatus.value = "unavailable";
       return;

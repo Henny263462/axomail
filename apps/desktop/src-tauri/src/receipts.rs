@@ -134,6 +134,35 @@ pub async fn mark_mdn_sent(store: &Store, message_id: i64) -> Result<(), MailErr
         .await
 }
 
+/// Atomically claims the sending of a receipt for this message.
+///
+/// Returns `true` when this caller won the claim and must proceed to send the
+/// receipt exactly once; `false` when a receipt was already sent (or another
+/// send is in flight). This closes the double-send race: the "already sent?"
+/// check and the marker write are a single atomic insert, so two concurrent
+/// `send_mdn` calls cannot both send. A caller that wins but then fails to send
+/// must [`release_mdn_claim`] so a later retry can send.
+///
+/// # Errors
+///
+/// Returns [`MailError::Database`] on any query failure.
+pub async fn claim_mdn_send(store: &Store, message_id: i64) -> Result<bool, MailError> {
+    store
+        .settings()
+        .set_if_absent(&mdn_sent_key(message_id), "true")
+        .await
+}
+
+/// Releases a claim taken by [`claim_mdn_send`] when the send did not succeed,
+/// so a later attempt may send the receipt.
+///
+/// # Errors
+///
+/// Returns [`MailError::Database`] on any query failure.
+pub async fn release_mdn_claim(store: &Store, message_id: i64) -> Result<(), MailError> {
+    store.settings().delete(&mdn_sent_key(message_id)).await
+}
+
 /// Builds the reading-pane read-receipt request for a message, or `None` when
 /// none should be surfaced (no request header, already sent, or the policy
 /// decided to ignore it).

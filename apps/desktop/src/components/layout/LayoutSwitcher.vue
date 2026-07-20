@@ -19,6 +19,26 @@ const labelKey: Record<PaneLayout, string> = {
   vertical: "layout.vertical",
   wide: "layout.wide",
 };
+
+/**
+ * Roving arrow-key navigation for the radio group: Left/Up and Right/Down move
+ * the selection (and focus) to the adjacent option, wrapping, as ARIA
+ * `radiogroup` semantics require. Selection follows focus, the standard radio
+ * behaviour.
+ */
+function onArrow(event: KeyboardEvent, current: number): void {
+  const forward = event.key === "ArrowRight" || event.key === "ArrowDown";
+  const back = event.key === "ArrowLeft" || event.key === "ArrowUp";
+  if (!forward && !back) return;
+  event.preventDefault();
+  const count = PANE_LAYOUTS.length;
+  const next = (current + (forward ? 1 : -1) + count) % count;
+  const option = PANE_LAYOUTS[next];
+  if (option === undefined) return;
+  setLayout(option);
+  const group = (event.currentTarget as HTMLElement).parentElement;
+  (group?.children[next] as HTMLElement | undefined)?.focus();
+}
 </script>
 
 <template>
@@ -28,15 +48,17 @@ const labelKey: Record<PaneLayout, string> = {
     :aria-label="t('layout.label')"
   >
     <button
-      v-for="option in PANE_LAYOUTS"
+      v-for="(option, index) in PANE_LAYOUTS"
       :key="option"
       type="button"
       class="layout"
       :class="{ active: layout === option }"
       role="radio"
       :aria-checked="layout === option"
+      :tabindex="layout === option ? 0 : -1"
       :title="t(labelKey[option])"
       @click="setLayout(option)"
+      @keydown="onArrow($event, index)"
     >
       {{ t(labelKey[option]) }}
     </button>
