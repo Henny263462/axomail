@@ -21,6 +21,11 @@ const props = defineProps<{
   subject: string | null;
 }>();
 
+const emit = defineEmits<{
+  /** Print the open message (a print-friendly, sanitized document). */
+  print: [];
+}>();
+
 const headersOpen = ref(false);
 const headers = ref<string | null>(null);
 const sourceOpen = ref(false);
@@ -104,6 +109,13 @@ async function onToggleHeaders(): Promise<void> {
         @click="onToggleHeaders"
       >
         {{ headersOpen ? "Hide headers" : "All headers" }}
+      </button>
+      <button
+        type="button"
+        class="action"
+        @click="emit('print')"
+      >
+        Print
       </button>
     </div>
 

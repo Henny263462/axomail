@@ -23,6 +23,8 @@ const emit = defineEmits<{
   rename: [];
   toggleSubscribe: [];
   properties: [];
+  exportFolder: [];
+  importFolder: [];
   delete: [];
   emptyTrash: [];
   compact: [];
@@ -103,6 +105,20 @@ function onMenuKeydown(event: KeyboardEvent): void {
       @click="emit('compact')"
     >
       Compact
+    </button>
+    <button
+      type="button"
+      role="menuitem"
+      @click="emit('exportFolder')"
+    >
+      Export folder…
+    </button>
+    <button
+      type="button"
+      role="menuitem"
+      @click="emit('importFolder')"
+    >
+      Import messages…
     </button>
     <button
       v-if="folder.role === 'trash'"

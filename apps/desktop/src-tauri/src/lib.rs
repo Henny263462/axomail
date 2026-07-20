@@ -8,6 +8,7 @@
 pub mod commands;
 pub mod composition;
 pub mod dto;
+pub mod mbox;
 pub mod notifications;
 pub mod oauth;
 pub mod pop3_sync;
@@ -124,6 +125,8 @@ pub fn run() {
             commands::attachments::get_message_source,
             commands::attachments::get_message_headers,
             commands::attachments::save_message_eml,
+            commands::mbox::export_folder_mbox,
+            commands::mbox::import_mbox,
             commands::remote_content::set_remote_content_allowed,
             commands::sync::sync_account,
             commands::folders::create_folder,

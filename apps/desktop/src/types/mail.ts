@@ -71,6 +71,23 @@ export interface CompactOutcome {
   reclaimed: number;
 }
 
+/** Result of exporting a folder to an mbox file (Track 4.6). */
+export interface MboxExportDto {
+  /** Messages written to the mbox file. */
+  exported: number;
+  /**
+   * Messages skipped because their body could not be sourced (e.g. a remote
+   * message not cached while working offline).
+   */
+  skipped: number;
+}
+
+/** Result of importing an mbox / `.eml` file into a folder (Track 4.6). */
+export interface MboxImportDto {
+  /** Messages ingested into the target folder. */
+  imported: number;
+}
+
 /** A compact tag chip (colored dot + label) shown on rows and the detail. */
 export interface TagChip {
   id: number;
