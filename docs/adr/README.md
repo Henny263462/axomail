@@ -18,6 +18,7 @@ superseded ADR is not edited; a new ADR replaces it and links back.
 | [0011](0011-server-sent-copy-append.md) | Server-side Sent copy via IMAP APPEND with UID adoption | accepted |
 | [0012](0012-rich-compose-text-durable.md) | Rich compose: session-scoped HTML/attachments, text-only durable store | accepted |
 | [0013](0013-server-removal-empty-trash-only.md) | Server-side message removal happens only in Empty Trash | accepted |
+| [0014](0014-imap-idle-push-connection.md) | IMAP IDLE push on a dedicated, read-only connection | accepted |
 
 ## Format
 
