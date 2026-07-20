@@ -108,6 +108,20 @@ tauri-plugin-opener = "2.5.4"
 tauri-plugin-dialog = "2.7.2"
 tauri-plugin-fs = "2.5.1"
 
+# OpenPGP (Wave 5 Stage 0, ADR-0015). rPGP is a pure-Rust OpenPGP
+# implementation built on the RustCrypto crates; it has NO nettle/GPG backend,
+# so there is no GPL/LGPL crypto to exclude (that is the sequoia concern, not
+# rPGP's). `default-features = false` drops the single default feature `bzip2`,
+# which pulls the C `bzip2`/`bzip2-sys` binding — non-pure-Rust and an extra
+# build-time C toolchain dependency for BZIP2-compressed PGP packets we do not
+# need (ZIP/ZLIB via the pure-Rust flate2 stay available). This gives the
+# minimal pure-Rust feature set for sign/verify/encrypt/decrypt. Secret key
+# material lives in the OS keychain (ADR-0001), never the crate's on-disk form.
+# Track 5.1 adds the PGP module in `crates/mail-security`; the dep is declared
+# now so its whole resolved graph is cargo-deny-vetted once, ahead of fan-out.
+# Version 0.20.0 verified against crates.io on 2026-07-20 (MIT OR Apache-2.0).
+pgp = { version = "0.20.0", default-features = false }
+
 # Internal crates. Directory names follow the architecture layout; package
 # names carry the `axomail-` prefix to avoid clashes with public crates
 # (e.g. the external `mail-parser` crate). See ADR-0002.

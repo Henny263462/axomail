@@ -12,7 +12,7 @@ use axomail_core::{AccountId, IncomingProtocol, MailError};
 use axomail_storage::Store;
 
 use crate::commands::map_command_error;
-use crate::dto::{Pop3DeletePolicyDto, SettingsDto};
+use crate::dto::{LanguagePreference, Pop3DeletePolicyDto, SettingsDto};
 use crate::push::PushControl;
 use crate::scheduler::SchedulerControl;
 use crate::settings;
@@ -128,6 +128,32 @@ pub async fn set_push_enabled_impl(
     Ok(())
 }
 
+/// Reads the persisted UI-language preference (default
+/// [`LanguagePreference::System`]).
+///
+/// Like the threaded-list and push toggles, the language lives outside
+/// [`SettingsDto`] as its own read/write pair: it is applied entirely in the
+/// frontend i18n layer, so it does not belong in the batch-saved surface.
+///
+/// # Errors
+///
+/// Returns [`MailError::Database`] on any query failure.
+pub async fn get_language_impl(store: &Store) -> Result<LanguagePreference, MailError> {
+    settings::language(store).await
+}
+
+/// Persists the UI-language preference.
+///
+/// # Errors
+///
+/// Returns [`MailError::Database`] on any query failure.
+pub async fn set_language_impl(
+    store: &Store,
+    preference: LanguagePreference,
+) -> Result<(), MailError> {
+    settings::set_language(store, preference).await
+}
+
 /// Sets one account's POP3 server-deletion policy after verifying the account
 /// exists and is a POP3 account. This explicit call is the only way to enable
 /// server deletion.
@@ -209,6 +235,25 @@ pub async fn set_push_enabled(
     enabled: bool,
 ) -> Result<(), String> {
     set_push_enabled_impl(state.store(), state.push(), enabled)
+        .await
+        .map_err(map_command_error)
+}
+
+/// Reads the persisted UI-language preference.
+#[tauri::command]
+pub async fn get_language(state: tauri::State<'_, AppState>) -> Result<LanguagePreference, String> {
+    get_language_impl(state.store())
+        .await
+        .map_err(map_command_error)
+}
+
+/// Persists the UI-language preference.
+#[tauri::command]
+pub async fn set_language(
+    state: tauri::State<'_, AppState>,
+    preference: LanguagePreference,
+) -> Result<(), String> {
+    set_language_impl(state.store(), preference)
         .await
         .map_err(map_command_error)
 }

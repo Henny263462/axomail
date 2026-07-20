@@ -1,0 +1,26 @@
+{
+  "settings": {
+    "appearance": {
+      "title": "Appearance",
+      "hint": "Choose how axomail looks. \"System\" follows your operating system's light or dark setting.",
+      "system": "System",
+      "systemHint": "Match the operating system.",
+      "light": "Light",
+      "lightHint": "Always use the light theme.",
+      "dark": "Dark",
+      "darkHint": "Always use the dark theme."
+    }
+  },
+  "language": {
+    "title": "Language",
+    "hint": "Choose the language axomail uses. \"System default\" follows your operating system's language.",
+    "system": "System default",
+    "systemHint": "Follow the operating system language.",
+    "en": "English",
+    "enHint": "Always use English.",
+    "de": "German",
+    "deHint": "Always use German.",
+    "statusSaved": "Language updated.",
+    "statusUnavailable": "Changing the language needs the desktop app; it is unavailable in the browser preview."
+  }
+}

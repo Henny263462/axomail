@@ -1,8 +1,8 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted, ref } from "vue";
+import { computed, onMounted, ref } from "vue";
 
 import { cancelAllSyncJobs } from "./api/jobs";
-import { getSettings } from "./api/settings";
+import { getLanguage, getSettings } from "./api/settings";
 import { syncAccount } from "./api/sync";
 import EmptyState from "./components/common/EmptyState.vue";
 import UndoToast from "./components/common/UndoToast.vue";
@@ -16,8 +16,7 @@ import OutboxListPane from "./components/list/OutboxListPane.vue";
 import MessageViewPane from "./components/message/MessageViewPane.vue";
 import SidebarPane from "./components/sidebar/SidebarPane.vue";
 import type { SidebarView } from "./components/sidebar/view";
-import { buildContextCommands, useAppCommands } from "./composables/useAppCommands";
-import { provideCommandRegistry } from "./composables/useCommandRegistry";
+import { useAppShortcuts } from "./composables/useAppShortcuts";
 import { useComposeWorkflow } from "./composables/useComposeWorkflow";
 import { useDialogs } from "./composables/useDialogs";
 import { useMailboxActions } from "./composables/useMailboxActions";
@@ -26,6 +25,7 @@ import { useMessageActions } from "./composables/useMessageActions";
 import { useMessageListLoading } from "./composables/useMessageListLoading";
 import { useSyncStatus } from "./composables/useSyncStatus";
 import { reconcileTheme } from "./composables/useTheme";
+import { reconcileLanguage } from "./i18n";
 import type {
   AccountSummary,
   MessageListItem,
@@ -56,14 +56,6 @@ const listLoading = useMessageListLoading({
 
 // Open-state + payload for every app-level dialog; DialogHost mounts them.
 const dialogs = useDialogs<AppDialogMap>();
-
-// App-wide command registry + global keyboard dispatcher. Provided here so the
-// command palette and feature commands register/read via useCommandRegistry()
-// from any descendant. The context commands (address book, junk) are registered
-// below via buildContextCommands() once `dialogs` and `mailboxActions` exist;
-// the global mail shortcut map (track 4.5) is wired via useAppCommands(). Every
-// one is modal-gated so no global key acts on the background behind a dialog.
-const commandRegistry = provideCommandRegistry();
 
 // Optimistic star / auto-read / mark-all-read, operating on the shared lists.
 const messageActions = useMessageActions({
@@ -111,73 +103,19 @@ const mailboxActions = useMailboxActions({
   clearSelection: () => (selectionResetKey.value += 1),
 });
 
-// Context commands: address book (Mod+Shift+B), and junk "j" / not-junk
-// "Shift+J" acting on the list selection. All modal-gated via buildContextCommands
-// so none fires behind an open dialog; registration auto-disposes with the root.
-commandRegistry.registerAll(
-  buildContextCommands({
-    isModalOpen,
-    getSelectedMessageId: () => selectedMessageId.value,
-    openAddressBook: () => dialogs.open("addressBook"),
-    junk: (id) => void mailboxActions.junk([id]),
-    notJunk: (id) => void mailboxActions.notJunk([id]),
-  }),
-);
-
-/** True while a blocking modal is open — the palette is excluded so a command
- * run from it stays enabled (bare keys are already suppressed by the palette's
- * focused search input). Gates every global shortcut. Any app-level dialog that
- * should suppress background shortcuts belongs here (address book included). */
-function isModalOpen(): boolean {
-  return (
-    dialogs.isOpen("composer") ||
-    dialogs.isOpen("settings") ||
-    dialogs.isOpen("setup") ||
-    dialogs.isOpen("activity") ||
-    dialogs.isOpen("addressBook") ||
-    dialogs.isOpen("moveToFolder") ||
-    dialogs.isOpen("shortcutHelp")
-  );
-}
-
-/** Reveals the list pane and focuses its search field (the `/` shortcut). */
-function focusSearch(): void {
-  shell.value?.showPane("list");
-  void nextTick(() => {
-    document
-      .querySelector<HTMLInputElement>('input[role="searchbox"]')
-      ?.focus();
-  });
-}
-
-/** Reveals and focuses the folder sidebar (the `g f` chord). */
-function focusSidebar(): void {
-  shell.value?.showPane("sidebar");
-  void nextTick(() => {
-    document
-      .querySelector<HTMLElement>('nav[aria-label="Accounts and folders"] button')
-      ?.focus();
-  });
-}
-
-// Register the global mail shortcut map + go-to chords against the registry.
-useAppCommands(commandRegistry, {
-  isModalOpen,
-  hasAccounts: () => accounts.value.length > 0,
-  getOpenMessageId: () => view.viewedMessageId.value,
-  openCommandPalette: () => dialogs.open("commandPalette"),
-  openShortcutHelp: () => dialogs.open("shortcutHelp"),
-  newMessage: compose.openCompose,
-  reply: (id) => void compose.openReply(id),
-  replyAll: (id) => void compose.openReplyAll(id),
-  forward: (id) => void compose.openForward(id),
-  archive: (id) => void mailboxActions.archive([id]),
-  deleteToTrash: (id) => void mailboxActions.remove([id]),
-  toggleStar: (id) => void messageActions.toggleStar(id),
-  toggleUnread: (id) => void messageActions.toggleSeen(id),
-  focusSearch,
-  goInbox: () => void view.selectUnified(),
-  goFolders: focusSidebar,
+// App-wide command registry + global keyboard/shortcut wiring (the standard
+// mail command map and the address-book/junk context commands), all modal-gated
+// so no global key acts on the background behind a dialog. Returns the modal
+// predicate the message pane reads. Extracted to keep the shell under the gate.
+const { isModalOpen } = useAppShortcuts({
+  dialogs,
+  accounts,
+  selectedMessageId,
+  showPane: (pane) => shell.value?.showPane(pane),
+  view,
+  compose,
+  mailboxActions,
+  messageActions,
 });
 
 const { syncingMailboxIds, isSyncing, runningCount, syncError, dismissError } =
@@ -195,15 +133,17 @@ const syncingAccountIds = computed(() =>
 );
 
 /**
- * Reconciles the theme applied from the local cache (in main.ts) with the
- * authoritative backend setting. A no-op in the browser preview, where
- * getSettings resolves to null and the cached preference stands.
+ * Reconciles the theme and language applied from the local caches (in main.ts)
+ * with the authoritative backend settings. Reconcile (not set): if the user
+ * already picked either in Settings while these slow reads were in flight, that
+ * live choice must stand — not be stomped. A no-op in the browser preview,
+ * where the reads resolve to null and the cached preferences stand.
  */
-async function syncTheme(): Promise<void> {
+async function syncStartupPreferences(): Promise<void> {
+  const language = await getLanguage();
+  if (language !== null) reconcileLanguage(language);
   const settings = await getSettings();
   if (settings === null) return;
-  // Reconcile (not set): if the user already picked a theme in Settings while
-  // this slow read was in flight, their choice must stand — not be stomped.
   reconcileTheme(settings.theme);
   messageActions.configureAutoRead(
     settings.autoMarkReadEnabled,
@@ -211,7 +151,7 @@ async function syncTheme(): Promise<void> {
   );
 }
 
-onMounted(syncTheme);
+onMounted(syncStartupPreferences);
 
 /** Marks every unread message in the open mailbox read (list header action). */
 function onMarkAllRead(): void {
@@ -359,7 +299,7 @@ function onSyncEvent(event: SyncEventDto): void {
     @composer-saved="compose.onComposerSaved"
     @accounts-changed="view.onAccountsChanged"
     @tags-changed="tagsRefreshKey += 1"
-    @settings-saved="syncTheme"
+    @settings-saved="syncStartupPreferences"
     @folder-picked="mailboxActions.onFolderPicked"
   />
   <UndoToast

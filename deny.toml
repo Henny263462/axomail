@@ -6,9 +6,11 @@ all-features = true
 
 [advisories]
 yanked = "deny"
-# All entries below are `unmaintained` notices, not vulnerabilities.
-# They are unavoidable transitive dependencies of the Tauri 2 stack.
-# Reviewed 2026-07-18; re-check on every Tauri upgrade.
+# The GTK/unic entries below are `unmaintained` notices, not vulnerabilities;
+# they are unavoidable transitive dependencies of the Tauri 2 stack. Reviewed
+# 2026-07-18; re-check on every Tauri upgrade. The single RUSTSEC-2023-0071
+# entry at the end is a *vulnerability* accepted with a documented threat-model
+# rationale (see its reason and ADR-0015), not an unmaintained notice.
 ignore = [
     # GTK3 bindings: required by wry/tao on Linux until the ecosystem
     # completes the WebKitGTK 6 / GTK4 migration.
@@ -29,6 +31,18 @@ ignore = [
     { id = "RUSTSEC-2025-0081", reason = "unic-* unmaintained; build-time transitive of tauri-codegen" },
     { id = "RUSTSEC-2025-0098", reason = "unic-* unmaintained; build-time transitive of tauri-codegen" },
     { id = "RUSTSEC-2025-0100", reason = "unic-* unmaintained; build-time transitive of tauri-codegen" },
+    # Marvin timing sidechannel in the `rsa` crate 0.9, pulled transitively by
+    # `pgp` (rPGP, Wave 5.1 OpenPGP). RSA is mandatory in RFC 4880 and rPGP
+    # exposes no feature to disable it; no fixed `rsa` release exists (the
+    # RustCrypto constant-time rewrite is unreleased, RustCrypto/RSA#626), and
+    # every pure-Rust OpenPGP stack shares this dependency. The attack needs a
+    # network-observable RSA private-key timing oracle; axomail performs RSA
+    # private-key operations (decrypt received mail, sign outgoing) locally on
+    # the user's own machine, never as a remote decryption/signing service —
+    # exactly the advisory's own "local use on a non-compromised computer is
+    # fine" workaround. Accepted risk, documented in ADR-0015; re-check when a
+    # constant-time `rsa` release lands.
+    { id = "RUSTSEC-2023-0071", reason = "rsa 0.9 Marvin timing sidechannel; transitive via pgp/rPGP, no fixed release, RSA private-key ops are local-only (not a network oracle) — see ADR-0015" },
 ]
 
 [licenses]

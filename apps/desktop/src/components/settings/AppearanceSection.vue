@@ -7,17 +7,27 @@
  * (via `useTheme`) for an instant preview and persists it with the rest of the
  * batch-saved settings; this component renders the choice and stages selections
  * through `context.setTheme`.
+ *
+ * This is the Wave 5 Stage 0 i18n proof/template: its user-facing strings are
+ * rendered through `t()` from `useI18n({ useScope: "global" })`, with the
+ * catalogue in `i18n/locales/{en,de}.json` under `settings.appearance.*`. The
+ * English text is unchanged, so it renders identically until 5.4 extracts the
+ * rest of the UI the same way.
  */
+import { useI18n } from "vue-i18n";
+
 import type { ThemePreference } from "../../types/mail";
 import type { SettingsSectionContext } from "./context";
 
 const props = defineProps<{ context: SettingsSectionContext }>();
 
-/** The options in display order, each with its user-facing label and hint. */
-const options: { value: ThemePreference; label: string; hint: string }[] = [
-  { value: "system", label: "System", hint: "Match the operating system." },
-  { value: "light", label: "Light", hint: "Always use the light theme." },
-  { value: "dark", label: "Dark", hint: "Always use the dark theme." },
+const { t } = useI18n({ useScope: "global" });
+
+/** The options in display order, each with its label and hint message keys. */
+const options: { value: ThemePreference; labelKey: string; hintKey: string }[] = [
+  { value: "system", labelKey: "settings.appearance.system", hintKey: "settings.appearance.systemHint" },
+  { value: "light", labelKey: "settings.appearance.light", hintKey: "settings.appearance.lightHint" },
+  { value: "dark", labelKey: "settings.appearance.dark", hintKey: "settings.appearance.darkHint" },
 ];
 
 function select(value: ThemePreference): void {
@@ -28,11 +38,10 @@ function select(value: ThemePreference): void {
 <template>
   <fieldset class="group">
     <legend class="legend">
-      Appearance
+      {{ t("settings.appearance.title") }}
     </legend>
     <p class="hint">
-      Choose how axomail looks. "System" follows your operating system's
-      light or dark setting.
+      {{ t("settings.appearance.hint") }}
     </p>
     <label
       v-for="option in options"
@@ -47,8 +56,8 @@ function select(value: ThemePreference): void {
         @change="select(option.value)"
       >
       <span class="option-text">
-        <span class="option-label">{{ option.label }}</span>
-        <span class="option-hint">{{ option.hint }}</span>
+        <span class="option-label">{{ t(option.labelKey) }}</span>
+        <span class="option-hint">{{ t(option.hintKey) }}</span>
       </span>
     </label>
   </fieldset>

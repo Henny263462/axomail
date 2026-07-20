@@ -16,6 +16,9 @@ vi.mock("../src/api/settings", () => ({
   // The Push section loads its state on mount when the dialog renders it.
   getPushEnabled: vi.fn().mockResolvedValue(true),
   setPushEnabled: vi.fn().mockResolvedValue(null),
+  // The Language section likewise loads its preference on mount.
+  getLanguage: vi.fn().mockResolvedValue("system"),
+  setLanguage: vi.fn().mockResolvedValue(null),
 }));
 
 const getSettingsMock = vi.mocked(getSettings);

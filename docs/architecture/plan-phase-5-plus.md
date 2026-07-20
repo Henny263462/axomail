@@ -448,11 +448,104 @@ the first global commands.
 
 | Track | Cluster | Scope | Migration |
 |---|---|---|---|
-| 5.1 | S3 OpenPGP | rPGP pinned to pure-Rust crypto features (license-vetted via cargo-deny **before** merge): key gen/import/export (secrets keychain-guarded), verify badge, decrypt inline, sign/encrypt on send, per-recipient key management UI. S/MIME: verify-only if feasible, else documented out. | 0019 |
-| 5.2 | Search depth | Advanced multi-condition search builder (all/any of header/body/date/tag/attachment, folder scope) reusing the 4.2 condition model; saved searches as virtual folders in sidebar. | 0020 |
+| 5.1 | S3 OpenPGP | rPGP pinned to pure-Rust crypto features (license-vetted via cargo-deny **before** merge): key gen/import/export (secrets keychain-guarded), verify badge, decrypt inline, sign/encrypt on send, per-recipient key management UI. S/MIME: verify-only if feasible, else documented out. | 0021 |
+| 5.2 | Search depth | Advanced multi-condition search builder (all/any of header/body/date/tag/attachment, folder scope) reusing the 4.2 condition model; saved searches as virtual folders in sidebar. | 0022 |
 | 5.3 | Autoconfig | ISPDB/Autoconfig lookup (https only, via reqwest) + common-provider guessing in setup. | — |
 | 5.4 | i18n | vue-i18n (license-checked via existing npm gate), string extraction, `en` + `de`, language setting. | — |
-| 5.5 | Polish | MDN in full (request per message + DSN option in composer; honor policy never/ask/always with addressed-to-me/list conditions; $MDNSent via op queue; receipt filing), message templates (Templates role), per-folder retention, resizable panes + Classic/Vertical/Wide layouts, folder-pane view modes (All/Unified/Favorite/Tags), a11y pass. | 0021 |
+| 5.5 | Polish | MDN in full (request per message + DSN option in composer; honor policy never/ask/always with addressed-to-me/list conditions; $MDNSent via op queue; receipt filing), message templates (Templates role), per-folder retention, resizable panes + Classic/Vertical/Wide layouts, folder-pane view modes (All/Unified/Favorite/Tags), a11y pass. | 0023 |
+
+**Stage 0 (sequential, before fan-out):** the two shared Wave-5 dependencies
+(rPGP for 5.1, vue-i18n for 5.4 + all Wave-5 UI) vetted and added once; the
+i18n framework + language setting + one converted component; and `App.vue`
+headroom. Migration numbers per the ledger above: 5.1 = `0021`, 5.2 = `0022`,
+5.5 = `0023` (the old `0019`/`0020` were consumed by the Wave-4 review-pass
+fixes). Full verification; committed by the integrator before fan-out.
+
+### Wave 5 Stage 0 delivered
+
+Delivered on `main`. The Wave-5 tracks code against exactly this.
+
+**OpenPGP dependency (ADR-0015, for 5.1)** — `pgp` (rPGP) `0.20.0` is pinned in
+`[workspace.dependencies]` with `default-features = false` (drops the C `bzip2`
+binding, leaving the minimal pure-Rust RustCrypto set) and declared on
+`crates/mail-security`. License `MIT OR Apache-2.0`; the full resolved graph
+(~85 transitive crates, all RustCrypto/BSD-dalek/`zlib-rs`/`nom`/`snafu`) stays
+within the `deny.toml` allow-list — `cargo deny check` → advisories/bans/
+licenses/sources **ok**. One vulnerability is accepted with a documented
+`deny.toml` `ignore` + threat-model rationale (and ADR-0015): RUSTSEC-2023-0071
+(`rsa` Marvin timing sidechannel), unavoidable in **any** pure-Rust OpenPGP
+stack (RSA is mandatory, no fixed `rsa` release), low residual risk because
+axomail's RSA private-key ops are local-only, not a network oracle. `base64`
+covers armor; rPGP bundles `crc24`. **No PGP code yet** (unused deps do not warn
+but do compile, so the build already validates it); Track 5.1 writes the module
+in `mail-security` + migration `0021`, with secret keys keychain-guarded
+(ADR-0001).
+
+**i18n framework (for 5.4 and every Wave-5 UI track)** — `vue-i18n` `11.4.6`
+(MIT, pinned exact) added to `apps/desktop`; passes the existing
+`check:npm-licenses` gate. Layout:
+
+- `src/i18n/index.ts` — the shared `createI18n` instance (`legacy: false`,
+  `globalInjection: true`, `locale`/`fallbackLocale` = `en`, `messages` =
+  `{ en, de }`), the `LanguagePreference` type (`system | en | de`),
+  `resolveLocale`, and `initLanguage` / `setLanguagePreference` /
+  `reconcileLanguage` — the same no-flash localStorage cache + startup
+  reconcile + user-pin race guard `useTheme` uses.
+- `src/i18n/locales/en.json` (the source of truth) and `de.json` (real German
+  for the already-converted keys; 5.4 fills in the rest as it extracts).
+- `main.ts` calls `initLanguage()` before mount and
+  `createApp(App).use(i18n)`; `App.vue` reconciles with the backend on startup.
+- `vite.config.ts` `define` sets the `__VUE_I18N_*` flags and keeps
+  `__INTLIFY_DROP_MESSAGE_COMPILER__: false`, so the JSON catalogues compile
+  just-in-time at runtime — **no message-precompiler plugin is needed** (keeps
+  the dependency count to the one vetted package).
+- `tests/setup.ts` (new `setupFiles`) installs the instance on every mounted
+  component and resets the locale to `en` before each test.
+
+**Language setting** — persisted in the backend `app_settings` KV store through
+its own `get_language` / `set_language` command pair (`LanguagePreference` enum
+in `dto/settings.rs`; `language` / `set_language` in `settings.rs`; registered
+in `lib.rs`), following the `push_enabled` / `list_threaded` "single preference,
+own read/write pair" convention. It is deliberately **not** in `SettingsDto`,
+which keeps `types/mail.ts` (at 396/400) untouched, and needs **no migration**
+(KV store). `api/settings.ts` gains `getLanguage` / `setLanguage`.
+`LanguageSection.vue` (autonomous settings section, registered after Appearance)
+loads it on mount, applies + persists on change, and reverts on failure.
+
+**The 5.4 string-extraction recipe:**
+
+1. **Add a key** to `src/i18n/locales/en.json` first — dot-namespaced by area
+   (`settings.appearance.title`, `language.system`) — then mirror it in
+   `de.json`. A missing `de` key falls back to English (`fallbackLocale`).
+2. **In a template**: `{{ $t("settings.appearance.title") }}` — `$t` is
+   globally injected, no import.
+3. **In `<script setup>`**: `const { t } = useI18n({ useScope: "global" });`
+   then `t("...")`. Always pass `useScope: "global"` so the component reads the
+   shared catalogue rather than an empty per-component scope.
+4. **Worked example / template**: `AppearanceSection.vue` was converted (both
+   its script `options` and its template) as the proof; `LanguageSection.vue`
+   is a second example. Both render identical English text, so a converted
+   component is behaviourally unchanged.
+5. **Add a language**: extend `SUPPORTED_LOCALES` + the `LanguagePreference`
+   union in `i18n/index.ts`, add `locales/<lc>.json`, register it in
+   `createI18n({ messages })`, and add the matching variant on the Rust
+   `LanguagePreference` enum (`dto/settings.rs`, with `as_key` / `from_key`).
+6. The default locale stays **English**, so any not-yet-converted component
+   renders exactly as before until 5.4 extracts it.
+
+**App.vue headroom** — the shell was at 348/400, and both 5.4 (i18n reconcile)
+and 5.5 (resizable panes, layouts, folder-pane view modes) add App-level
+wiring. The command & keyboard-shortcut wiring (registry lifecycle,
+`isModalOpen`, the two focus helpers, and the mail + context command
+registration) was extracted to `composables/useAppShortcuts.ts` (147 lines).
+`App.vue` is now **293** non-blank; behaviour is byte-for-byte unchanged (all
+specs green). It wires the composable as
+`const { isModalOpen } = useAppShortcuts({ dialogs, accounts,
+selectedMessageId, showPane, view, compose, mailboxActions, messageActions })`,
+and the returned `isModalOpen` still feeds the message pane. **5.4/5.5 add their
+App-level wiring here as before** — the `useMailboxView` / `useComposeWorkflow`
+/ `DialogHost` / settings-section-registry / `useCommandRegistry` contracts are
+all unchanged.
 
 ## Explicitly deferred (documented non-goals for this push)
 

@@ -10,11 +10,13 @@ use std::sync::atomic::AtomicBool;
 use axomail_core::MailError;
 use axomail_desktop_lib::commands::accounts::create_account_impl;
 use axomail_desktop_lib::commands::settings::{
-    get_list_threaded_impl, get_settings_impl, set_list_threaded_impl, set_pop3_delete_policy_impl,
-    update_settings_impl,
+    get_language_impl, get_list_threaded_impl, get_settings_impl, set_language_impl,
+    set_list_threaded_impl, set_pop3_delete_policy_impl, update_settings_impl,
 };
 use axomail_desktop_lib::composition::AppProviderFactory;
-use axomail_desktop_lib::dto::{Pop3DeletePolicyDto, SettingsDto, ThemePreference};
+use axomail_desktop_lib::dto::{
+    LanguagePreference, Pop3DeletePolicyDto, SettingsDto, ThemePreference,
+};
 use axomail_desktop_lib::scheduler::SchedulerControl;
 use axomail_desktop_lib::settings::pop3_delete_enabled;
 use axomail_desktop_lib::state::{AppSyncEngine, SharedSecretStore};
@@ -156,6 +158,35 @@ async fn list_threaded_defaults_off_and_round_trips() {
     // Toggling back to flat persists just as well.
     set_list_threaded_impl(&store, false).await.unwrap();
     assert!(!get_list_threaded_impl(&store).await.unwrap());
+}
+
+#[tokio::test]
+async fn language_defaults_to_system_and_round_trips() {
+    let store = Store::open_in_memory().await.unwrap();
+
+    // A fresh install follows the OS/browser language until the user chooses.
+    assert_eq!(
+        get_language_impl(&store).await.unwrap(),
+        LanguagePreference::System,
+        "language defaults to system"
+    );
+
+    set_language_impl(&store, LanguagePreference::De)
+        .await
+        .unwrap();
+    assert_eq!(
+        get_language_impl(&store).await.unwrap(),
+        LanguagePreference::De,
+    );
+
+    // Switching back to English persists just as well.
+    set_language_impl(&store, LanguagePreference::En)
+        .await
+        .unwrap();
+    assert_eq!(
+        get_language_impl(&store).await.unwrap(),
+        LanguagePreference::En,
+    );
 }
 
 #[tokio::test]

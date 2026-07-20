@@ -13,6 +13,11 @@ ammonia = { workspace = true }
 axomail-core = { workspace = true }
 base64 = { workspace = true }
 keyring = { workspace = true }
+# OpenPGP sign/verify/encrypt/decrypt (Track 5.1). Declared in Wave 5 Stage 0
+# so the resolved graph is license-vetted ahead of the fan-out; the PGP module
+# that uses it lands in 5.1. Pure-Rust rPGP, minimal features (see the
+# workspace-dependency comment and ADR-0015).
+pgp = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 tracing = { workspace = true }

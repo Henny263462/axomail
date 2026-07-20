@@ -8,6 +8,7 @@
 //! | `notifications_enabled` | `"true"`/`"false"` | `true` |
 //! | `sync_interval_minutes` | decimal integer, clamped `>= 1` | `10` |
 //! | `theme` | `"system"`/`"light"`/`"dark"` | `system` |
+//! | `language` | `"system"`/`"en"`/`"de"` | `system` |
 //! | `auto_mark_read_enabled` | `"true"`/`"false"` | `true` |
 //! | `auto_mark_read_delay_ms` | decimal integer, clamped `<= 30000` | `0` |
 //! | `work_offline` | `"true"`/`"false"` | `false` |
@@ -25,7 +26,7 @@
 use axomail_core::MailError;
 use axomail_storage::Store;
 
-use crate::dto::ThemePreference;
+use crate::dto::{LanguagePreference, ThemePreference};
 
 /// Whether desktop notifications are shown when a sync brings new mail.
 const KEY_NOTIFICATIONS: &str = "notifications_enabled";
@@ -33,6 +34,8 @@ const KEY_NOTIFICATIONS: &str = "notifications_enabled";
 const KEY_SYNC_INTERVAL: &str = "sync_interval_minutes";
 /// Preferred application color theme.
 const KEY_THEME: &str = "theme";
+/// Preferred UI language (applied entirely in the frontend i18n layer).
+const KEY_LANGUAGE: &str = "language";
 /// Whether a message is marked read automatically when it is displayed.
 const KEY_AUTO_MARK_READ: &str = "auto_mark_read_enabled";
 /// Delay before auto-marking a displayed message read, in milliseconds.
@@ -310,6 +313,36 @@ pub async fn set_sync_interval_minutes(store: &Store, minutes: u32) -> Result<u3
 /// Returns [`MailError::Database`] on any query failure.
 pub async fn set_theme(store: &Store, preference: ThemePreference) -> Result<(), MailError> {
     store.settings().set(KEY_THEME, preference.as_key()).await
+}
+
+/// Reads the preferred UI language (default [`LanguagePreference::System`]).
+///
+/// An absent or unrecognized stored value resolves to the system default, so
+/// a corrupt row can never leave the UI without a language.
+///
+/// # Errors
+///
+/// Returns [`MailError::Database`] on any query failure.
+pub async fn language(store: &Store) -> Result<LanguagePreference, MailError> {
+    Ok(store
+        .settings()
+        .get(KEY_LANGUAGE)
+        .await?
+        .map_or(LanguagePreference::default(), |value| {
+            LanguagePreference::from_key(&value)
+        }))
+}
+
+/// Persists the preferred UI language.
+///
+/// # Errors
+///
+/// Returns [`MailError::Database`] on any query failure.
+pub async fn set_language(store: &Store, preference: LanguagePreference) -> Result<(), MailError> {
+    store
+        .settings()
+        .set(KEY_LANGUAGE, preference.as_key())
+        .await
 }
 
 /// Persists a single account's POP3 server-deletion policy.

@@ -12,6 +12,7 @@
  * never sets it). This explicit, per-account call is the user-visible second
  * guard against silently deleting mail from the server.
  */
+import type { LanguagePreference } from "../i18n";
 import { invokeOrThrow, safeInvoke } from "../lib/tauri";
 import type { SettingsDto } from "../types/mail";
 
@@ -56,4 +57,23 @@ export function getPushEnabled(): Promise<boolean | null> {
  */
 export function setPushEnabled(enabled: boolean): Promise<null> {
   return invokeOrThrow<null>("set_push_enabled", { enabled });
+}
+
+/**
+ * Reads the persisted UI-language preference (default `"system"`). `null` in
+ * the browser preview. Like push and threading, the language lives outside
+ * {@link SettingsDto} as its own read/write pair (it is applied entirely in
+ * the frontend by the i18n layer) rather than widening the batch-saved surface.
+ */
+export function getLanguage(): Promise<LanguagePreference | null> {
+  return safeInvoke<LanguagePreference>("get_language");
+}
+
+/**
+ * Persists the UI-language preference. Rejects with the backend's user-facing
+ * error string on failure. The frontend applies the locale change separately
+ * via the i18n layer; this call only records the authoritative value.
+ */
+export function setLanguage(preference: LanguagePreference): Promise<null> {
+  return invokeOrThrow<null>("set_language", { preference });
 }

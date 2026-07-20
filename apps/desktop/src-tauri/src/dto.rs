@@ -74,7 +74,7 @@ pub use offline::OfflinePolicyDto;
 pub use push_event::PushStatusDto;
 pub use reply::{ComposerPrefillDto, PrefillSourceDto, ReplyMode, SourceMark};
 pub use search::SearchResultDto;
-pub use settings::{Pop3DeletePolicyDto, SettingsDto, ThemePreference};
+pub use settings::{LanguagePreference, Pop3DeletePolicyDto, SettingsDto, ThemePreference};
 pub use sync_event::SyncEventDto;
 pub use tag::{MessageTagOptionDto, MessageTagOptionsDto, TagChipDto, TagDto};
 pub use unified::{UnifiedItemDto, UnifiedPageDto};

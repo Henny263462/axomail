@@ -8,6 +8,7 @@ import EmptyTrashSection from "./EmptyTrashSection.vue";
 import FiltersSection from "./FiltersSection.vue";
 import IdentitiesSection from "./IdentitiesSection.vue";
 import JunkSection from "./JunkSection.vue";
+import LanguageSection from "./LanguageSection.vue";
 import NotificationsSection from "./NotificationsSection.vue";
 import Pop3DeleteSection from "./Pop3DeleteSection.vue";
 import PushSection from "./PushSection.vue";
@@ -44,6 +45,7 @@ export const settingsSections: SettingsSection[] = [
   { id: "push", title: "Push", component: PushSection },
   { id: "auto-read", title: "Reading", component: AutoReadSection },
   { id: "appearance", title: "Appearance", component: AppearanceSection },
+  { id: "language", title: "Language", component: LanguageSection },
   {
     id: "pop3-delete",
     title: "POP3 server deletion",

@@ -19,6 +19,9 @@ vi.mock("../src/api/settings", () => ({
   // registry tests mount it without a live backend.
   getPushEnabled: vi.fn().mockResolvedValue(true),
   setPushEnabled: vi.fn().mockResolvedValue(null),
+  // The Language section likewise loads its preference on mount.
+  getLanguage: vi.fn().mockResolvedValue("system"),
+  setLanguage: vi.fn().mockResolvedValue(null),
 }));
 
 // The Tags section loads its list on mount; stub the tag api so the registry
@@ -105,6 +108,7 @@ describe("settings section registry", () => {
       "push",
       "auto-read",
       "appearance",
+      "language",
       "pop3-delete",
       "empty-trash-on-exit",
       "identities",

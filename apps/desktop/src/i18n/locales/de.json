@@ -1,0 +1,26 @@
+{
+  "settings": {
+    "appearance": {
+      "title": "Darstellung",
+      "hint": "Wählen Sie, wie axomail aussieht. „System“ folgt der Hell-/Dunkel-Einstellung Ihres Betriebssystems.",
+      "system": "System",
+      "systemHint": "Dem Betriebssystem folgen.",
+      "light": "Hell",
+      "lightHint": "Immer das helle Design verwenden.",
+      "dark": "Dunkel",
+      "darkHint": "Immer das dunkle Design verwenden."
+    }
+  },
+  "language": {
+    "title": "Sprache",
+    "hint": "Wählen Sie die Sprache von axomail. „Systemstandard“ folgt der Sprache Ihres Betriebssystems.",
+    "system": "Systemstandard",
+    "systemHint": "Der Betriebssystemsprache folgen.",
+    "en": "Englisch",
+    "enHint": "Immer Englisch verwenden.",
+    "de": "Deutsch",
+    "deHint": "Immer Deutsch verwenden.",
+    "statusSaved": "Sprache aktualisiert.",
+    "statusUnavailable": "Zum Ändern der Sprache wird die Desktop-App benötigt; in der Browservorschau ist sie nicht verfügbar."
+  }
+}

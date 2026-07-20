@@ -48,6 +48,53 @@ impl ThemePreference {
     }
 }
 
+/// The user's preferred UI language.
+///
+/// `System` follows the operating-system/browser language (resolved to a
+/// concrete locale in the frontend i18n layer); `En` and `De` pin one. Like
+/// the color theme it is applied entirely in the frontend, but unlike the
+/// theme it is carried by its own `get_language` / `set_language` command pair
+/// rather than [`SettingsDto`], so it does not widen the batch-saved surface.
+/// Serialized in `lowercase` (`"system"`, `"en"`, `"de"`) to match the
+/// frontend `LanguagePreference` union exactly.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum LanguagePreference {
+    /// Follow the OS/browser language (the default).
+    #[default]
+    System,
+    /// Always use English (the source locale).
+    En,
+    /// Always use German.
+    De,
+}
+
+impl LanguagePreference {
+    /// The canonical string stored in the `app_settings` table. Kept in sync
+    /// with the `serde` `lowercase` renaming so persisted and serialized forms
+    /// are identical.
+    #[must_use]
+    pub fn as_key(self) -> &'static str {
+        match self {
+            Self::System => "system",
+            Self::En => "en",
+            Self::De => "de",
+        }
+    }
+
+    /// Parses the stored key, falling back to [`LanguagePreference::System`]
+    /// for an absent or unrecognized value so a corrupt row can never brick
+    /// the UI.
+    #[must_use]
+    pub fn from_key(value: &str) -> Self {
+        match value {
+            "en" => Self::En,
+            "de" => Self::De,
+            _ => Self::System,
+        }
+    }
+}
+
 /// One account's POP3 server-deletion policy.
 ///
 /// Surfaced read-only through [`SettingsDto`] so the settings view can show
@@ -139,6 +186,43 @@ mod tests {
             ThemePreference::System,
             ThemePreference::Light,
             ThemePreference::Dark,
+        ] {
+            let json = serde_json::to_string(&variant).unwrap();
+            assert_eq!(json, format!("\"{}\"", variant.as_key()));
+        }
+    }
+
+    #[test]
+    fn language_default_is_system() {
+        assert_eq!(LanguagePreference::default(), LanguagePreference::System);
+    }
+
+    #[test]
+    fn language_key_round_trips_every_variant() {
+        for variant in [
+            LanguagePreference::System,
+            LanguagePreference::En,
+            LanguagePreference::De,
+        ] {
+            assert_eq!(LanguagePreference::from_key(variant.as_key()), variant);
+        }
+    }
+
+    #[test]
+    fn language_from_unknown_key_falls_back_to_system() {
+        assert_eq!(LanguagePreference::from_key(""), LanguagePreference::System);
+        assert_eq!(
+            LanguagePreference::from_key("fr"),
+            LanguagePreference::System
+        );
+    }
+
+    #[test]
+    fn language_serializes_as_lowercase_matching_the_stored_key() {
+        for variant in [
+            LanguagePreference::System,
+            LanguagePreference::En,
+            LanguagePreference::De,
         ] {
             let json = serde_json::to_string(&variant).unwrap();
             assert_eq!(json, format!("\"{}\"", variant.as_key()));

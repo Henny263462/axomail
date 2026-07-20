@@ -190,6 +190,8 @@ pub fn run() {
             commands::settings::set_list_threaded,
             commands::settings::get_push_enabled,
             commands::settings::set_push_enabled,
+            commands::settings::get_language,
+            commands::settings::set_language,
             commands::settings::set_pop3_delete_policy,
             commands::offline::set_work_offline,
             commands::offline::get_work_offline,
