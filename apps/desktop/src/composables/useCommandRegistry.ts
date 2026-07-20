@@ -170,12 +170,25 @@ export interface ScopedCommandRegistry {
  * {@link provideCommandRegistry} ancestor exists.
  */
 export function useCommandRegistry(): ScopedCommandRegistry {
-  const registry = inject(REGISTRY_KEY, null);
-  if (registry === null) {
+  const scoped = useOptionalCommandRegistry();
+  if (scoped === null) {
     throw new Error(
       "useCommandRegistry() requires provideCommandRegistry() in an ancestor (call it at the app root).",
     );
   }
+  return scoped;
+}
+
+/**
+ * Like {@link useCommandRegistry} but returns `null` instead of throwing when no
+ * provider ancestor exists. For components that are always mounted under the app
+ * root in production yet may be rendered standalone (e.g. a settings section in
+ * a unit test); they read `commands` when present and show an empty state
+ * otherwise.
+ */
+export function useOptionalCommandRegistry(): ScopedCommandRegistry | null {
+  const registry = inject(REGISTRY_KEY, null);
+  if (registry === null) return null;
   const disposers: (() => void)[] = [];
   function track(off: () => void): () => void {
     disposers.push(off);
