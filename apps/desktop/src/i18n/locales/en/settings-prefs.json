@@ -1,0 +1,62 @@
+{
+  "settings": {
+    "autoRead": {
+      "markWhenDisplayed": "Mark messages read when displayed",
+      "delayLabel": "Delay before marking read (seconds)",
+      "delayHint": "0 marks a message read as soon as it opens."
+    },
+    "notifications": {
+      "showForNewMail": "Show desktop notifications for new mail"
+    },
+    "push": {
+      "title": "Push (IMAP IDLE)",
+      "hint": "When on, the app keeps a connection open for accounts whose server supports IDLE, so new mail arrives immediately instead of waiting for the next check. Accounts without it keep polling.",
+      "toggleAria": "Use push (IMAP IDLE) when available",
+      "toggleLabel": "Use push when available",
+      "unavailable": "Changing push needs the desktop app; it is unavailable in the browser preview.",
+      "enabled": "Push enabled.",
+      "disabled": "Push disabled; accounts will poll."
+    },
+    "sync": {
+      "intervalLabel": "Sync interval (minutes)"
+    },
+    "junk": {
+      "enable": "Enable junk filter (score incoming mail and file spam automatically)",
+      "threshold": "Junk threshold: {n}%",
+      "thresholdHint": "Mail scoring at or above this confidence is moved to Junk.",
+      "trustHeaders": "Trust server junk headers (honor X-Spam-Flag / X-Spam-Status)",
+      "whitelist": "Never mark mail from my contacts as junk",
+      "markRead": "Mark messages as read when they are filed as junk",
+      "runButton": "Run junk controls on Inbox",
+      "runningButton": "Running…",
+      "runHint": "Re-scores every account's Inbox and files anything over the threshold.",
+      "runningStatus": "Running junk controls…",
+      "filedCount": "Filed {count} message as junk. | Filed {count} messages as junk.",
+      "unavailable": "Junk settings need the desktop app; they are unavailable in the browser preview.",
+      "runUnavailable": "Running junk controls needs the desktop app; it is unavailable in the browser preview."
+    },
+    "pop3": {
+      "title": "POP3 server deletion",
+      "warning": "Deletes mail from the server after download. This cannot be undone.",
+      "accountFallback": "Account {id}",
+      "unavailable": "Changing the delete policy needs the desktop app; it is unavailable in the browser preview."
+    },
+    "emptyTrash": {
+      "title": "Empty Trash on exit",
+      "hint": "Permanently deletes each selected account's Trash when the app closes.",
+      "unavailable": "Changing this setting needs the desktop app; it is unavailable in the browser preview."
+    },
+    "shortcuts": {
+      "title": "Keyboard shortcuts",
+      "hintBefore": "These shortcuts work throughout axomail. Press",
+      "hintMiddle": "anywhere to bring up this list, or",
+      "hintAfter": "for the command palette. Custom rebinding is coming in a later update."
+    },
+    "dialog": {
+      "title": "Settings",
+      "loading": "Loading settings…",
+      "unavailable": "Settings require the desktop app; they are unavailable in the browser preview.",
+      "saveUnavailable": "Saving settings needs the desktop app; it is unavailable in the browser preview."
+    }
+  }
+}

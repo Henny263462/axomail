@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { useI18n } from "vue-i18n";
+
 import { useWorkOffline } from "../../composables/useWorkOffline";
 import { formatScheduleTime } from "../../lib/sendLater";
 import type { OutboxItemDto, OutboxState } from "../../types/mail";
@@ -7,6 +9,8 @@ import EmptyState from "../common/EmptyState.vue";
 defineProps<{
   items: OutboxItemDto[];
 }>();
+
+const { t } = useI18n({ useScope: "global" });
 
 // The outbox reflects the shared Work Offline flag: while offline, a plain
 // queued row is labelled "Queued (offline)" to explain why it has not sent.
@@ -18,11 +22,11 @@ const emit = defineEmits<{
   "cancel-schedule": [outboxId: number];
 }>();
 
-const STATE_LABEL: Record<OutboxState, string> = {
-  pending: "Pending",
-  sending: "Sending",
-  sent: "Sent",
-  failed: "Failed",
+const STATE_LABEL_KEY: Record<OutboxState, string> = {
+  pending: "list.outbox.state.pending",
+  sending: "list.outbox.state.sending",
+  sent: "list.outbox.state.sent",
+  failed: "list.outbox.state.failed",
 };
 
 /** True when a pending row is scheduled to be sent at a future time. */
@@ -46,21 +50,21 @@ function scheduleLabel(item: OutboxItemDto): string {
  */
 function badgeLabel(item: OutboxItemDto): string {
   if (offline.value && item.state === "pending" && !isScheduled(item)) {
-    return "Queued (offline)";
+    return t("list.outbox.queuedOffline");
   }
-  return STATE_LABEL[item.state];
+  return t(STATE_LABEL_KEY[item.state]);
 }
 </script>
 
 <template>
   <section
     class="list"
-    aria-label="Outbox"
+    :aria-label="t('list.outbox.label')"
   >
     <EmptyState
       v-if="items.length === 0"
-      title="Outbox empty"
-      detail="Messages waiting to be delivered appear here."
+      :title="t('list.outbox.emptyTitle')"
+      :detail="t('list.outbox.emptyDetail')"
     />
     <ul v-else>
       <li
@@ -69,7 +73,7 @@ function badgeLabel(item: OutboxItemDto): string {
         class="item"
       >
         <div class="row">
-          <span class="subject">{{ item.subject || "(no subject)" }}</span>
+          <span class="subject">{{ item.subject || t("list.noSubject") }}</span>
           <span
             class="badge"
             :class="`state-${item.state}`"
@@ -82,7 +86,7 @@ function badgeLabel(item: OutboxItemDto): string {
           v-if="item.attempts > 0"
           class="attempts"
         >
-          {{ item.attempts }} attempt{{ item.attempts === 1 ? "" : "s" }}
+          {{ t("list.outbox.attempts", { count: item.attempts }, item.attempts) }}
         </span>
         <p
           v-if="item.lastError"
@@ -94,7 +98,7 @@ function badgeLabel(item: OutboxItemDto): string {
           v-if="isScheduled(item)"
           class="scheduled"
         >
-          Scheduled for {{ scheduleLabel(item) }}
+          {{ t("list.outbox.scheduledFor", { time: scheduleLabel(item) }) }}
         </span>
         <div
           v-if="isScheduled(item)"
@@ -105,14 +109,14 @@ function badgeLabel(item: OutboxItemDto): string {
             class="retry"
             @click="emit('send-now', item.id)"
           >
-            Send now
+            {{ t("list.outbox.sendNow") }}
           </button>
           <button
             type="button"
             class="retry"
             @click="emit('cancel-schedule', item.id)"
           >
-            Cancel schedule
+            {{ t("list.outbox.cancelSchedule") }}
           </button>
         </div>
         <button
@@ -121,7 +125,7 @@ function badgeLabel(item: OutboxItemDto): string {
           class="retry"
           @click="emit('retry', item.id)"
         >
-          Retry
+          {{ t("common.retry") }}
         </button>
       </li>
     </ul>

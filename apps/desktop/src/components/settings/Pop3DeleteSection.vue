@@ -1,16 +1,15 @@
 <script setup lang="ts">
 import { ref } from "vue";
+import { useI18n } from "vue-i18n";
 
 import { setPop3DeletePolicy } from "../../api/settings";
 import { isTauri } from "../../lib/tauri";
 import type { Pop3DeletePolicyDto } from "../../types/mail";
 import { messageFrom, type SettingsSectionContext } from "./context";
 
-/** Exact warning shown beside every POP3 server-deletion toggle. */
-const DELETE_WARNING =
-  "Deletes mail from the server after download. This cannot be undone.";
-
 const props = defineProps<{ context: SettingsSectionContext }>();
+
+const { t } = useI18n({ useScope: "global" });
 
 // Local, mutable copy so a rejected toggle can revert its checkbox without
 // touching the dialog's loaded snapshot (which it echoes back on save).
@@ -20,7 +19,7 @@ const policies = ref<Pop3DeletePolicyDto[]>(
 
 function accountName(accountId: number): string {
   const account = props.context.accounts.find((item) => item.id === accountId);
-  return account?.displayName ?? `Account ${accountId}`;
+  return account?.displayName ?? t("settings.pop3.accountFallback", { id: accountId });
 }
 
 /**
@@ -36,9 +35,7 @@ async function onTogglePolicy(
   props.context.reportStatus("");
   if (!isTauri()) {
     (event.target as HTMLInputElement).checked = policy.enabled;
-    props.context.reportError(
-      "Changing the delete policy needs the desktop app; it is unavailable in the browser preview.",
-    );
+    props.context.reportError(t("settings.pop3.unavailable"));
     return;
   }
   try {
@@ -58,10 +55,10 @@ async function onTogglePolicy(
     class="group"
   >
     <legend class="legend">
-      POP3 server deletion
+      {{ t("settings.pop3.title") }}
     </legend>
     <p class="warning">
-      {{ DELETE_WARNING }}
+      {{ t("settings.pop3.warning") }}
     </p>
     <label
       v-for="policy in policies"

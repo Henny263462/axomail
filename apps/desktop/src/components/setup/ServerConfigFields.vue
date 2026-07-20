@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref } from "vue";
+import { useI18n } from "vue-i18n";
 
 import type { IncomingProtocol, TransportSecurity } from "../../types/mail";
 import type { ServerDraft } from "./draft";
@@ -17,6 +18,8 @@ const props = defineProps<{
 }>();
 
 const model = defineModel<ServerDraft>({ required: true });
+
+const { t } = useI18n({ useScope: "global" });
 
 // True once the user edits the port by hand; suppresses port autofill.
 const portEdited = ref(false);
@@ -76,7 +79,7 @@ function onPassword(event: Event): void {
       v-if="kind === 'incoming'"
       class="field"
     >
-      <label :for="`${idPrefix}-protocol`">Protocol</label>
+      <label :for="`${idPrefix}-protocol`">{{ t("setup.fields.protocol") }}</label>
       <select
         :id="`${idPrefix}-protocol`"
         :value="model.protocol ?? 'imap'"
@@ -92,7 +95,7 @@ function onPassword(event: Event): void {
     </div>
 
     <div class="field">
-      <label :for="`${idPrefix}-host`">Server</label>
+      <label :for="`${idPrefix}-host`">{{ t("setup.fields.server") }}</label>
       <input
         :id="`${idPrefix}-host`"
         type="text"
@@ -104,7 +107,7 @@ function onPassword(event: Event): void {
 
     <div class="row">
       <div class="field">
-        <label :for="`${idPrefix}-security`">Security</label>
+        <label :for="`${idPrefix}-security`">{{ t("setup.fields.security") }}</label>
         <select
           :id="`${idPrefix}-security`"
           :value="model.security"
@@ -119,7 +122,7 @@ function onPassword(event: Event): void {
         </select>
       </div>
       <div class="field">
-        <label :for="`${idPrefix}-port`">Port</label>
+        <label :for="`${idPrefix}-port`">{{ t("setup.fields.port") }}</label>
         <input
           :id="`${idPrefix}-port`"
           type="number"
@@ -133,7 +136,7 @@ function onPassword(event: Event): void {
     </div>
 
     <div class="field">
-      <label :for="`${idPrefix}-username`">Username</label>
+      <label :for="`${idPrefix}-username`">{{ t("setup.fields.username") }}</label>
       <input
         :id="`${idPrefix}-username`"
         type="text"
@@ -147,7 +150,7 @@ function onPassword(event: Event): void {
       v-if="!hidePassword"
       class="field"
     >
-      <label :for="`${idPrefix}-password`">Password</label>
+      <label :for="`${idPrefix}-password`">{{ t("setup.fields.password") }}</label>
       <input
         :id="`${idPrefix}-password`"
         type="password"

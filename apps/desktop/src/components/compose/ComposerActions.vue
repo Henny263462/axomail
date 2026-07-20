@@ -8,6 +8,8 @@
  * is the form's own submit, so there is no explicit Send button here — the
  * `SendLaterControl` carries both "Send" and the scheduling menu.
  */
+import { useI18n } from "vue-i18n";
+
 import SendLaterControl from "./SendLaterControl.vue";
 
 defineProps<{
@@ -22,6 +24,8 @@ const emit = defineEmits<{
   saveDraft: [];
   schedule: [unixSeconds: number];
 }>();
+
+const { t } = useI18n({ useScope: "global" });
 </script>
 
 <template>
@@ -46,7 +50,7 @@ const emit = defineEmits<{
       class="button"
       @click="emit('cancel')"
     >
-      Cancel
+      {{ t("common.cancel") }}
     </button>
     <button
       type="button"
@@ -54,7 +58,7 @@ const emit = defineEmits<{
       :disabled="savingDraft || sending"
       @click="emit('saveDraft')"
     >
-      {{ savingDraft ? "Saving…" : "Save draft" }}
+      {{ savingDraft ? t("common.saving") : t("compose.actions.saveDraft") }}
     </button>
     <SendLaterControl
       :busy="sending"

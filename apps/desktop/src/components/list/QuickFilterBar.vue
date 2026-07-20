@@ -8,8 +8,12 @@
  * threaded/flat toggle (the one persisted preference). Emits granular
  * `update:*` events; it never mutates the props it is given.
  */
+import { useI18n } from "vue-i18n";
+
 import type { TagChip } from "../../types/mail";
 import type { QuickFilter, SortField, SortSpec } from "./listFilter";
+
+const { t } = useI18n({ useScope: "global" });
 
 const props = defineProps<{
   filter: QuickFilter;
@@ -57,7 +61,7 @@ function toggleDir(): void {
   <div
     class="bar"
     role="toolbar"
-    aria-label="Message list filters"
+    :aria-label="t('list.quickFilter.filtersLabel')"
   >
     <div class="facets">
       <button
@@ -67,7 +71,7 @@ function toggleDir(): void {
         :aria-pressed="filter.unread"
         @click="patchFilter({ unread: !filter.unread })"
       >
-        Unread
+        {{ t("list.quickFilter.unread") }}
       </button>
       <button
         type="button"
@@ -76,19 +80,19 @@ function toggleDir(): void {
         :aria-pressed="filter.starred"
         @click="patchFilter({ starred: !filter.starred })"
       >
-        Starred
+        {{ t("list.quickFilter.starred") }}
       </button>
       <label
         v-if="availableTags.length > 0"
         class="picker"
       >
-        <span class="sr-only">Filter by tag</span>
+        <span class="sr-only">{{ t("list.quickFilter.filterByTag") }}</span>
         <select
           :value="filter.tagId === null ? '' : String(filter.tagId)"
-          aria-label="Filter by tag"
+          :aria-label="t('list.quickFilter.filterByTag')"
           @change="onTagChange"
         >
-          <option value="">All tags</option>
+          <option value="">{{ t("list.quickFilter.allTags") }}</option>
           <option
             v-for="tag in availableTags"
             :key="tag.id"
@@ -104,29 +108,31 @@ function toggleDir(): void {
       type="search"
       class="text"
       :value="filter.text"
-      placeholder="Filter messages"
-      aria-label="Filter messages by text"
+      :placeholder="t('list.quickFilter.filterMessages')"
+      :aria-label="t('list.quickFilter.filterMessagesByText')"
       @input="onText"
     >
 
     <div class="sort">
       <label class="picker">
-        <span class="sr-only">Sort by</span>
+        <span class="sr-only">{{ t("list.quickFilter.sortBy") }}</span>
         <select
           :value="sort.field"
-          aria-label="Sort messages by"
+          :aria-label="t('list.quickFilter.sortMessagesBy')"
           @change="onSortField"
         >
-          <option value="date">Date</option>
-          <option value="sender">Sender</option>
-          <option value="subject">Subject</option>
+          <option value="date">{{ t("list.quickFilter.sortDate") }}</option>
+          <option value="sender">{{ t("list.quickFilter.sortSender") }}</option>
+          <option value="subject">{{ t("list.quickFilter.sortSubject") }}</option>
         </select>
       </label>
       <button
         type="button"
         class="dir"
         :aria-label="
-          sort.dir === 'asc' ? 'Sort ascending' : 'Sort descending'
+          sort.dir === 'asc'
+            ? t('list.quickFilter.sortAscending')
+            : t('list.quickFilter.sortDescending')
         "
         @click="toggleDir"
       >
@@ -139,10 +145,10 @@ function toggleDir(): void {
       class="chip thread-toggle"
       :class="{ on: threaded }"
       :aria-pressed="threaded"
-      aria-label="Group messages into conversation threads"
+      :aria-label="t('list.quickFilter.threadedLabel')"
       @click="emit('update:threaded', !threaded)"
     >
-      Threaded
+      {{ t("list.quickFilter.threaded") }}
     </button>
   </div>
 </template>

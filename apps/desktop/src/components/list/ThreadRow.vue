@@ -9,8 +9,11 @@
  * where the whole thread stands in for all its member messages.
  */
 import { computed } from "vue";
+import { useI18n } from "vue-i18n";
 
 import type { ThreadRow } from "./rows";
+
+const { t } = useI18n({ useScope: "global" });
 
 const props = defineProps<{
   row: ThreadRow;
@@ -54,8 +57,11 @@ function formatDate(unix: number | null): string {
 const date = computed(() => formatDate(latest.value.dateUnix));
 const countLabel = computed(() =>
   props.row.unread > 0
-    ? `${props.row.count} messages, ${props.row.unread} unread`
-    : `${props.row.count} messages`,
+    ? t("list.thread.messagesCountUnread", {
+        count: props.row.count,
+        unread: props.row.unread,
+      })
+    : t("list.thread.messagesCount", { count: props.row.count }),
 );
 </script>
 
@@ -75,7 +81,7 @@ const countLabel = computed(() =>
       class="check"
       tabindex="-1"
       :checked="checked"
-      :aria-label="`Select conversation ${latest.subject ?? '(no subject)'}`"
+      :aria-label="t('list.thread.selectConversation', { subject: latest.subject ?? t('list.noSubject') })"
       @click.stop
       @change="emit('toggle')"
     >
@@ -83,7 +89,7 @@ const countLabel = computed(() =>
       type="button"
       class="twisty"
       tabindex="-1"
-      :aria-label="row.expanded ? 'Collapse conversation' : 'Expand conversation'"
+      :aria-label="row.expanded ? t('list.thread.collapseConversation') : t('list.thread.expandConversation')"
       :aria-pressed="row.expanded"
       @click.stop="emit('expand')"
     >
@@ -105,7 +111,7 @@ const countLabel = computed(() =>
         <time class="date">{{ date }}</time>
       </span>
       <span class="line">
-        <span class="subject">{{ latest.subject ?? "(no subject)" }}</span>
+        <span class="subject">{{ latest.subject ?? t("list.noSubject") }}</span>
         <span
           class="count"
           :aria-label="countLabel"

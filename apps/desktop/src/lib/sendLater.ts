@@ -10,8 +10,11 @@
 export interface SendLaterPreset {
   /** Stable identifier for keys and tests. */
   id: string;
-  /** Human-readable label. */
-  label: string;
+  /**
+   * i18n key for the human-readable label, resolved with `t()` where the menu
+   * renders (so it follows the active locale). See `compose.sendLater.preset*`.
+   */
+  labelKey: string;
   /** Target Unix second computed from a base time in milliseconds. */
   at: (nowMs: number) => number;
 }
@@ -41,16 +44,24 @@ function nextMonday(nowMs: number, hour: number): number {
 
 /** The quick-pick send-later presets, in menu order. */
 export const SEND_LATER_PRESETS: SendLaterPreset[] = [
-  { id: "in-1-hour", label: "In 1 hour", at: (now) => unixSeconds(now + 3_600_000) },
-  { id: "in-3-hours", label: "In 3 hours", at: (now) => unixSeconds(now + 10_800_000) },
+  {
+    id: "in-1-hour",
+    labelKey: "compose.sendLater.preset1h",
+    at: (now) => unixSeconds(now + 3_600_000),
+  },
+  {
+    id: "in-3-hours",
+    labelKey: "compose.sendLater.preset3h",
+    at: (now) => unixSeconds(now + 10_800_000),
+  },
   {
     id: "tomorrow-morning",
-    label: "Tomorrow, 8:00",
+    labelKey: "compose.sendLater.presetTomorrow",
     at: (now) => unixSeconds(atLocalHour(now, 1, 8)),
   },
   {
     id: "monday-morning",
-    label: "Monday, 8:00",
+    labelKey: "compose.sendLater.presetMonday",
     at: (now) => unixSeconds(nextMonday(now, 8)),
   },
 ];

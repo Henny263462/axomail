@@ -5,6 +5,7 @@
  * Read-only — it is a reference card, not an editor.
  */
 import { computed, nextTick, onBeforeUnmount, onMounted, ref } from "vue";
+import { useI18n } from "vue-i18n";
 
 import { shortcutGroups } from "../../commands/display";
 import { useCommandRegistry } from "../../composables/useCommandRegistry";
@@ -12,6 +13,8 @@ import { useFocusTrap } from "../../composables/useFocusTrap";
 import ShortcutList from "./ShortcutList.vue";
 
 const emit = defineEmits<{ close: [] }>();
+
+const { t } = useI18n({ useScope: "global" });
 
 const registry = useCommandRegistry();
 const root = ref<HTMLElement | null>(null);
@@ -52,13 +55,13 @@ onBeforeUnmount(() => invoker?.focus());
           id="shortcut-help-title"
           class="title"
         >
-          Keyboard shortcuts
+          {{ t("command.help.title") }}
         </h2>
         <button
           ref="closeButton"
           type="button"
           class="close"
-          aria-label="Close"
+          :aria-label="t('common.close')"
           @click="emit('close')"
         >
           ✕

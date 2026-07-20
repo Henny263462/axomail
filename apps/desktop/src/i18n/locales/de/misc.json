@@ -1,0 +1,78 @@
+{
+  "activity": {
+    "title": "Aktivität",
+    "cancelAll": "Alle abbrechen",
+    "cancelAllSyncAria": "Alle Synchronisierungsvorgänge abbrechen",
+    "loading": "Aktivität wird geladen…",
+    "unavailable": "Hintergrundaktivität erfordert die Desktop-App; in der Browservorschau ist sie nicht verfügbar.",
+    "empty": "Keine Hintergrundaktivität. Synchronisierungsvorgänge erscheinen hier, während sie laufen.",
+    "activeJobsAria": "Aktive Vorgänge",
+    "recentJobsAria": "Letzte Vorgänge",
+    "active": "Aktiv",
+    "recent": "Zuletzt",
+    "jobFallback": "Vorgang {id}",
+    "cancelJobAria": "{title} abbrechen",
+    "kind": {
+      "discover": "Ordnererkennung",
+      "mailboxSync": "Postfach-Synchronisierung",
+      "fetch": "Nachrichtenabruf",
+      "send": "Nachrichtenversand",
+      "opReplay": "Server-Aktualisierungen"
+    },
+    "state": {
+      "pending": "In Warteschlange",
+      "running": "Läuft",
+      "succeeded": "Fertig",
+      "failed": "Fehlgeschlagen",
+      "cancelled": "Abgebrochen"
+    }
+  },
+  "layout": {
+    "shell": {
+      "panes": "Bereiche",
+      "folders": "Ordner",
+      "messages": "Nachrichten",
+      "reading": "Lesen"
+    },
+    "statusBar": {
+      "status": "Status",
+      "dismissError": "Fehler verwerfen",
+      "browserPreview": "Browservorschau – E-Mail-Funktionen erfordern die Desktop-App",
+      "pushTitle": "Verbunden – neue E-Mails werden per Push empfangen (IMAP IDLE)",
+      "pushConnectedAria": "Push verbunden",
+      "push": "Push",
+      "offlineToggleOffAria": "Offline arbeiten – klicken, um wieder online zu gehen",
+      "offlineToggleOnAria": "Online arbeiten – klicken, um offline zu arbeiten",
+      "offlineTitle": "Offline arbeiten",
+      "workOfflineTitle": "Offline arbeiten",
+      "offline": "Offline",
+      "online": "Online",
+      "syncing": "Synchronisierung {count}…",
+      "syncLabel": "{count} Synchronisierungsvorgang läuft – Aktivität öffnen | {count} Synchronisierungsvorgänge laufen – Aktivität öffnen",
+      "settings": "Einstellungen"
+    }
+  },
+  "offline": {
+    "props": {
+      "title": "Ordnereigenschaften",
+      "titleSuffix": " – {name}",
+      "availability": "Offline-Verfügbarkeit",
+      "loading": "Offline-Richtlinie wird geladen…",
+      "unavailable": "Ordnereigenschaften erfordern die Desktop-App; in der Browservorschau sind sie nicht verfügbar.",
+      "keepOffline": "Offline verfügbar halten",
+      "modeNothing": "Nichts (Inhalte bei Bedarf laden)",
+      "modeRecent": "Neueste Nachrichten",
+      "modeAll": "Alle Nachrichten",
+      "daysToKeep": "Tage behalten",
+      "daysToKeepAria": "Tage offline verfügbar halten",
+      "downloadNow": "Jetzt herunterladen",
+      "cleanupCache": "Cache bereinigen",
+      "saved": "Offline-Richtlinie gespeichert.",
+      "saveFailed": "Die Offline-Richtlinie konnte nicht gespeichert werden.",
+      "downloadStarted": "Download gestartet; der Fortschritt wird in der Aktivität angezeigt.",
+      "downloadFailed": "Der Download konnte nicht gestartet werden.",
+      "cleanupUnavailable": "Die Cache-Bereinigung ist in der Browservorschau nicht verfügbar.",
+      "cleanupDone": "{count} zwischengespeicherte Nachricht entfernt. | {count} zwischengespeicherte Nachrichten entfernt."
+    }
+  }
+}

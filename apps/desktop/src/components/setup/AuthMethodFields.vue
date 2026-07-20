@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { useI18n } from "vue-i18n";
+
 import type { AuthMechanism, OAuthProvider } from "../../types/mail";
 
 const mechanism = defineModel<AuthMechanism>("mechanism", { required: true });
@@ -7,32 +9,34 @@ const clientId = defineModel<string>("clientId", { required: true });
 const authUrl = defineModel<string>("authUrl", { required: true });
 const tokenUrl = defineModel<string>("tokenUrl", { required: true });
 const scopes = defineModel<string>("scopes", { required: true });
+
+const { t } = useI18n({ useScope: "global" });
 </script>
 
 <template>
   <fieldset class="group">
     <legend class="legend">
-      Authentication
+      {{ t("setup.auth.legend") }}
     </legend>
 
     <div class="field">
-      <label for="auth-mechanism">Method</label>
+      <label for="auth-mechanism">{{ t("setup.auth.method") }}</label>
       <select
         id="auth-mechanism"
         v-model="mechanism"
       >
         <option value="password">
-          Password
+          {{ t("setup.auth.password") }}
         </option>
         <option value="oauth2">
-          OAuth2 (sign in with browser)
+          {{ t("setup.auth.oauth2") }}
         </option>
       </select>
     </div>
 
     <template v-if="mechanism === 'oauth2'">
       <div class="field">
-        <label for="oauth-provider">Provider</label>
+        <label for="oauth-provider">{{ t("setup.auth.provider") }}</label>
         <select
           id="oauth-provider"
           v-model="provider"
@@ -44,13 +48,13 @@ const scopes = defineModel<string>("scopes", { required: true });
             Microsoft 365
           </option>
           <option value="custom">
-            Custom
+            {{ t("setup.auth.providerCustom") }}
           </option>
         </select>
       </div>
 
       <div class="field">
-        <label for="oauth-client-id">Client ID</label>
+        <label for="oauth-client-id">{{ t("setup.auth.clientId") }}</label>
         <input
           id="oauth-client-id"
           v-model="clientId"
@@ -58,15 +62,13 @@ const scopes = defineModel<string>("scopes", { required: true });
           autocomplete="off"
         >
         <p class="hint">
-          axomail ships no client ID. Register your own OAuth application with
-          the provider and paste its client ID here (no client secret is
-          needed — PKCE is used).
+          {{ t("setup.auth.clientIdHint") }}
         </p>
       </div>
 
       <template v-if="provider === 'custom'">
         <div class="field">
-          <label for="oauth-auth-url">Authorization URL</label>
+          <label for="oauth-auth-url">{{ t("setup.auth.authUrl") }}</label>
           <input
             id="oauth-auth-url"
             v-model="authUrl"
@@ -76,7 +78,7 @@ const scopes = defineModel<string>("scopes", { required: true });
           >
         </div>
         <div class="field">
-          <label for="oauth-token-url">Token URL</label>
+          <label for="oauth-token-url">{{ t("setup.auth.tokenUrl") }}</label>
           <input
             id="oauth-token-url"
             v-model="tokenUrl"
@@ -86,7 +88,7 @@ const scopes = defineModel<string>("scopes", { required: true });
           >
         </div>
         <div class="field">
-          <label for="oauth-scopes">Scopes (space-separated)</label>
+          <label for="oauth-scopes">{{ t("setup.auth.scopes") }}</label>
           <input
             id="oauth-scopes"
             v-model="scopes"

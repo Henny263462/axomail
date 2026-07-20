@@ -5,6 +5,10 @@
  * that file under the size gate. Pure presentation — each control emits and the
  * host (MessageDetail → MessageViewPane) performs the action.
  */
+import { useI18n } from "vue-i18n";
+
+const { t } = useI18n({ useScope: "global" });
+
 const emit = defineEmits<{
   (event: "reply"): void;
   (event: "reply-all"): void;
@@ -21,28 +25,28 @@ const emit = defineEmits<{
   <div
     class="action-bar"
     role="toolbar"
-    aria-label="Message actions"
+    :aria-label="t('message.actionBar.ariaLabel')"
   >
     <button
       type="button"
       class="action"
       @click="emit('reply')"
     >
-      Reply
+      {{ t("message.actionBar.reply") }}
     </button>
     <button
       type="button"
       class="action"
       @click="emit('reply-all')"
     >
-      Reply all
+      {{ t("message.actionBar.replyAll") }}
     </button>
     <button
       type="button"
       class="action"
       @click="emit('forward')"
     >
-      Forward
+      {{ t("message.actionBar.forward") }}
     </button>
     <span
       class="action-sep"
@@ -53,35 +57,35 @@ const emit = defineEmits<{
       class="action"
       @click="emit('archive')"
     >
-      Archive
+      {{ t("message.actionBar.archive") }}
     </button>
     <button
       type="button"
       class="action"
       @click="emit('move')"
     >
-      Move to…
+      {{ t("message.actionBar.moveTo") }}
     </button>
     <button
       type="button"
       class="action"
       @click="emit('copy')"
     >
-      Copy to…
+      {{ t("message.actionBar.copyTo") }}
     </button>
     <button
       type="button"
       class="action"
       @click="emit('junk')"
     >
-      Junk
+      {{ t("message.actionBar.junk") }}
     </button>
     <button
       type="button"
       class="action danger"
       @click="emit('delete')"
     >
-      Delete
+      {{ t("common.delete") }}
     </button>
   </div>
 </template>

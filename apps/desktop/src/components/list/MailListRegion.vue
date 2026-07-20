@@ -112,11 +112,11 @@ const selectedMailboxName = computed(() => {
         v-if="showFolderButton"
         type="button"
         class="folder-props"
-        aria-label="Folder offline availability"
-        title="Offline availability"
+        :aria-label="t('list.region.folderOfflineAvailability')"
+        :title="t('list.region.offlineAvailability')"
         @click="showFolderProps = true"
       >
-        Offline…
+        {{ t("list.region.offlineButton") }}
       </button>
     </div>
     <SearchResultsPane

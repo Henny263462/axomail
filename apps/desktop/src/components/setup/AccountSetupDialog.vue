@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from "vue";
+import { useI18n } from "vue-i18n";
 
 import type { AccountSummary } from "../../types/mail";
 import AuthMethodFields from "./AuthMethodFields.vue";
@@ -37,12 +38,19 @@ const {
   onSubmit,
 } = useAccountSetup({ onCreated: (account) => emit("created", account) });
 
+const { t } = useI18n({ useScope: "global" });
+
 const root = ref<HTMLElement | null>(null);
 const firstField = ref<HTMLInputElement | null>(null);
 
 const submitLabel = computed(() => {
-  if (pending.value) return isOAuth() ? "Signing in…" : "Adding…";
-  return isOAuth() ? "Add account & sign in" : "Add account";
+  if (pending.value)
+    return isOAuth()
+      ? t("setup.dialog.signingIn")
+      : t("setup.dialog.adding");
+  return isOAuth()
+    ? t("setup.dialog.addAndSignIn")
+    : t("setup.dialog.title");
 });
 
 onMounted(() => firstField.value?.focus());
@@ -97,7 +105,7 @@ function onKeydown(event: KeyboardEvent): void {
         id="account-setup-title"
         class="title"
       >
-        Add account
+        {{ t("setup.dialog.title") }}
       </h2>
 
       <form
@@ -105,7 +113,7 @@ function onKeydown(event: KeyboardEvent): void {
         @submit.prevent="onSubmit"
       >
         <div class="field">
-          <label for="account-display-name">Display name</label>
+          <label for="account-display-name">{{ t("setup.fields.displayName") }}</label>
           <input
             id="account-display-name"
             ref="firstField"
@@ -115,7 +123,7 @@ function onKeydown(event: KeyboardEvent): void {
           >
         </div>
         <div class="field">
-          <label for="account-email">Email address</label>
+          <label for="account-email">{{ t("setup.fields.emailAddress") }}</label>
           <input
             id="account-email"
             v-model="email"
@@ -143,14 +151,14 @@ function onKeydown(event: KeyboardEvent): void {
           v-model="incoming"
           kind="incoming"
           id-prefix="incoming"
-          legend="Incoming mail"
+          :legend="t('setup.fields.incomingMail')"
           :hide-password="isOAuth()"
         />
         <ServerConfigFields
           v-model="outgoing"
           kind="outgoing"
           id-prefix="outgoing"
-          legend="Outgoing mail (SMTP)"
+          :legend="t('setup.fields.outgoingMail')"
           :hide-password="isOAuth()"
         />
 
@@ -175,7 +183,7 @@ function onKeydown(event: KeyboardEvent): void {
             class="button"
             @click="close"
           >
-            Cancel
+            {{ t("common.cancel") }}
           </button>
           <button
             type="submit"

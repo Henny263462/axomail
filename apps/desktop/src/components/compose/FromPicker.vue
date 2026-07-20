@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed } from "vue";
+import { useI18n } from "vue-i18n";
 
 import type { AccountSummary, IdentityDto } from "../../types/mail";
 
@@ -15,6 +16,8 @@ const props = defineProps<{
 const emit = defineEmits<{
   "update:modelValue": [identityId: number];
 }>();
+
+const { t } = useI18n({ useScope: "global" });
 
 interface IdentityGroup {
   accountId: number;
@@ -39,7 +42,7 @@ const groups = computed<IdentityGroup[]>(() => {
 
 function accountLabel(accountId: number): string {
   const account = props.accounts?.find((item) => item.id === accountId);
-  return account?.displayName ?? `Account ${accountId}`;
+  return account?.displayName ?? t("compose.from.accountFallback", { id: accountId });
 }
 
 /** Renders an identity as `Display Name <address>` or just the address. */
@@ -56,7 +59,7 @@ function onChange(event: Event): void {
 
 <template>
   <div class="field">
-    <label for="compose-from">From</label>
+    <label for="compose-from">{{ t("compose.from.label") }}</label>
     <select
       id="compose-from"
       :value="modelValue ?? ''"

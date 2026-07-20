@@ -7,6 +7,7 @@
  * shared aria-live regions.
  */
 import { onMounted, ref } from "vue";
+import { useI18n } from "vue-i18n";
 
 import { getJunkSettings, runJunkControls, setJunkSettings } from "../../api/junk";
 import { isTauri } from "../../lib/tauri";
@@ -14,6 +15,8 @@ import type { JunkSettings } from "../../types/mail";
 import { messageFrom, type SettingsSectionContext } from "./context";
 
 const props = defineProps<{ context: SettingsSectionContext }>();
+
+const { t } = useI18n({ useScope: "global" });
 
 /** Defaults mirror the backend so the browser preview shows sane values. */
 const settings = ref<JunkSettings>({
@@ -48,9 +51,7 @@ onMounted(async () => {
 async function persist(): Promise<boolean> {
   props.context.reportStatus("");
   if (!isTauri()) {
-    props.context.reportError(
-      "Junk settings need the desktop app; they are unavailable in the browser preview.",
-    );
+    props.context.reportError(t("settings.junk.unavailable"));
     return false;
   }
   try {
@@ -114,13 +115,11 @@ async function onThresholdCommit(event: Event): Promise<void> {
 async function onRunControls(): Promise<void> {
   props.context.reportError("");
   if (!isTauri()) {
-    props.context.reportError(
-      "Running junk controls needs the desktop app; it is unavailable in the browser preview.",
-    );
+    props.context.reportError(t("settings.junk.runUnavailable"));
     return;
   }
   running.value = true;
-  props.context.reportStatus("Running junk controls…");
+  props.context.reportStatus(t("settings.junk.runningStatus"));
   try {
     let filed = 0;
     for (const account of props.context.accounts) {
@@ -130,7 +129,7 @@ async function onRunControls(): Promise<void> {
         }
       }
     }
-    props.context.reportStatus(`Filed ${filed} message${filed === 1 ? "" : "s"} as junk.`);
+    props.context.reportStatus(t("settings.junk.filedCount", { count: filed }, filed));
   } catch (error) {
     props.context.reportError(messageFrom(error));
   } finally {
@@ -148,12 +147,12 @@ async function onRunControls(): Promise<void> {
         :checked="settings.enabled"
         @change="onToggleEnabled"
       >
-      <span>Enable junk filter (score incoming mail and file spam automatically)</span>
+      <span>{{ t("settings.junk.enable") }}</span>
     </label>
 
     <div class="field">
       <label for="settings-junk-threshold">
-        Junk threshold: {{ thresholdPercent }}%
+        {{ t("settings.junk.threshold", { n: thresholdPercent }) }}
       </label>
       <input
         id="settings-junk-threshold"
@@ -167,7 +166,7 @@ async function onRunControls(): Promise<void> {
         @change="onThresholdCommit"
       >
       <p class="hint">
-        Mail scoring at or above this confidence is moved to Junk.
+        {{ t("settings.junk.thresholdHint") }}
       </p>
     </div>
 
@@ -178,7 +177,7 @@ async function onRunControls(): Promise<void> {
         :checked="settings.trustServerHeaders"
         @change="onToggleTrust"
       >
-      <span>Trust server junk headers (honor X-Spam-Flag / X-Spam-Status)</span>
+      <span>{{ t("settings.junk.trustHeaders") }}</span>
     </label>
 
     <label class="toggle">
@@ -188,7 +187,7 @@ async function onRunControls(): Promise<void> {
         :checked="settings.whitelistContacts"
         @change="onToggleWhitelist"
       >
-      <span>Never mark mail from my contacts as junk</span>
+      <span>{{ t("settings.junk.whitelist") }}</span>
     </label>
 
     <label class="toggle">
@@ -198,7 +197,7 @@ async function onRunControls(): Promise<void> {
         :checked="settings.markReadOnJunk"
         @change="onToggleMarkRead"
       >
-      <span>Mark messages as read when they are filed as junk</span>
+      <span>{{ t("settings.junk.markRead") }}</span>
     </label>
 
     <div class="field">
@@ -208,10 +207,10 @@ async function onRunControls(): Promise<void> {
         :disabled="running"
         @click="onRunControls"
       >
-        {{ running ? "Running…" : "Run junk controls on Inbox" }}
+        {{ running ? t("settings.junk.runningButton") : t("settings.junk.runButton") }}
       </button>
       <p class="hint">
-        Re-scores every account's Inbox and files anything over the threshold.
+        {{ t("settings.junk.runHint") }}
       </p>
     </div>
   </div>

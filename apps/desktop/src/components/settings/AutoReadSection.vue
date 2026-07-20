@@ -1,9 +1,12 @@
 <script setup lang="ts">
 import { computed } from "vue";
+import { useI18n } from "vue-i18n";
 
 import type { SettingsSectionContext } from "./context";
 
 const props = defineProps<{ context: SettingsSectionContext }>();
+
+const { t } = useI18n({ useScope: "global" });
 
 /** Ceiling shown in the delay input (mirrors the backend clamp: 30 s). */
 const MAX_DELAY_SECONDS = 30;
@@ -39,10 +42,10 @@ function onDelayInput(event: Event): void {
         :checked="context.autoMarkReadEnabled"
         @change="onToggle"
       >
-      <span>Mark messages read when displayed</span>
+      <span>{{ t("settings.autoRead.markWhenDisplayed") }}</span>
     </label>
     <div class="field">
-      <label for="settings-auto-read-delay">Delay before marking read (seconds)</label>
+      <label for="settings-auto-read-delay">{{ t("settings.autoRead.delayLabel") }}</label>
       <input
         id="settings-auto-read-delay"
         type="number"
@@ -55,7 +58,7 @@ function onDelayInput(event: Event): void {
         @input="onDelayInput"
       >
       <p class="hint">
-        0 marks a message read as soon as it opens.
+        {{ t("settings.autoRead.delayHint") }}
       </p>
     </div>
   </div>

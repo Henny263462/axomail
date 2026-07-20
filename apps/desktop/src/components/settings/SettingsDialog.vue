@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { onMounted, reactive, ref } from "vue";
+import { useI18n } from "vue-i18n";
 
 import { getSettings, updateSettings } from "../../api/settings";
 import { useTheme } from "../../composables/useTheme";
@@ -27,6 +28,8 @@ const emit = defineEmits<{
   /** Settings were saved; the shell re-reads them (e.g. auto-read preference). */
   settingsSaved: [];
 }>();
+
+const { t } = useI18n({ useScope: "global" });
 
 type LoadState = "loading" | "ready" | "unavailable";
 const state = ref<LoadState>("loading");
@@ -182,8 +185,7 @@ async function onSave(): Promise<void> {
   if (saving.value || state.value !== "ready") return;
   statusMessage.value = "";
   if (!isTauri()) {
-    errorMessage.value =
-      "Saving settings needs the desktop app; it is unavailable in the browser preview.";
+    errorMessage.value = t("settings.dialog.saveUnavailable");
     return;
   }
   saving.value = true;
@@ -221,7 +223,7 @@ async function onSave(): Promise<void> {
         id="settings-title"
         class="title"
       >
-        Settings
+        {{ t("settings.dialog.title") }}
       </h2>
 
       <p
@@ -229,15 +231,14 @@ async function onSave(): Promise<void> {
         class="note"
         role="status"
       >
-        Loading settings…
+        {{ t("settings.dialog.loading") }}
       </p>
       <p
         v-else-if="state === 'unavailable'"
         class="note"
         role="status"
       >
-        Settings require the desktop app; they are unavailable in the browser
-        preview.
+        {{ t("settings.dialog.unavailable") }}
       </p>
 
       <form
@@ -273,14 +274,14 @@ async function onSave(): Promise<void> {
             class="button"
             @click="close"
           >
-            Cancel
+            {{ t("common.cancel") }}
           </button>
           <button
             type="submit"
             class="button primary"
             :disabled="saving"
           >
-            {{ saving ? "Saving…" : "Save" }}
+            {{ saving ? t("common.saving") : t("common.save") }}
           </button>
         </div>
       </form>

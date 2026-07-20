@@ -4,6 +4,8 @@
  * shared {@link ThreadedMessageList} (mailbox labelling, a "Mark all read"
  * header, no per-row account tag).
  */
+import { useI18n } from "vue-i18n";
+
 import type { BulkAction } from "../../composables/useMailboxActions";
 import type { MessageListItem as MessageListItemModel } from "../../types/mail";
 import ThreadedMessageList from "./ThreadedMessageList.vue";
@@ -33,6 +35,8 @@ const emit = defineEmits<{
   bulkAction: [action: BulkAction, ids: number[]];
   "update:threaded": [value: boolean];
 }>();
+
+const { t } = useI18n({ useScope: "global" });
 </script>
 
 <template>
@@ -40,8 +44,8 @@ const emit = defineEmits<{
     :messages="messages"
     :selected-message-id="selectedMessageId"
     :threaded="threaded"
-    list-label="Message list"
-    empty-detail="Messages appear here once an account is set up and synchronized."
+    :list-label="t('list.thread.messageListLabel')"
+    :empty-detail="t('list.thread.messageListEmpty')"
     :show-mark-all-read="true"
     :has-more="hasMore"
     :loading-more="loadingMore"

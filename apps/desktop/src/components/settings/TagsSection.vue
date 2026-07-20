@@ -6,6 +6,7 @@
  * outcomes via the shared {@link SettingsSectionContext} aria-live regions.
  */
 import { ref, watch } from "vue";
+import { useI18n } from "vue-i18n";
 
 import { createTag, deleteTag, listTags, updateTag } from "../../api/tags";
 import { isTauri } from "../../lib/tauri";
@@ -24,6 +25,8 @@ interface EditRow {
 }
 
 const props = defineProps<{ context: SettingsSectionContext }>();
+
+const { t } = useI18n({ useScope: "global" });
 
 const accountId = ref<number | null>(props.context.accounts[0]?.id ?? null);
 const rows = ref<EditRow[]>([]);
@@ -55,23 +58,21 @@ function toRow(tag: TagDto): EditRow {
 
 function guardTauri(): boolean {
   if (isTauri()) return true;
-  props.context.reportError(
-    "Managing tags needs the desktop app; it is unavailable in the browser preview.",
-  );
+  props.context.reportError(t("settings.tags.unavailable"));
   return false;
 }
 
 async function saveRow(row: EditRow): Promise<void> {
   props.context.reportStatus("");
   if (row.displayName.trim() === "") {
-    props.context.reportError("A tag name must not be empty.");
+    props.context.reportError(t("settings.tags.nameEmpty"));
     return;
   }
   if (!guardTauri()) return;
   try {
     await updateTag(row.id, row.displayName.trim(), row.color);
     props.context.reportError("");
-    props.context.reportStatus(`Saved “${row.displayName.trim()}”.`);
+    props.context.reportStatus(t("settings.tags.saved", { name: row.displayName.trim() }));
     // Name/color changed: refresh the sidebar Tags group.
     props.context.notifyTagsChanged();
   } catch (error) {
@@ -95,7 +96,7 @@ async function removeRow(row: EditRow): Promise<void> {
     await deleteTag(row.id);
     rows.value = rows.value.filter((candidate) => candidate.id !== row.id);
     props.context.reportError("");
-    props.context.reportStatus(`Deleted “${row.displayName}”.`);
+    props.context.reportStatus(t("settings.tags.deleted", { name: row.displayName }));
     props.context.notifyTagsChanged();
   } catch (error) {
     props.context.reportError(messageFrom(error));
@@ -106,7 +107,7 @@ async function addTag(): Promise<void> {
   props.context.reportStatus("");
   const name = newName.value.trim();
   if (name === "" || accountId.value === null) {
-    props.context.reportError("A tag name must not be empty.");
+    props.context.reportError(t("settings.tags.nameEmpty"));
     return;
   }
   if (!guardTauri()) return;
@@ -115,7 +116,7 @@ async function addTag(): Promise<void> {
     if (tag !== null) rows.value.push(toRow(tag));
     newName.value = "";
     props.context.reportError("");
-    props.context.reportStatus(`Created “${name}”.`);
+    props.context.reportStatus(t("settings.tags.created", { name }));
     props.context.notifyTagsChanged();
   } catch (error) {
     props.context.reportError(messageFrom(error));
@@ -130,14 +131,14 @@ function setColor(row: EditRow, value: string): void {
 <template>
   <fieldset class="group">
     <legend class="legend">
-      Tags
+      {{ t("settings.tags.title") }}
     </legend>
 
     <label
       v-if="context.accounts.length > 1"
       class="account-select"
     >
-      <span>Account</span>
+      <span>{{ t("settings.tags.account") }}</span>
       <select v-model="accountId">
         <option
           v-for="account in context.accounts"
@@ -153,7 +154,7 @@ function setColor(row: EditRow, value: string): void {
       v-if="rows.length === 0"
       class="empty"
     >
-      No tags yet. Create one below.
+      {{ t("settings.tags.empty") }}
     </p>
 
     <ul
@@ -169,7 +170,7 @@ function setColor(row: EditRow, value: string): void {
           type="color"
           class="swatch"
           :value="row.color ?? DEFAULT_SWATCH"
-          :aria-label="`Color for ${row.displayName}`"
+          :aria-label="t('settings.tags.colorFor', { name: row.displayName })"
           @input="setColor(row, ($event.target as HTMLInputElement).value)"
         >
         <button
@@ -178,36 +179,36 @@ function setColor(row: EditRow, value: string): void {
           class="link"
           @click="row.color = null"
         >
-          Clear
+          {{ t("settings.tags.clear") }}
         </button>
         <input
           v-model="row.displayName"
           type="text"
           class="name"
-          :aria-label="`Name for ${row.keyword}`"
+          :aria-label="t('settings.tags.nameFor', { name: row.keyword })"
         >
         <button
           type="button"
           class="action"
           @click="saveRow(row)"
         >
-          Save
+          {{ t("common.save") }}
         </button>
         <template v-if="pendingDelete === row.id">
-          <span class="confirm-text">On {{ row.usageCount }} message(s). Delete?</span>
+          <span class="confirm-text">{{ t("settings.tags.deleteConfirm", { count: row.usageCount }) }}</span>
           <button
             type="button"
             class="danger"
             @click="removeRow(row)"
           >
-            Confirm
+            {{ t("common.confirm") }}
           </button>
           <button
             type="button"
             class="action"
             @click="pendingDelete = null"
           >
-            Cancel
+            {{ t("common.cancel") }}
           </button>
         </template>
         <button
@@ -216,7 +217,7 @@ function setColor(row: EditRow, value: string): void {
           class="danger"
           @click="requestDelete(row)"
         >
-          Delete
+          {{ t("common.delete") }}
         </button>
       </li>
     </ul>
@@ -229,22 +230,22 @@ function setColor(row: EditRow, value: string): void {
         type="color"
         class="swatch"
         :value="newColor ?? DEFAULT_SWATCH"
-        aria-label="New tag color"
+        :aria-label="t('settings.tags.newColorLabel')"
         @input="newColor = ($event.target as HTMLInputElement).value"
       >
       <input
         v-model="newName"
         type="text"
         class="name"
-        placeholder="New tag name"
-        aria-label="New tag name"
+        :placeholder="t('settings.tags.newName')"
+        :aria-label="t('settings.tags.newName')"
       >
       <button
         type="submit"
         class="action"
         :disabled="newName.trim() === ''"
       >
-        Add tag
+        {{ t("settings.tags.addTag") }}
       </button>
     </form>
   </fieldset>

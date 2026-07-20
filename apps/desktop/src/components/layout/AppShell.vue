@@ -35,10 +35,10 @@ const { isStacked, activePane, showPane, paneVisible } = usePaneNavigation();
 const { layout, cycleLayout } = useLayout();
 const { sizes, bounds, cssVars, setPaneSize } = usePaneSizes();
 
-const panes: { id: Pane; label: string }[] = [
-  { id: "sidebar", label: "Folders" },
-  { id: "list", label: "Messages" },
-  { id: "message", label: "Reading" },
+const panes: { id: Pane; labelKey: string }[] = [
+  { id: "sidebar", labelKey: "layout.shell.folders" },
+  { id: "list", labelKey: "layout.shell.messages" },
+  { id: "message", labelKey: "layout.shell.reading" },
 ];
 
 function onResize(dimension: PaneDimension, value: number): void {
@@ -63,7 +63,7 @@ defineExpose({ showPane });
     <nav
       v-if="isStacked"
       class="stack-nav"
-      aria-label="Panes"
+      :aria-label="t('layout.shell.panes')"
     >
       <button
         v-for="pane in panes"
@@ -74,7 +74,7 @@ defineExpose({ showPane });
         :aria-pressed="activePane === pane.id"
         @click="showPane(pane.id)"
       >
-        {{ pane.label }}
+        {{ t(pane.labelKey) }}
       </button>
     </nav>
     <div

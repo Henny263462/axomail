@@ -76,7 +76,7 @@ function onMenuKeydown(event: KeyboardEvent): void {
     ref="menuEl"
     class="menu"
     role="menu"
-    :aria-label="`Actions for ${leafName(folder)}`"
+    :aria-label="t('sidebar.folderContext.menuLabel', { name: leafName(folder) })"
     :style="{ left: `${x}px`, top: `${y}px` }"
     @keydown="onMenuKeydown"
   >
@@ -85,21 +85,21 @@ function onMenuKeydown(event: KeyboardEvent): void {
       role="menuitem"
       @click="emit('create')"
     >
-      New subfolder
+      {{ t("sidebar.folderContext.newSubfolder") }}
     </button>
     <button
       type="button"
       role="menuitem"
       @click="emit('rename')"
     >
-      Rename…
+      {{ t("sidebar.folderContext.rename") }}
     </button>
     <button
       type="button"
       role="menuitem"
       @click="emit('toggleSubscribe')"
     >
-      {{ folder.subscribed === false ? "Subscribe" : "Unsubscribe" }}
+      {{ folder.subscribed === false ? t("sidebar.folderContext.subscribe") : t("sidebar.folderContext.unsubscribe") }}
     </button>
     <button
       type="button"
@@ -113,28 +113,28 @@ function onMenuKeydown(event: KeyboardEvent): void {
       role="menuitem"
       @click="emit('properties')"
     >
-      Folder properties…
+      {{ t("sidebar.folderContext.properties") }}
     </button>
     <button
       type="button"
       role="menuitem"
       @click="emit('compact')"
     >
-      Compact
+      {{ t("sidebar.folderContext.compact") }}
     </button>
     <button
       type="button"
       role="menuitem"
       @click="emit('exportFolder')"
     >
-      Export folder…
+      {{ t("sidebar.folderContext.exportFolder") }}
     </button>
     <button
       type="button"
       role="menuitem"
       @click="emit('importFolder')"
     >
-      Import messages…
+      {{ t("sidebar.folderContext.importFolder") }}
     </button>
     <button
       v-if="folder.role === 'trash'"
@@ -143,7 +143,7 @@ function onMenuKeydown(event: KeyboardEvent): void {
       class="danger"
       @click="emit('emptyTrash')"
     >
-      Empty Trash…
+      {{ t("sidebar.folderContext.emptyTrash") }}
     </button>
     <button
       type="button"
@@ -151,7 +151,7 @@ function onMenuKeydown(event: KeyboardEvent): void {
       class="danger"
       @click="emit('delete')"
     >
-      Delete…
+      {{ t("sidebar.folderContext.delete") }}
     </button>
   </div>
 </template>

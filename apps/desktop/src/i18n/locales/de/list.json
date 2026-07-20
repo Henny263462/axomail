@@ -1,0 +1,99 @@
+{
+  "list": {
+    "noSubject": "(kein Betreff)",
+    "row": {
+      "selectMessage": "{subject} auswählen",
+      "thisMessage": "diese Nachricht",
+      "removeStar": "Stern entfernen",
+      "addStar": "Mit Stern markieren",
+      "tagsOn": "Schlagwörter zu {subject}"
+    },
+    "bulk": {
+      "archive": "Archiv",
+      "moveTo": "Verschieben nach…",
+      "markRead": "Als gelesen markieren",
+      "clear": "Auswahl aufheben"
+    },
+    "quickFilter": {
+      "filtersLabel": "Nachrichtenlisten-Filter",
+      "unread": "Ungelesen",
+      "starred": "Markiert",
+      "filterByTag": "Nach Schlagwort filtern",
+      "allTags": "Alle Schlagwörter",
+      "filterMessages": "Nachrichten filtern",
+      "filterMessagesByText": "Nachrichten nach Text filtern",
+      "sortBy": "Sortieren nach",
+      "sortMessagesBy": "Nachrichten sortieren nach",
+      "sortDate": "Datum",
+      "sortSender": "Absender",
+      "sortSubject": "Betreff",
+      "sortAscending": "Aufsteigend sortieren",
+      "sortDescending": "Absteigend sortieren",
+      "threadedLabel": "Nachrichten zu Konversationen gruppieren",
+      "threaded": "Verkettet"
+    },
+    "context": {
+      "menuLabel": "Nachrichtenaktionen",
+      "archive": "Archiv",
+      "moveTo": "Verschieben nach…",
+      "copyTo": "Kopieren nach…",
+      "markRead": "Als gelesen markieren",
+      "junk": "Als Junk markieren",
+      "notJunk": "Kein Junk"
+    },
+    "search": {
+      "searchMessages": "Nachrichten durchsuchen",
+      "searching": "Wird gesucht…",
+      "resultCount": "{count} Ergebnis | {count} Ergebnisse",
+      "resultsEmptyTitle": "Keine Ergebnisse",
+      "resultsEmptyDetail": "Keine Nachrichten entsprechen Ihrer Suche."
+    },
+    "drafts": {
+      "noRecipients": "(keine Empfänger)",
+      "label": "Entwürfe",
+      "emptyTitle": "Keine Entwürfe",
+      "emptyDetail": "Nachrichten, die Sie beim Verfassen speichern, erscheinen hier."
+    },
+    "outbox": {
+      "state": {
+        "pending": "Ausstehend",
+        "sending": "Wird gesendet",
+        "sent": "Gesendet",
+        "failed": "Fehlgeschlagen"
+      },
+      "queuedOffline": "In Warteschlange (offline)",
+      "label": "Postausgang",
+      "emptyTitle": "Postausgang leer",
+      "emptyDetail": "Nachrichten, die auf Zustellung warten, erscheinen hier.",
+      "attempts": "{count} Versuch | {count} Versuche",
+      "scheduledFor": "Geplant für {time}",
+      "sendNow": "Jetzt senden",
+      "cancelSchedule": "Zeitplan abbrechen"
+    },
+    "thread": {
+      "accountFallback": "Konto {id}",
+      "selectedCount": "{count} ausgewählt",
+      "markAllRead": "Alle als gelesen markieren",
+      "emptyTitle": "Keine Nachrichten",
+      "noMatchTitle": "Keine passenden Nachrichten",
+      "noMatchDetail": "Keine Nachrichten entsprechen dem aktuellen Filter.",
+      "loadingMore": "Mehr wird geladen…",
+      "messageListLabel": "Nachrichtenliste",
+      "messageListEmpty": "Nachrichten erscheinen hier, sobald ein Konto eingerichtet und synchronisiert ist.",
+      "messagesCount": "{count} Nachrichten",
+      "messagesCountUnread": "{count} Nachrichten, {unread} ungelesen",
+      "selectConversation": "Konversation {subject} auswählen",
+      "collapseConversation": "Konversation einklappen",
+      "expandConversation": "Konversation ausklappen"
+    },
+    "unified": {
+      "label": "Vereinter Posteingang",
+      "empty": "Nachrichten aus dem Posteingang jedes Kontos erscheinen hier, sobald synchronisiert."
+    },
+    "region": {
+      "folderOfflineAvailability": "Offline-Verfügbarkeit des Ordners",
+      "offlineAvailability": "Offline-Verfügbarkeit",
+      "offlineButton": "Offline…"
+    }
+  }
+}

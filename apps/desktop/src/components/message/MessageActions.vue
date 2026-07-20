@@ -7,6 +7,7 @@
  * message changes. Inert in the browser preview, where the bridge is absent.
  */
 import { ref, watch } from "vue";
+import { useI18n } from "vue-i18n";
 
 import {
   getMessageHeaders,
@@ -15,6 +16,8 @@ import {
   saveMessageEml,
 } from "../../api/attachments";
 import MessageSourceDialog from "./MessageSourceDialog.vue";
+
+const { t } = useI18n({ useScope: "global" });
 
 const props = defineProps<{
   messageId: number;
@@ -55,15 +58,15 @@ function emlName(): string {
 
 async function onSaveEml(): Promise<void> {
   const dest = await pickSaveFilePath(emlName(), [
-    { name: "Email message", extensions: ["eml"] },
+    { name: t("message.actions.emlFilterName"), extensions: ["eml"] },
   ]);
   if (dest === null) return;
   status.value = null;
   try {
     const bytes = await saveMessageEml(props.messageId, dest);
-    status.value = bytes === null ? null : "Saved message as .eml.";
+    status.value = bytes === null ? null : t("message.actions.savedEml");
   } catch {
-    status.value = "Could not save the message.";
+    status.value = t("message.actions.saveEmlError");
   }
 }
 
@@ -86,21 +89,21 @@ async function onToggleHeaders(): Promise<void> {
   <div class="actions-area">
     <div
       class="bar"
-      aria-label="Message actions"
+      :aria-label="t('message.actions.ariaLabel')"
     >
       <button
         type="button"
         class="action"
         @click="onSaveEml"
       >
-        Save as .eml
+        {{ t("message.actions.saveEml") }}
       </button>
       <button
         type="button"
         class="action"
         @click="onViewSource"
       >
-        View source
+        {{ t("message.actions.viewSource") }}
       </button>
       <button
         type="button"
@@ -108,22 +111,22 @@ async function onToggleHeaders(): Promise<void> {
         :aria-pressed="headersOpen"
         @click="onToggleHeaders"
       >
-        {{ headersOpen ? "Hide headers" : "All headers" }}
+        {{ headersOpen ? t("message.actions.hideHeaders") : t("message.actions.allHeaders") }}
       </button>
       <button
         type="button"
         class="action"
         @click="emit('print')"
       >
-        Print
+        {{ t("message.actions.print") }}
       </button>
     </div>
 
     <pre
       v-if="headersOpen"
       class="headers"
-      aria-label="Full message headers"
-    >{{ headers ?? "Loading headers…" }}</pre>
+      :aria-label="t('message.actions.headersLabel')"
+    >{{ headers ?? t("message.actions.loadingHeaders") }}</pre>
 
     <p
       v-if="status !== null"
@@ -136,7 +139,7 @@ async function onToggleHeaders(): Promise<void> {
 
     <MessageSourceDialog
       v-if="sourceOpen"
-      :title="subject ?? '(no subject)'"
+      :title="subject ?? t('message.row.noSubject')"
       :source="source"
       @close="sourceOpen = false"
     />

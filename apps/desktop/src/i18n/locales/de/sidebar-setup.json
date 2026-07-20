@@ -1,0 +1,100 @@
+{
+  "sidebar": {
+    "ariaLabel": "Konten und Ordner",
+    "addAccount": "Konto hinzufügen",
+    "compose": "Verfassen",
+    "composeDisabledHint": "Fügen Sie ein Konto hinzu, bevor Sie eine Nachricht verfassen",
+    "allInboxes": "Alle Posteingänge",
+    "noAccounts": "Keine Konten",
+    "noAccountsHint": "Fügen Sie ein Konto hinzu, um zu beginnen.",
+    "syncing": "Wird synchronisiert…",
+    "syncAccount": "{name} synchronisieren",
+    "syncThisAccount": "Dieses Konto synchronisieren",
+    "drafts": "Entwürfe",
+    "outbox": "Postausgang",
+    "unreadCount": "{count} ungelesen",
+    "folderNode": {
+      "collapse": "Ordner einklappen",
+      "expand": "Ordner ausklappen",
+      "notSubscribed": "{name} (nicht abonniert)",
+      "orphanHint": "Dieser Ordner ist nicht mehr auf dem Server, hat aber noch lokale Nachrichten",
+      "countTitle": "{total} gesamt, {unread} ungelesen",
+      "folderActions": "Ordneraktionen für {name}"
+    },
+    "folderContext": {
+      "menuLabel": "Aktionen für {name}",
+      "newSubfolder": "Neuer Unterordner",
+      "rename": "Umbenennen…",
+      "subscribe": "Abonnieren",
+      "unsubscribe": "Abbestellen",
+      "properties": "Ordnereigenschaften…",
+      "compact": "Komprimieren",
+      "exportFolder": "Ordner exportieren…",
+      "importFolder": "Nachrichten importieren…",
+      "emptyTrash": "Papierkorb leeren…",
+      "delete": "Löschen…"
+    },
+    "folderDialog": {
+      "folderName": "Ordnername",
+      "confirmInstruction": "Geben Sie zur Bestätigung {word} ein",
+      "working": "Wird ausgeführt…"
+    },
+    "folderTree": {
+      "folderShort": "Ordner",
+      "newTopLevelFolder": "Neuer Ordner auf oberster Ebene",
+      "newFolder": "Neuer Ordner",
+      "refreshFolderList": "Ordnerliste aktualisieren",
+      "refreshFoldersTitle": "Ordner vom Server aktualisieren",
+      "rename": "Umbenennen",
+      "newSubfolder": "Neuer Unterordner in {parent}",
+      "renameFolder": "Ordner umbenennen",
+      "emptyTrashTitle": "Papierkorb leeren",
+      "deleteFolderTitle": "Ordner löschen",
+      "confirmWordEmpty": "leeren",
+      "emptyTrashBody": "Dies löscht endgültig alle {count} Nachricht(en) im Papierkorb vom Server und von diesem Computer. Dies kann nicht rückgängig gemacht werden.",
+      "trashAlreadyEmpty": "Der Papierkorb ist bereits leer.",
+      "deleteFolderBody": "Dieser Ordner enthält {count} Nachricht(en). Beim Löschen auf dem Server werden sie ebenfalls entfernt. Dies kann nicht rückgängig gemacht werden.",
+      "deleteEmptyFolderBody": "Dies löscht den leeren Ordner auf dem Server."
+    }
+  },
+  "setup": {
+    "dialog": {
+      "title": "Konto hinzufügen",
+      "signingIn": "Anmeldung läuft…",
+      "adding": "Wird hinzugefügt…",
+      "addAndSignIn": "Konto hinzufügen und anmelden"
+    },
+    "fields": {
+      "displayName": "Anzeigename",
+      "emailAddress": "E-Mail-Adresse",
+      "incomingMail": "Eingehende E-Mails",
+      "outgoingMail": "Ausgehende E-Mails (SMTP)",
+      "protocol": "Protokoll",
+      "server": "Server",
+      "security": "Verschlüsselung",
+      "port": "Port",
+      "username": "Benutzername",
+      "password": "Passwort"
+    },
+    "auth": {
+      "legend": "Authentifizierung",
+      "method": "Methode",
+      "password": "Passwort",
+      "oauth2": "OAuth2 (Anmeldung im Browser)",
+      "provider": "Anbieter",
+      "providerCustom": "Benutzerdefiniert",
+      "clientId": "Client-ID",
+      "clientIdHint": "axomail liefert keine Client-ID mit. Registrieren Sie Ihre eigene OAuth-Anwendung beim Anbieter und fügen Sie deren Client-ID hier ein (kein Client-Secret erforderlich – es wird PKCE verwendet).",
+      "authUrl": "Autorisierungs-URL",
+      "tokenUrl": "Token-URL",
+      "scopes": "Scopes (durch Leerzeichen getrennt)"
+    },
+    "test": {
+      "action": "Verbindung testen",
+      "testing": "Wird getestet…",
+      "incoming": "Eingehend:",
+      "outgoing": "Ausgehend:",
+      "failed": "Fehlgeschlagen"
+    }
+  }
+}

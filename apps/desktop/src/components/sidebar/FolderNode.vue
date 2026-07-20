@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed } from "vue";
+import { useI18n } from "vue-i18n";
 
 import type { FolderTreeNode } from "./folderTree";
 import type { SidebarView } from "./view";
@@ -18,6 +19,8 @@ const emit = defineEmits<{
   openMenu: [payload: { folderId: number; x: number; y: number }];
 }>();
 
+const { t } = useI18n({ useScope: "global" });
+
 const mailbox = computed(() => props.node.mailbox);
 const hasChildren = computed(() => props.node.children.length > 0);
 const isExpanded = computed(() => !props.collapsedIds.has(mailbox.value.id));
@@ -31,8 +34,11 @@ const total = computed(() => mailbox.value.totalCount ?? 0);
 const subscribed = computed(() => mailbox.value.subscribed !== false);
 const orphaned = computed(() => mailbox.value.orphaned === true);
 const indent = computed(() => `${props.node.depth * 12 + 8}px`);
-const countTitle = computed(
-  () => `${total.value} total, ${unread.value} unread`,
+const countTitle = computed(() =>
+  t("sidebar.folderNode.countTitle", {
+    total: total.value,
+    unread: unread.value,
+  }),
 );
 
 function openMenuAt(x: number, y: number): void {
@@ -52,7 +58,7 @@ function openMenuAt(x: number, y: number): void {
         v-if="hasChildren"
         type="button"
         class="twisty"
-        :aria-label="isExpanded ? 'Collapse folder' : 'Expand folder'"
+        :aria-label="isExpanded ? t('sidebar.folderNode.collapse') : t('sidebar.folderNode.expand')"
         :aria-expanded="isExpanded"
         @click.stop="emit('toggle', mailbox.id)"
       >
@@ -68,26 +74,26 @@ function openMenuAt(x: number, y: number): void {
         class="folder-button"
         :class="{ selected: isSelected }"
         :aria-current="isSelected ? 'true' : undefined"
-        :title="subscribed ? undefined : `${node.leaf} (not subscribed)`"
+        :title="subscribed ? undefined : t('sidebar.folderNode.notSubscribed', { name: node.leaf })"
         @click="emit('select', mailbox.id)"
       >
         <span class="folder-name">{{ node.leaf }}</span>
         <span
           v-if="orphaned"
           class="orphan"
-          title="This folder is no longer on the server but still has local messages"
+          :title="t('sidebar.folderNode.orphanHint')"
         >⚠</span>
         <span
           v-if="unread > 0"
           class="unread"
           :title="countTitle"
-          :aria-label="`${unread} unread`"
+          :aria-label="t('sidebar.unreadCount', { count: unread })"
         >{{ unread }}</span>
       </button>
       <button
         type="button"
         class="folder-menu"
-        :aria-label="`Folder actions for ${node.leaf}`"
+        :aria-label="t('sidebar.folderNode.folderActions', { name: node.leaf })"
         @click.stop="
           openMenuAt(
             ($event.currentTarget as HTMLElement).getBoundingClientRect().right,

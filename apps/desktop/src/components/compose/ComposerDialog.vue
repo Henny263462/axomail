@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from "vue";
+import { useI18n } from "vue-i18n";
 
 import { listIdentities } from "../../api/identities";
 import { withoutSignature } from "../../lib/signature";
@@ -41,6 +42,8 @@ const emit = defineEmits<{
   sent: [payload: { draftId: number | null }];
   saved: [draftId: number];
 }>();
+
+const { t } = useI18n({ useScope: "global" });
 
 const draft = props.draft ?? null;
 const isDraft = draft !== null;
@@ -120,11 +123,13 @@ const { onKeydown } = useFocusTrap(root, close);
 
 /** Title reflecting the mode: editing a draft, replying, forwarding, or new. */
 const dialogTitle = computed(() => {
-  if (draftId.value !== null) return "Edit draft";
+  if (draftId.value !== null) return t("compose.dialog.editDraft");
   if (replySource.value !== null) {
-    return replySource.value.mark === "forwarded" ? "Forward" : "Reply";
+    return replySource.value.mark === "forwarded"
+      ? t("compose.dialog.forward")
+      : t("compose.dialog.reply");
   }
-  return "New message";
+  return t("compose.dialog.newMessage");
 });
 
 // Attaching a file resolves the "you mentioned an attachment" reminder.

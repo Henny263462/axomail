@@ -1,0 +1,43 @@
+{
+  "app": {
+    "emptyState": {
+      "draftsTitle": "Entwürfe",
+      "draftsDetail": "Wählen Sie einen Entwurf, um ihn weiter zu bearbeiten.",
+      "outboxTitle": "Postausgang",
+      "outboxDetail": "Nachrichten, die auf den Versand warten, werden hier aufgelistet."
+    },
+    "undo": {
+      "archived": "{n} archiviert",
+      "deleted": "{n} gelöscht",
+      "markedJunk": "{n} als Junk markiert",
+      "markedNotJunk": "{n} als kein Junk markiert",
+      "movedTo": "Nach {name} verschoben",
+      "copiedTo": "Nach {name} kopiert",
+      "unavailable": "Diese Aktion benötigt die Desktop-App.",
+      "failed": "Die Aktion konnte nicht abgeschlossen werden."
+    },
+    "composer": {
+      "untitledTemplate": "Unbenannte Vorlage",
+      "noRecipients": "Fügen Sie mindestens einen Empfänger hinzu.",
+      "attachmentReminder": "Ihre Nachricht erwähnt einen Anhang, aber es ist keiner angehängt. Senden Sie erneut, um trotzdem zu senden."
+    },
+    "command": {
+      "commandPalette": { "title": "Befehlspalette", "keywords": "Befehle,ausführen,Aktionen" },
+      "shortcutHelp": { "title": "Tastenkürzel", "keywords": "Hilfe,Tasten,Übersicht" },
+      "newMessage": { "title": "Neue Nachricht", "keywords": "verfassen,schreiben,erstellen" },
+      "reply": { "title": "Antworten", "keywords": "beantworten" },
+      "replyAll": { "title": "Allen antworten", "keywords": "beantworten,alle" },
+      "forward": { "title": "Weiterleiten", "keywords": "weiterleiten" },
+      "archive": { "title": "Archivieren", "keywords": "ablegen" },
+      "delete": { "title": "In den Papierkorb verschieben", "keywords": "Papierkorb,entfernen" },
+      "toggleStar": { "title": "Markierung umschalten", "keywords": "markieren,Favorit" },
+      "toggleUnread": { "title": "Ungelesen umschalten", "keywords": "gelesen,ungelesen,markieren" },
+      "search": { "title": "Nachrichten suchen", "keywords": "suchen,filtern" },
+      "goInbox": { "title": "Zum Posteingang", "keywords": "vereint,Posteingang,Start" },
+      "goFolders": { "title": "Zu den Ordnern", "keywords": "Seitenleiste,Postfächer,Konten" },
+      "addressBook": { "title": "Adressbuch öffnen", "keywords": "Kontakte,Adressen,Personen" },
+      "markJunk": { "title": "Als Junk markieren", "keywords": "Spam,Junk" },
+      "markNotJunk": { "title": "Als kein Junk markieren", "keywords": "kein Spam,Junk" }
+    }
+  }
+}

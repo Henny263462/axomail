@@ -6,6 +6,9 @@
  * here. Escape or the Close button dismisses it; focus is trapped while open.
  */
 import { nextTick, onMounted, ref } from "vue";
+import { useI18n } from "vue-i18n";
+
+const { t } = useI18n({ useScope: "global" });
 
 defineProps<{
   /** Dialog heading (e.g. the message subject). */
@@ -72,7 +75,7 @@ onMounted(async () => {
           id="view-source-title"
           class="title"
         >
-          Message source — {{ title }}
+          {{ t("message.source.heading", { title }) }}
         </h2>
       </header>
 
@@ -81,13 +84,13 @@ onMounted(async () => {
         class="note"
         role="status"
       >
-        Loading source…
+        {{ t("message.source.loading") }}
       </p>
       <pre
         v-else
         class="source"
         tabindex="0"
-        aria-label="Raw message source"
+        :aria-label="t('message.source.rawLabel')"
       >{{ source }}</pre>
 
       <div class="actions">
@@ -96,7 +99,7 @@ onMounted(async () => {
           class="button"
           @click="close"
         >
-          Close
+          {{ t("common.close") }}
         </button>
       </div>
     </div>

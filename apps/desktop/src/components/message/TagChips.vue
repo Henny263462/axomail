@@ -5,7 +5,11 @@
  * color is a backend-validated `#rrggbb` value, so binding it to an inline
  * style is safe.
  */
+import { useI18n } from "vue-i18n";
+
 import type { TagChip } from "../../types/mail";
+
+const { t } = useI18n({ useScope: "global" });
 
 withDefaults(
   defineProps<{
@@ -13,7 +17,7 @@ withDefaults(
     /** Accessible label for the chip group. */
     label?: string;
   }>(),
-  { label: "Tags" },
+  { label: undefined },
 );
 
 function dotStyle(color: string | null): Record<string, string> {
@@ -27,7 +31,7 @@ function dotStyle(color: string | null): Record<string, string> {
   <ul
     v-if="tags.length > 0"
     class="chips"
-    :aria-label="label"
+    :aria-label="label ?? t('message.tags.defaultLabel')"
   >
     <li
       v-for="tag in tags"

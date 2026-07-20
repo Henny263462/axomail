@@ -7,6 +7,7 @@
  * it never collides with the folder-tree rewrite that owns that file.
  */
 import { onMounted, ref, watch } from "vue";
+import { useI18n } from "vue-i18n";
 
 import { listAllTags } from "../../api/tags";
 import type { TagDto } from "../../types/mail";
@@ -22,6 +23,8 @@ const props = defineProps<{
 const emit = defineEmits<{
   selectTag: [tagId: number, name: string];
 }>();
+
+const { t } = useI18n({ useScope: "global" });
 
 const tags = ref<TagDto[]>([]);
 
@@ -50,10 +53,10 @@ function dotStyle(color: string | null): Record<string, string> {
   <section
     v-if="tags.length > 0"
     class="tags-group"
-    aria-label="Tags"
+    :aria-label="t('folderView.tags')"
   >
     <h2 class="group-title">
-      Tags
+      {{ t("folderView.tags") }}
     </h2>
     <ul>
       <li

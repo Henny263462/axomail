@@ -5,6 +5,8 @@
  * bindings identically. Purely display: it takes the grouped commands and shows
  * each command's title next to its formatted shortcut.
  */
+import { useI18n } from "vue-i18n";
+
 import { formatShortcutHint } from "../../commands/display";
 import type { CommandGroup } from "../../commands/display";
 
@@ -12,6 +14,8 @@ defineProps<{
   /** The shortcut groups to render, in display order. */
   groups: CommandGroup[];
 }>();
+
+const { t } = useI18n({ useScope: "global" });
 </script>
 
 <template>
@@ -21,7 +25,7 @@ defineProps<{
       class="empty"
       role="status"
     >
-      No keyboard shortcuts are available.
+      {{ t("command.list.empty") }}
     </p>
     <section
       v-for="group in groups"

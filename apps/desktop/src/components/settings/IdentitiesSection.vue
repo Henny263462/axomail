@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { onMounted, ref } from "vue";
+import { useI18n } from "vue-i18n";
 
 import {
   createIdentity,
@@ -16,6 +17,8 @@ import IdentityForm from "./IdentityForm.vue";
 // managed autonomously (loaded and mutated through the identities api); the
 // context supplies the account list this section groups identities under.
 defineProps<{ context: SettingsSectionContext }>();
+
+const { t } = useI18n({ useScope: "global" });
 
 const identities = ref<IdentityDto[]>([]);
 type LoadState = "loading" | "ready" | "unavailable";
@@ -60,7 +63,7 @@ function closeForm(): void {
 function messageFrom(error: unknown): string {
   if (typeof error === "string") return error;
   if (error instanceof Error) return error.message;
-  return "Could not save the identity.";
+  return t("settings.identities.saveFailed");
 }
 
 async function onSave(input: IdentityInput): Promise<void> {
@@ -103,7 +106,7 @@ async function onSetDefault(identity: IdentityDto): Promise<void> {
       id="identities-heading"
       class="heading"
     >
-      Identities
+      {{ t("settings.identities.title") }}
     </h3>
 
     <p
@@ -111,22 +114,21 @@ async function onSetDefault(identity: IdentityDto): Promise<void> {
       class="note"
       role="status"
     >
-      Loading identities…
+      {{ t("settings.identities.loading") }}
     </p>
     <p
       v-else-if="state === 'unavailable'"
       class="note"
       role="status"
     >
-      Identities require the desktop app; they are unavailable in the browser
-      preview.
+      {{ t("settings.identities.unavailable") }}
     </p>
     <p
       v-else-if="context.accounts.length === 0"
       class="note"
       role="status"
     >
-      Add an account to manage its sender identities.
+      {{ t("settings.identities.noAccounts") }}
     </p>
 
     <template v-else>
@@ -149,7 +151,7 @@ async function onSetDefault(identity: IdentityDto): Promise<void> {
               <span
                 v-if="identity.isDefault"
                 class="badge"
-              >Default</span>
+              >{{ t("settings.identities.default") }}</span>
             </div>
             <div class="identity-actions">
               <button
@@ -158,14 +160,14 @@ async function onSetDefault(identity: IdentityDto): Promise<void> {
                 class="link"
                 @click="onSetDefault(identity)"
               >
-                Make default
+                {{ t("settings.identities.makeDefault") }}
               </button>
               <button
                 type="button"
                 class="link"
                 @click="openEdit(identity)"
               >
-                Edit
+                {{ t("common.edit") }}
               </button>
               <button
                 v-if="!identity.isDefault"
@@ -173,7 +175,7 @@ async function onSetDefault(identity: IdentityDto): Promise<void> {
                 class="link danger"
                 @click="onDelete(identity)"
               >
-                Remove
+                {{ t("common.remove") }}
               </button>
             </div>
           </li>
@@ -192,7 +194,7 @@ async function onSetDefault(identity: IdentityDto): Promise<void> {
           class="add"
           @click="openAdd(account.id)"
         >
-          Add identity
+          {{ t("settings.identities.addIdentity") }}
         </button>
       </div>
     </template>

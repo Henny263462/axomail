@@ -5,12 +5,16 @@
  * {@link ThreadedMessageList} to keep it under the file-size gate. The parent
  * resolves the target ids and performs the action; this only emits intent.
  */
+import { useI18n } from "vue-i18n";
+
 import type { BulkAction } from "../../composables/useMailboxActions";
 
 defineEmits<{
   action: [action: BulkAction];
   clear: [];
 }>();
+
+const { t } = useI18n({ useScope: "global" });
 </script>
 
 <template>
@@ -19,35 +23,35 @@ defineEmits<{
     class="bulk"
     @click="$emit('action', 'archive')"
   >
-    Archive
+    {{ t("list.bulk.archive") }}
   </button>
   <button
     type="button"
     class="bulk"
     @click="$emit('action', 'move')"
   >
-    Move to…
+    {{ t("list.bulk.moveTo") }}
   </button>
   <button
     type="button"
     class="bulk"
     @click="$emit('action', 'markRead')"
   >
-    Mark read
+    {{ t("list.bulk.markRead") }}
   </button>
   <button
     type="button"
     class="bulk danger"
     @click="$emit('action', 'delete')"
   >
-    Delete
+    {{ t("common.delete") }}
   </button>
   <button
     type="button"
     class="clear-selection"
     @click="$emit('clear')"
   >
-    Clear
+    {{ t("list.bulk.clear") }}
   </button>
 </template>
 

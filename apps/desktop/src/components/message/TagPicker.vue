@@ -6,8 +6,11 @@
  * host ({@link MessageTagArea}) to persist, and `close` on Escape or blur-out.
  */
 import { nextTick, onMounted, ref } from "vue";
+import { useI18n } from "vue-i18n";
 
 import type { MessageTagOption } from "../../types/mail";
+
+const { t } = useI18n({ useScope: "global" });
 
 defineProps<{
   options: MessageTagOption[];
@@ -54,14 +57,14 @@ function dotStyle(color: string | null): Record<string, string> {
     ref="root"
     class="picker"
     role="group"
-    aria-label="Tag this message"
+    :aria-label="t('message.tags.pickerLabel')"
     @keydown.esc.stop.prevent="emit('close')"
   >
     <p
       v-if="options.length === 0"
       class="empty"
     >
-      No tags yet. Create one below.
+      {{ t("message.tags.noTags") }}
     </p>
     <ul
       v-else
@@ -98,8 +101,8 @@ function dotStyle(color: string | null): Record<string, string> {
         v-model="newName"
         type="text"
         class="new-name"
-        placeholder="New tag name"
-        aria-label="New tag name"
+        :placeholder="t('message.tags.newTagName')"
+        :aria-label="t('message.tags.newTagName')"
         :disabled="busy"
       >
       <button
@@ -107,7 +110,7 @@ function dotStyle(color: string | null): Record<string, string> {
         class="add"
         :disabled="busy || newName.trim() === ''"
       >
-        Add
+        {{ t("common.add") }}
       </button>
     </form>
   </div>

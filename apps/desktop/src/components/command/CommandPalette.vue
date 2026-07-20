@@ -11,6 +11,7 @@
  * combobox pattern.
  */
 import { computed, nextTick, onMounted, ref, watch } from "vue";
+import { useI18n } from "vue-i18n";
 
 import { formatShortcutHint } from "../../commands/display";
 import { useCommandRegistry } from "../../composables/useCommandRegistry";
@@ -18,6 +19,8 @@ import type { Command } from "../../types/command";
 import { filterCommands, highlightSegments } from "./fuzzy";
 
 const emit = defineEmits<{ close: [] }>();
+
+const { t } = useI18n({ useScope: "global" });
 
 const registry = useCommandRegistry();
 const query = ref("");
@@ -137,7 +140,7 @@ function onKeydown(event: KeyboardEvent): void {
       class="palette"
       role="dialog"
       aria-modal="true"
-      aria-label="Command palette"
+      :aria-label="t('command.palette.ariaLabel')"
       @keydown="onKeydown"
     >
       <input
@@ -146,8 +149,8 @@ function onKeydown(event: KeyboardEvent): void {
         type="text"
         class="input"
         role="combobox"
-        aria-label="Search commands"
-        placeholder="Type a command…"
+        :aria-label="t('command.palette.searchAria')"
+        :placeholder="t('command.palette.placeholder')"
         autocomplete="off"
         aria-autocomplete="list"
         :aria-expanded="popupVisible"
@@ -158,7 +161,7 @@ function onKeydown(event: KeyboardEvent): void {
         :id="LIST_ID"
         class="list"
         role="listbox"
-        aria-label="Commands"
+        :aria-label="t('command.palette.commandsAria')"
       >
         <li
           v-for="(entry, index) in results"
@@ -196,7 +199,7 @@ function onKeydown(event: KeyboardEvent): void {
           class="empty"
           role="status"
         >
-          No matching commands.
+          {{ t("command.palette.empty") }}
         </li>
       </ul>
     </div>

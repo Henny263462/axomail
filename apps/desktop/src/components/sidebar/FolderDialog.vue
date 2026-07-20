@@ -9,6 +9,7 @@
  * Escape cancels, via the shared {@link useFocusTrap}.
  */
 import { computed, onBeforeUnmount, onMounted, ref } from "vue";
+import { useI18n } from "vue-i18n";
 
 import { useFocusTrap } from "../../composables/useFocusTrap";
 
@@ -35,6 +36,8 @@ const emit = defineEmits<{
   submit: [value: string];
   cancel: [];
 }>();
+
+const { t } = useI18n({ useScope: "global" });
 
 const typed = ref(props.mode === "input" ? (props.initialValue ?? "") : "");
 const input = ref<HTMLInputElement | null>(null);
@@ -109,10 +112,16 @@ function onConfirm(): void {
           class="field"
           for="folder-dialog-input"
         >
-          <template v-if="mode === 'input'">{{ label ?? "Folder name" }}</template>
-          <template v-else>
-            Type <span class="word">{{ confirmWord }}</span> to confirm
-          </template>
+          <template v-if="mode === 'input'">{{ label ?? t("sidebar.folderDialog.folderName") }}</template>
+          <i18n-t
+            v-else
+            keypath="sidebar.folderDialog.confirmInstruction"
+            scope="global"
+          >
+            <template #word>
+              <span class="word">{{ confirmWord }}</span>
+            </template>
+          </i18n-t>
         </label>
         <input
           id="folder-dialog-input"
@@ -139,7 +148,7 @@ function onConfirm(): void {
           class="button"
           @click="emit('cancel')"
         >
-          Cancel
+          {{ t("common.cancel") }}
         </button>
         <button
           type="button"
@@ -148,7 +157,7 @@ function onConfirm(): void {
           :disabled="!confirmed || busy"
           @click="onConfirm"
         >
-          {{ busy ? "Working…" : confirmText }}
+          {{ busy ? t("sidebar.folderDialog.working") : confirmText }}
         </button>
       </div>
     </div>

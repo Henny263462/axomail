@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref } from "vue";
+import { useI18n } from "vue-i18n";
 
 import type {
   ArchiveGranularity,
@@ -21,6 +22,8 @@ const emit = defineEmits<{
   save: [input: IdentityInput];
   cancel: [];
 }>();
+
+const { t } = useI18n({ useScope: "global" });
 
 const existing = props.identity ?? null;
 
@@ -44,7 +47,7 @@ const error = ref("");
 
 function onSubmit(): void {
   if (email.value.trim().length === 0) {
-    error.value = "An identity needs a From address.";
+    error.value = t("settings.identities.fromRequired");
     return;
   }
   error.value = "";
@@ -70,17 +73,17 @@ function onSubmit(): void {
     @submit.prevent="onSubmit"
   >
     <div class="field">
-      <label for="identity-email">From address</label>
+      <label for="identity-email">{{ t("settings.identities.fromAddress") }}</label>
       <input
         id="identity-email"
         v-model="email"
         type="email"
         autocomplete="off"
-        placeholder="you@example.org"
+        :placeholder="t('settings.identities.fromPlaceholder')"
       >
     </div>
     <div class="field">
-      <label for="identity-name">Display name</label>
+      <label for="identity-name">{{ t("settings.identities.displayName") }}</label>
       <input
         id="identity-name"
         v-model="displayName"
@@ -89,7 +92,7 @@ function onSubmit(): void {
       >
     </div>
     <div class="field">
-      <label for="identity-reply-to">Reply-To (optional)</label>
+      <label for="identity-reply-to">{{ t("settings.identities.replyTo") }} {{ t("common.optional") }}</label>
       <input
         id="identity-reply-to"
         v-model="replyTo"
@@ -98,7 +101,7 @@ function onSubmit(): void {
       >
     </div>
     <div class="field">
-      <label for="identity-signature">Signature</label>
+      <label for="identity-signature">{{ t("settings.identities.signature") }}</label>
       <textarea
         id="identity-signature"
         v-model="signatureText"
@@ -108,61 +111,61 @@ function onSubmit(): void {
 
     <div class="prefs">
       <div class="field">
-        <label for="identity-sig-placement">Signature placement</label>
+        <label for="identity-sig-placement">{{ t("settings.identities.signaturePlacement") }}</label>
         <select
           id="identity-sig-placement"
           v-model="signaturePlacement"
         >
           <option value="below_quote">
-            Below quoted text
+            {{ t("settings.identities.sigBelowQuote") }}
           </option>
           <option value="above_quote">
-            Above quoted text
+            {{ t("settings.identities.sigAboveQuote") }}
           </option>
         </select>
       </div>
       <div class="field">
-        <label for="identity-reply-position">Reply position</label>
+        <label for="identity-reply-position">{{ t("settings.identities.replyPosition") }}</label>
         <select
           id="identity-reply-position"
           v-model="replyPosition"
         >
           <option value="above">
-            Above the quote
+            {{ t("settings.identities.replyAbove") }}
           </option>
           <option value="below">
-            Below the quote
+            {{ t("settings.identities.replyBelow") }}
           </option>
         </select>
       </div>
       <div class="field">
-        <label for="identity-forward-mode">Forward messages</label>
+        <label for="identity-forward-mode">{{ t("settings.identities.forwardMessages") }}</label>
         <select
           id="identity-forward-mode"
           v-model="forwardMode"
         >
           <option value="inline">
-            Inline
+            {{ t("settings.identities.forwardInline") }}
           </option>
           <option value="attachment">
-            As attachment
+            {{ t("settings.identities.forwardAttachment") }}
           </option>
         </select>
       </div>
       <div class="field">
-        <label for="identity-archive">Archive folders</label>
+        <label for="identity-archive">{{ t("settings.identities.archiveFolders") }}</label>
         <select
           id="identity-archive"
           v-model="archiveGranularity"
         >
           <option value="flat">
-            Single folder
+            {{ t("settings.identities.archiveFlat") }}
           </option>
           <option value="yearly">
-            Per year
+            {{ t("settings.identities.archiveYearly") }}
           </option>
           <option value="monthly">
-            Per month
+            {{ t("settings.identities.archiveMonthly") }}
           </option>
         </select>
       </div>
@@ -174,7 +177,7 @@ function onSubmit(): void {
         type="checkbox"
         :disabled="existing?.isDefault === true"
       >
-      <span>Default identity for this account</span>
+      <span>{{ t("settings.identities.defaultForAccount") }}</span>
     </label>
 
     <p
@@ -191,13 +194,13 @@ function onSubmit(): void {
         class="button"
         @click="emit('cancel')"
       >
-        Cancel
+        {{ t("common.cancel") }}
       </button>
       <button
         type="submit"
         class="button primary"
       >
-        {{ existing === null ? "Add identity" : "Save identity" }}
+        {{ existing === null ? t("settings.identities.addIdentity") : t("settings.identities.saveIdentity") }}
       </button>
     </div>
   </form>

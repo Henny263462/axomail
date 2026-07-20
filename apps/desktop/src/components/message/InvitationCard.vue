@@ -1,7 +1,10 @@
 <script setup lang="ts">
 import { computed } from "vue";
+import { useI18n } from "vue-i18n";
 
 import type { InvitationDto, RsvpChoice } from "../../types/mail";
+
+const { t } = useI18n({ useScope: "global" });
 
 const props = withDefaults(
   defineProps<{
@@ -27,58 +30,58 @@ const emit = defineEmits<{
   (event: "retry-send"): void;
 }>();
 
-const title = computed(() => props.invitation.summary ?? "Invitation");
+const title = computed(() => props.invitation.summary ?? t("message.invitation.fallbackTitle"));
 
 const organizer = computed(() => {
   const { organizerName, organizerEmail } = props.invitation;
   if (organizerName && organizerEmail) return `${organizerName} <${organizerEmail}>`;
-  return organizerName ?? organizerEmail ?? "Unknown organizer";
+  return organizerName ?? organizerEmail ?? t("message.invitation.unknownOrganizer");
 });
 
 /** The human-readable label for the user's current response. */
 const responseLabel = computed(() => {
   switch (props.invitation.myStatus) {
     case "accepted":
-      return "You accepted this invitation.";
+      return t("message.invitation.acceptedResponse");
     case "tentative":
-      return "You responded tentatively.";
+      return t("message.invitation.tentativeResponse");
     case "declined":
-      return "You declined this invitation.";
+      return t("message.invitation.declinedResponse");
     default:
       return null;
   }
 });
 
-const choices: { choice: RsvpChoice; label: string; status: string }[] = [
-  { choice: "accept", label: "Accept", status: "accepted" },
-  { choice: "tentative", label: "Tentative", status: "tentative" },
-  { choice: "decline", label: "Decline", status: "declined" },
+const choices: { choice: RsvpChoice; labelKey: string; status: string }[] = [
+  { choice: "accept", labelKey: "message.invitation.accept", status: "accepted" },
+  { choice: "tentative", labelKey: "message.invitation.tentative", status: "tentative" },
+  { choice: "decline", labelKey: "message.invitation.decline", status: "declined" },
 ];
 </script>
 
 <template>
   <section
     class="invite"
-    aria-label="Calendar invitation"
+    :aria-label="t('message.invitation.kicker')"
   >
     <p class="kicker">
-      Calendar invitation
+      {{ t("message.invitation.kicker") }}
     </p>
     <h2 class="title">
       {{ title }}
     </h2>
 
     <dl class="fields">
-      <dt>Organizer</dt>
+      <dt>{{ t("message.invitation.organizer") }}</dt>
       <dd>{{ organizer }}</dd>
-      <dt>When</dt>
-      <dd>{{ invitation.whenDisplay ?? "Time not specified" }}</dd>
+      <dt>{{ t("message.invitation.when") }}</dt>
+      <dd>{{ invitation.whenDisplay ?? t("message.invitation.timeNotSpecified") }}</dd>
       <template v-if="invitation.location">
-        <dt>Where</dt>
+        <dt>{{ t("message.invitation.where") }}</dt>
         <dd>{{ invitation.location }}</dd>
       </template>
       <template v-if="invitation.description">
-        <dt>Agenda</dt>
+        <dt>{{ t("message.invitation.agenda") }}</dt>
         <dd class="agenda">
           {{ invitation.description }}
         </dd>
@@ -90,7 +93,7 @@ const choices: { choice: RsvpChoice; label: string; status: string }[] = [
       class="cancelled"
       role="status"
     >
-      This event has been cancelled by the organizer.
+      {{ t("message.invitation.cancelled") }}
     </p>
 
     <div
@@ -109,12 +112,12 @@ const choices: { choice: RsvpChoice; label: string; status: string }[] = [
           class="send-failed"
           role="status"
         >
-          Your response was saved, but the reply to the organizer was not sent.
+          {{ t("message.invitation.sendFailed") }}
         </p>
         <div
           class="buttons"
           role="group"
-          aria-label="Retry sending the reply"
+          :aria-label="t('message.invitation.retryGroupLabel')"
         >
           <button
             type="button"
@@ -122,7 +125,7 @@ const choices: { choice: RsvpChoice; label: string; status: string }[] = [
             :disabled="busy"
             @click="emit('retry-send')"
           >
-            Retry send
+            {{ t("message.invitation.retrySend") }}
           </button>
         </div>
       </template>
@@ -131,12 +134,12 @@ const choices: { choice: RsvpChoice; label: string; status: string }[] = [
           class="conflict-note"
           role="note"
         >
-          Conflicts are not checked — axomail keeps no calendar.
+          {{ t("message.invitation.conflictNote") }}
         </p>
         <div
           class="buttons"
           role="group"
-          aria-label="Respond to invitation"
+          :aria-label="t('message.invitation.respondGroupLabel')"
         >
           <button
             v-for="option in choices"
@@ -148,7 +151,7 @@ const choices: { choice: RsvpChoice; label: string; status: string }[] = [
             :disabled="busy"
             @click="emit('rsvp', option.choice)"
           >
-            {{ option.label }}
+            {{ t(option.labelKey) }}
           </button>
         </div>
         <p
@@ -174,8 +177,7 @@ const choices: { choice: RsvpChoice; label: string; status: string }[] = [
       class="response"
       role="status"
     >
-      Responding to invitations needs the desktop app; it is unavailable in the
-      browser preview.
+      {{ t("message.invitation.unavailable") }}
     </p>
 
     <p

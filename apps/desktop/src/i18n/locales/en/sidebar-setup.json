@@ -1,0 +1,100 @@
+{
+  "sidebar": {
+    "ariaLabel": "Accounts and folders",
+    "addAccount": "Add account",
+    "compose": "Compose",
+    "composeDisabledHint": "Add an account before composing",
+    "allInboxes": "All inboxes",
+    "noAccounts": "No accounts",
+    "noAccountsHint": "Add an account to get started.",
+    "syncing": "Syncing…",
+    "syncAccount": "Sync {name}",
+    "syncThisAccount": "Sync this account",
+    "drafts": "Drafts",
+    "outbox": "Outbox",
+    "unreadCount": "{count} unread",
+    "folderNode": {
+      "collapse": "Collapse folder",
+      "expand": "Expand folder",
+      "notSubscribed": "{name} (not subscribed)",
+      "orphanHint": "This folder is no longer on the server but still has local messages",
+      "countTitle": "{total} total, {unread} unread",
+      "folderActions": "Folder actions for {name}"
+    },
+    "folderContext": {
+      "menuLabel": "Actions for {name}",
+      "newSubfolder": "New subfolder",
+      "rename": "Rename…",
+      "subscribe": "Subscribe",
+      "unsubscribe": "Unsubscribe",
+      "properties": "Folder properties…",
+      "compact": "Compact",
+      "exportFolder": "Export folder…",
+      "importFolder": "Import messages…",
+      "emptyTrash": "Empty Trash…",
+      "delete": "Delete…"
+    },
+    "folderDialog": {
+      "folderName": "Folder name",
+      "confirmInstruction": "Type {word} to confirm",
+      "working": "Working…"
+    },
+    "folderTree": {
+      "folderShort": "Folder",
+      "newTopLevelFolder": "New top-level folder",
+      "newFolder": "New folder",
+      "refreshFolderList": "Refresh folder list",
+      "refreshFoldersTitle": "Refresh folders from the server",
+      "rename": "Rename",
+      "newSubfolder": "New subfolder in {parent}",
+      "renameFolder": "Rename folder",
+      "emptyTrashTitle": "Empty Trash",
+      "deleteFolderTitle": "Delete folder",
+      "confirmWordEmpty": "empty",
+      "emptyTrashBody": "This permanently deletes all {count} message(s) in Trash from the server and this computer. This cannot be undone.",
+      "trashAlreadyEmpty": "Trash is already empty.",
+      "deleteFolderBody": "This folder holds {count} message(s). Deleting it on the server also removes them. This cannot be undone.",
+      "deleteEmptyFolderBody": "This deletes the empty folder on the server."
+    }
+  },
+  "setup": {
+    "dialog": {
+      "title": "Add account",
+      "signingIn": "Signing in…",
+      "adding": "Adding…",
+      "addAndSignIn": "Add account & sign in"
+    },
+    "fields": {
+      "displayName": "Display name",
+      "emailAddress": "Email address",
+      "incomingMail": "Incoming mail",
+      "outgoingMail": "Outgoing mail (SMTP)",
+      "protocol": "Protocol",
+      "server": "Server",
+      "security": "Security",
+      "port": "Port",
+      "username": "Username",
+      "password": "Password"
+    },
+    "auth": {
+      "legend": "Authentication",
+      "method": "Method",
+      "password": "Password",
+      "oauth2": "OAuth2 (sign in with browser)",
+      "provider": "Provider",
+      "providerCustom": "Custom",
+      "clientId": "Client ID",
+      "clientIdHint": "axomail ships no client ID. Register your own OAuth application with the provider and paste its client ID here (no client secret is needed — PKCE is used).",
+      "authUrl": "Authorization URL",
+      "tokenUrl": "Token URL",
+      "scopes": "Scopes (space-separated)"
+    },
+    "test": {
+      "action": "Test connection",
+      "testing": "Testing…",
+      "incoming": "Incoming:",
+      "outgoing": "Outgoing:",
+      "failed": "Failed"
+    }
+  }
+}

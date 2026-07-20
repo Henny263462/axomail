@@ -5,12 +5,15 @@
  * shared {@link SettingsSectionContext} aria-live regions.
  */
 import { onMounted, ref } from "vue";
+import { useI18n } from "vue-i18n";
 
 import { getCollectAddresses, setCollectAddresses } from "../../api/contacts";
 import { isTauri } from "../../lib/tauri";
 import { messageFrom, type SettingsSectionContext } from "./context";
 
 const props = defineProps<{ context: SettingsSectionContext }>();
+
+const { t } = useI18n({ useScope: "global" });
 
 // Defaults to true (the backend default) until the real value loads.
 const collect = ref(true);
@@ -23,9 +26,7 @@ onMounted(async () => {
 async function onToggle(value: boolean): Promise<void> {
   props.context.reportStatus("");
   if (!isTauri()) {
-    props.context.reportError(
-      "Contact settings need the desktop app; they are unavailable in the browser preview.",
-    );
+    props.context.reportError(t("settings.contacts.unavailable"));
     return;
   }
   const previous = collect.value;
@@ -35,8 +36,8 @@ async function onToggle(value: boolean): Promise<void> {
     props.context.reportError("");
     props.context.reportStatus(
       value
-        ? "New recipients will be added to your address book."
-        : "Recipients will no longer be collected automatically.",
+        ? t("settings.contacts.collectOn")
+        : t("settings.contacts.collectOff"),
     );
   } catch (error) {
     collect.value = previous;
@@ -48,7 +49,7 @@ async function onToggle(value: boolean): Promise<void> {
 <template>
   <fieldset class="group">
     <legend class="legend">
-      Contacts
+      {{ t("settings.contacts.title") }}
     </legend>
     <label class="row">
       <input
@@ -57,10 +58,9 @@ async function onToggle(value: boolean): Promise<void> {
         @change="onToggle(($event.target as HTMLInputElement).checked)"
       >
       <span>
-        <span class="label">Collect addresses when sending</span>
+        <span class="label">{{ t("settings.contacts.collectLabel") }}</span>
         <span class="hint">
-          Adds each new To, Cc, and Bcc recipient to your address book after a
-          message is sent.
+          {{ t("settings.contacts.collectHint") }}
         </span>
       </span>
     </label>

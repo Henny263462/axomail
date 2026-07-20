@@ -9,6 +9,7 @@ import {
 } from "../api/actions";
 import { markJunk, markNotJunk } from "../api/junk";
 import { markMessagesRead } from "../api/messages";
+import { i18n } from "../i18n";
 import { isTauri } from "../lib/tauri";
 import type { DialogController } from "./useDialogs";
 import type { AppDialogMap } from "../components/layout/dialogs";
@@ -25,7 +26,7 @@ const UNDO_TIMEOUT_MS = 8000;
 /** How long a transient notice (copy/error) stays. */
 const NOTICE_TIMEOUT_MS = 4000;
 /** Shown when a mutating action cannot reach the backend (browser preview). */
-const UNAVAILABLE = "This action needs the desktop app.";
+const UNAVAILABLE = (): string => i18n.global.t("app.undo.unavailable");
 
 /** The bulk actions the list/context-menu surfaces dispatch. */
 export type BulkAction =
@@ -197,7 +198,7 @@ export function useMailboxActions(deps: Deps) {
       const outcome = await run();
       if (outcome === null) {
         restore(snapshot);
-        showNotice(UNAVAILABLE);
+        showNotice(UNAVAILABLE());
         return;
       }
       showUndo(label(outcome.moves.length), outcome.moves);
@@ -209,11 +210,15 @@ export function useMailboxActions(deps: Deps) {
   }
 
   async function archive(ids: number[]): Promise<void> {
-    await relocate(ids, () => archiveMessages(ids), (n) => `Archived ${n}`);
+    await relocate(ids, () => archiveMessages(ids), (n) =>
+      i18n.global.t("app.undo.archived", { n }),
+    );
   }
 
   async function remove(ids: number[]): Promise<void> {
-    await relocate(ids, () => deleteToTrash(ids), (n) => `Deleted ${n}`);
+    await relocate(ids, () => deleteToTrash(ids), (n) =>
+      i18n.global.t("app.undo.deleted", { n }),
+    );
   }
 
   /**
@@ -234,7 +239,7 @@ export function useMailboxActions(deps: Deps) {
       const outcome = await run();
       if (outcome === null) {
         restore(snapshot);
-        showNotice(UNAVAILABLE);
+        showNotice(UNAVAILABLE());
         return;
       }
       showNotice(label(ids.length));
@@ -246,11 +251,15 @@ export function useMailboxActions(deps: Deps) {
   }
 
   async function junk(ids: number[]): Promise<void> {
-    await junkAction(ids, () => markJunk(ids), (n) => `Marked ${n} as junk`);
+    await junkAction(ids, () => markJunk(ids), (n) =>
+      i18n.global.t("app.undo.markedJunk", { n }),
+    );
   }
 
   async function notJunk(ids: number[]): Promise<void> {
-    await junkAction(ids, () => markNotJunk(ids), (n) => `Marked ${n} as not junk`);
+    await junkAction(ids, () => markNotJunk(ids), (n) =>
+      i18n.global.t("app.undo.markedNotJunk", { n }),
+    );
   }
 
   async function moveTo(
@@ -261,7 +270,7 @@ export function useMailboxActions(deps: Deps) {
     await relocate(
       ids,
       () => moveMessages(ids, mailboxId),
-      () => `Moved to ${mailboxName}`,
+      () => i18n.global.t("app.undo.movedTo", { name: mailboxName }),
     );
   }
 
@@ -276,12 +285,12 @@ export function useMailboxActions(deps: Deps) {
     // to `null` on both a real success and a missing bridge; only the bridge
     // check distinguishes them).
     if (!isTauri()) {
-      showNotice(UNAVAILABLE);
+      showNotice(UNAVAILABLE());
       return;
     }
     try {
       await copyMessages(ids, mailboxId);
-      showNotice(`Copied to ${mailboxName}`);
+      showNotice(i18n.global.t("app.undo.copiedTo", { name: mailboxName }));
     } catch (error) {
       showNotice(errorText(error));
     }
@@ -384,5 +393,5 @@ export function useMailboxActions(deps: Deps) {
 
 /** A user-facing string for a rejected command (backend errors are strings). */
 function errorText(error: unknown): string {
-  return typeof error === "string" ? error : "The action could not be completed.";
+  return typeof error === "string" ? error : i18n.global.t("app.undo.failed");
 }

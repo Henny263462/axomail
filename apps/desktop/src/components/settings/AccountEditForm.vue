@@ -10,6 +10,7 @@
  * the save through `update_account`.
  */
 import { computed, ref } from "vue";
+import { useI18n } from "vue-i18n";
 
 import { updateAccount } from "../../api/accounts";
 import { isTauri } from "../../lib/tauri";
@@ -25,6 +26,8 @@ const emit = defineEmits<{
   saved: [];
   cancel: [];
 }>();
+
+const { t } = useI18n({ useScope: "global" });
 
 // Each server draft is a `ref` (not `reactive`), because `EditServerFields`
 // updates it by replacing the whole object through `v-model`. A ref keeps
@@ -46,17 +49,17 @@ const saving = ref(false);
 const errorMessage = ref("");
 
 function requiredHost(host: string): string {
-  return host.trim() === "" ? "Server is required." : "";
+  return host.trim() === "" ? t("settings.accounts.serverRequired") : "";
 }
 
 function portRange(port: number): string {
   return Number.isInteger(port) && port >= 1 && port <= 65535
     ? ""
-    : "Port must be between 1 and 65535.";
+    : t("settings.accounts.portRange");
 }
 
 const displayNameError = computed(() =>
-  displayName.value.trim() === "" ? "Display name is required." : "",
+  displayName.value.trim() === "" ? t("settings.accounts.displayNameRequired") : "",
 );
 const incomingHostError = computed(() => requiredHost(incoming.value.host));
 const incomingPortError = computed(() => portRange(incoming.value.port));
@@ -75,14 +78,13 @@ const valid = computed(
 function messageFrom(error: unknown): string {
   if (typeof error === "string") return error;
   if (error instanceof Error) return error.message;
-  return "Could not save the account.";
+  return t("settings.accounts.saveFailed");
 }
 
 async function onSave(): Promise<void> {
   if (!valid.value || saving.value) return;
   if (!isTauri()) {
-    errorMessage.value =
-      "Saving account changes needs the desktop app; it is unavailable in the browser preview.";
+    errorMessage.value = t("settings.accounts.saveUnavailable");
     return;
   }
   saving.value = true;
@@ -117,7 +119,7 @@ async function onSave(): Promise<void> {
     @submit.prevent="onSave"
   >
     <div class="field">
-      <label for="edit-display-name">Display name</label>
+      <label for="edit-display-name">{{ t("settings.accounts.displayName") }}</label>
       <input
         id="edit-display-name"
         v-model="displayName"
@@ -139,14 +141,14 @@ async function onSave(): Promise<void> {
     <EditServerFields
       v-model="incoming"
       id-prefix="edit-incoming"
-      legend="Incoming server"
+      :legend="t('settings.accounts.incomingServer')"
       :host-error="incomingHostError"
       :port-error="incomingPortError"
     />
     <EditServerFields
       v-model="outgoing"
       id-prefix="edit-outgoing"
-      legend="Outgoing server"
+      :legend="t('settings.accounts.outgoingServer')"
       :host-error="outgoingHostError"
       :port-error="outgoingPortError"
     />
@@ -171,14 +173,14 @@ async function onSave(): Promise<void> {
         class="button"
         @click="emit('cancel')"
       >
-        Cancel
+        {{ t("common.cancel") }}
       </button>
       <button
         type="submit"
         class="button primary"
         :disabled="!valid || saving"
       >
-        {{ saving ? "Saving…" : "Save changes" }}
+        {{ saving ? t("common.saving") : t("settings.accounts.saveChanges") }}
       </button>
     </div>
   </form>

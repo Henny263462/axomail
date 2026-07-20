@@ -12,6 +12,7 @@
  * load through `loadMore` when the window nears the end of the loaded rows.
  */
 import { computed, ref, toRef, useId, watch } from "vue";
+import { useI18n } from "vue-i18n";
 
 import type { AccountSummary, MessageListItem, TagChip } from "../../types/mail";
 import type { BulkAction } from "../../composables/useMailboxActions";
@@ -73,6 +74,8 @@ const emit = defineEmits<{
   "update:threaded": [value: boolean];
 }>();
 
+const { t } = useI18n({ useScope: "global" });
+
 const uid = useId();
 const view = useMessageListView({
   messages: toRef(props, "messages"),
@@ -111,7 +114,7 @@ function accountName(message: MessageListItem): string | null {
   if (!props.showAccount) return null;
   const accountId = (message as { accountId?: number }).accountId;
   if (accountId === undefined) return null;
-  return accountNames.value.get(accountId) ?? `Account ${accountId}`;
+  return accountNames.value.get(accountId) ?? t("list.thread.accountFallback", { id: accountId });
 }
 
 /** DOM id for a row, used as the listbox's `aria-activedescendant` target. */
@@ -236,7 +239,7 @@ watch(
         v-if="selectionCount > 0"
         class="selection-count"
         role="status"
-      >{{ selectionCount }} selected</span>
+      >{{ t("list.thread.selectedCount", { count: selectionCount }) }}</span>
       <BulkActionBar
         v-if="selectionCount > 0"
         @action="runAction($event, null)"
@@ -250,7 +253,7 @@ watch(
         :disabled="!hasUnread"
         @click="emit('markAllRead')"
       >
-        Mark all read
+        {{ t("list.thread.markAllRead") }}
       </button>
     </div>
 
@@ -267,13 +270,13 @@ watch(
 
     <EmptyState
       v-if="messages.length === 0"
-      title="No messages"
+      :title="t('list.thread.emptyTitle')"
       :detail="emptyDetail"
     />
     <EmptyState
       v-else-if="view.visibleRows.value.length === 0"
-      title="No matching messages"
-      detail="No messages match the current filter."
+      :title="t('list.thread.noMatchTitle')"
+      :detail="t('list.thread.noMatchDetail')"
     />
     <div
       v-else
@@ -338,7 +341,7 @@ watch(
         class="loading"
         role="status"
       >
-        Loading more…
+        {{ t("list.thread.loadingMore") }}
       </p>
     </div>
 

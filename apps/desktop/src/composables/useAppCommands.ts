@@ -28,8 +28,19 @@ import {
   parseChordSequence,
   type ChordBinding,
 } from "./useKeyChords";
+import { i18n } from "../i18n";
 import type { CommandRegistry } from "./useCommandRegistry";
 import type { Command } from "../types/command";
+
+/** The localized palette title for a command, from `app.command.<name>.title`. */
+function title(name: string): string {
+  return i18n.global.t(`app.command.${name}.title`);
+}
+
+/** The localized palette search terms for a command (comma-separated in the catalogue). */
+function keywords(name: string): string[] {
+  return i18n.global.t(`app.command.${name}.keywords`).split(",");
+}
 
 /** The callbacks and state gates the global commands drive. */
 export interface AppCommandDeps {
@@ -86,104 +97,104 @@ export function buildAppCommands(deps: AppCommandDeps): Command[] {
   return [
     {
       id: "app.commandPalette",
-      title: "Command palette",
-      keywords: ["commands", "run", "actions"],
+      title: title("commandPalette"),
+      keywords: keywords("commandPalette"),
       shortcut: "Mod+K",
       run: deps.openCommandPalette,
       isEnabled: notBusy,
     },
     {
       id: "app.shortcutHelp",
-      title: "Keyboard shortcuts",
-      keywords: ["help", "keys", "cheat sheet"],
+      title: title("shortcutHelp"),
+      keywords: keywords("shortcutHelp"),
       shortcut: "Shift+?",
       run: deps.openShortcutHelp,
       isEnabled: notBusy,
     },
     {
       id: "compose.new",
-      title: "New message",
-      keywords: ["compose", "write", "create"],
+      title: title("newMessage"),
+      keywords: keywords("newMessage"),
       shortcut: "n",
       run: deps.newMessage,
       isEnabled: () => notBusy() && deps.hasAccounts(),
     },
     {
       id: "message.reply",
-      title: "Reply",
-      keywords: ["respond"],
+      title: title("reply"),
+      keywords: keywords("reply"),
       shortcut: "r",
       run: onMessage(deps.reply),
       isEnabled: messageEnabled,
     },
     {
       id: "message.replyAll",
-      title: "Reply all",
-      keywords: ["respond", "everyone"],
+      title: title("replyAll"),
+      keywords: keywords("replyAll"),
       shortcut: "Shift+R",
       run: onMessage(deps.replyAll),
       isEnabled: messageEnabled,
     },
     {
       id: "message.forward",
-      title: "Forward",
-      keywords: ["fwd"],
+      title: title("forward"),
+      keywords: keywords("forward"),
       shortcut: "f",
       run: onMessage(deps.forward),
       isEnabled: messageEnabled,
     },
     {
       id: "message.archive",
-      title: "Archive",
-      keywords: ["file"],
+      title: title("archive"),
+      keywords: keywords("archive"),
       shortcut: "e",
       run: onMessage(deps.archive),
       isEnabled: messageEnabled,
     },
     {
       id: "message.delete",
-      title: "Delete to Trash",
-      keywords: ["trash", "remove"],
+      title: title("delete"),
+      keywords: keywords("delete"),
       shortcut: "Delete",
       run: onMessage(deps.deleteToTrash),
       isEnabled: messageEnabled,
     },
     {
       id: "message.toggleStar",
-      title: "Toggle star",
-      keywords: ["flag", "favourite", "favorite"],
+      title: title("toggleStar"),
+      keywords: keywords("toggleStar"),
       shortcut: "s",
       run: onMessage(deps.toggleStar),
       isEnabled: messageEnabled,
     },
     {
       id: "message.toggleUnread",
-      title: "Toggle unread",
-      keywords: ["read", "seen", "mark"],
+      title: title("toggleUnread"),
+      keywords: keywords("toggleUnread"),
       shortcut: "u",
       run: onMessage(deps.toggleUnread),
       isEnabled: messageEnabled,
     },
     {
       id: "nav.focusSearch",
-      title: "Search messages",
-      keywords: ["find", "filter"],
+      title: title("search"),
+      keywords: keywords("search"),
       shortcut: "/",
       run: deps.focusSearch,
       isEnabled: notBusy,
     },
     {
       id: "nav.goInbox",
-      title: "Go to Inbox",
-      keywords: ["unified", "inbox", "home"],
+      title: title("goInbox"),
+      keywords: keywords("goInbox"),
       shortcut: "g i",
       run: deps.goInbox,
       isEnabled: notBusy,
     },
     {
       id: "nav.goFolders",
-      title: "Go to Folders",
-      keywords: ["sidebar", "mailboxes", "accounts"],
+      title: title("goFolders"),
+      keywords: keywords("goFolders"),
       shortcut: "g f",
       run: deps.goFolders,
       isEnabled: notBusy,
@@ -264,24 +275,24 @@ export function buildContextCommands(deps: ContextCommandDeps): Command[] {
   return [
     {
       id: "contacts.addressBook",
-      title: "Open address book",
-      keywords: ["contacts", "addresses", "people"],
+      title: title("addressBook"),
+      keywords: keywords("addressBook"),
       shortcut: "Mod+Shift+B",
       run: deps.openAddressBook,
       isEnabled: notBusy,
     },
     {
       id: "message.junk",
-      title: "Mark as junk",
-      keywords: ["spam", "junk"],
+      title: title("markJunk"),
+      keywords: keywords("markJunk"),
       shortcut: "j",
       run: onSelected(deps.junk),
       isEnabled: selectedEnabled,
     },
     {
       id: "message.notJunk",
-      title: "Mark as not junk",
-      keywords: ["ham", "not spam"],
+      title: title("markNotJunk"),
+      keywords: keywords("markNotJunk"),
       shortcut: "Shift+J",
       run: onSelected(deps.notJunk),
       isEnabled: selectedEnabled,

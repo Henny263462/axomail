@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { useI18n } from "vue-i18n";
+
 import type { DraftDto } from "../../types/mail";
 import EmptyState from "../common/EmptyState.vue";
 
@@ -11,9 +13,11 @@ const emit = defineEmits<{
   select: [draftId: number];
 }>();
 
+const { t } = useI18n({ useScope: "global" });
+
 function summary(draft: DraftDto): string {
   const recipients = draft.to.join(", ");
-  return recipients.length > 0 ? recipients : "(no recipients)";
+  return recipients.length > 0 ? recipients : t("list.drafts.noRecipients");
 }
 
 function updated(unix: number): string {
@@ -27,12 +31,12 @@ function updated(unix: number): string {
 <template>
   <section
     class="list"
-    aria-label="Drafts"
+    :aria-label="t('list.drafts.label')"
   >
     <EmptyState
       v-if="drafts.length === 0"
-      title="No drafts"
-      detail="Messages you save while composing appear here."
+      :title="t('list.drafts.emptyTitle')"
+      :detail="t('list.drafts.emptyDetail')"
     />
     <ul v-else>
       <li
@@ -47,7 +51,7 @@ function updated(unix: number): string {
           @click="emit('select', draft.id)"
         >
           <span class="row">
-            <span class="subject">{{ draft.subject || "(no subject)" }}</span>
+            <span class="subject">{{ draft.subject || t("list.noSubject") }}</span>
             <time class="date">{{ updated(draft.updatedUnix) }}</time>
           </span>
           <span class="to">{{ summary(draft) }}</span>

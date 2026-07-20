@@ -1,0 +1,118 @@
+{
+  "message": {
+    "actionBar": {
+      "ariaLabel": "Message actions",
+      "reply": "Reply",
+      "replyAll": "Reply all",
+      "forward": "Forward",
+      "archive": "Archive",
+      "moveTo": "Move to…",
+      "copyTo": "Copy to…",
+      "junk": "Junk"
+    },
+    "actions": {
+      "ariaLabel": "Message actions",
+      "saveEml": "Save as .eml",
+      "viewSource": "View source",
+      "allHeaders": "All headers",
+      "hideHeaders": "Hide headers",
+      "print": "Print",
+      "headersLabel": "Full message headers",
+      "loadingHeaders": "Loading headers…",
+      "savedEml": "Saved message as .eml.",
+      "saveEmlError": "Could not save the message.",
+      "emlFilterName": "Email message"
+    },
+    "attachments": {
+      "ariaLabel": "Attachments",
+      "unnamed": "(unnamed)",
+      "save": "Save {name}",
+      "attachmentFallback": "attachment",
+      "saveAll": "Save all",
+      "saved": "Saved {name}.",
+      "saveError": "Could not save the attachment.",
+      "savedCount": "Saved {count} attachment. | Saved {count} attachments.",
+      "saveAllError": "Could not save the attachments."
+    },
+    "body": {
+      "ariaLabel": "Message body",
+      "displayMode": "Body display mode",
+      "plainText": "Plain Text",
+      "sanitizedHtml": "Sanitized HTML",
+      "noPlainText": "This message has no plain-text part.",
+      "linksDisabled": "Links are disabled in this preview.",
+      "htmlPreviewTitle": "Message HTML preview"
+    },
+    "detail": {
+      "addStar": "Add star",
+      "removeStar": "Remove star",
+      "to": "To",
+      "cc": "Cc",
+      "date": "Date",
+      "scamTitle": "This message looks like a possible scam",
+      "remoteBlocked": "Remote content blocked ({count})",
+      "showOnce": "Show once",
+      "alwaysAllowFrom": "Always allow from {sender}",
+      "thisSender": "this sender",
+      "activeContentRemoved": "Active content was removed for your safety."
+    },
+    "invitation": {
+      "kicker": "Calendar invitation",
+      "fallbackTitle": "Invitation",
+      "organizer": "Organizer",
+      "when": "When",
+      "where": "Where",
+      "agenda": "Agenda",
+      "timeNotSpecified": "Time not specified",
+      "unknownOrganizer": "Unknown organizer",
+      "cancelled": "This event has been cancelled by the organizer.",
+      "sendFailed": "Your response was saved, but the reply to the organizer was not sent.",
+      "retryGroupLabel": "Retry sending the reply",
+      "retrySend": "Retry send",
+      "conflictNote": "Conflicts are not checked — axomail keeps no calendar.",
+      "respondGroupLabel": "Respond to invitation",
+      "accept": "Accept",
+      "tentative": "Tentative",
+      "decline": "Decline",
+      "acceptedResponse": "You accepted this invitation.",
+      "tentativeResponse": "You responded tentatively.",
+      "declinedResponse": "You declined this invitation.",
+      "unavailable": "Responding to invitations needs the desktop app; it is unavailable in the browser preview."
+    },
+    "move": {
+      "moveTitle": "Move to folder",
+      "copyTitle": "Copy to folder",
+      "noFolders": "No folders are available yet."
+    },
+    "row": {
+      "noSubject": "(no subject)"
+    },
+    "source": {
+      "heading": "Message source — {title}",
+      "loading": "Loading source…",
+      "rawLabel": "Raw message source"
+    },
+    "tags": {
+      "appliedLabel": "Tags on this message",
+      "tagButton": "Tag",
+      "updateError": "Could not update tags.",
+      "defaultLabel": "Tags",
+      "pickerLabel": "Tag this message",
+      "noTags": "No tags yet. Create one below.",
+      "newTagName": "New tag name"
+    },
+    "view": {
+      "ariaLabel": "Message",
+      "noSelectionTitle": "No message selected",
+      "noSelectionDetail": "Select a message from the list to read it here.",
+      "loading": "Loading message…",
+      "unavailableTitle": "Message unavailable",
+      "unavailableDetail": "This message could not be loaded. It may require the desktop app.",
+      "offlineTitle": "Not available offline",
+      "offlineDetail": "This message has not been downloaded for offline reading. Reconnect to load it.",
+      "printCommand": "Print message",
+      "rsvpSavedNotSent": "Your response was saved, but the reply could not be sent.",
+      "rsvpNotSent": "The response could not be sent."
+    }
+  }
+}

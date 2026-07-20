@@ -5,10 +5,13 @@
  * cancels, via the shared {@link useFocusTrap}.
  */
 import { onBeforeUnmount, onMounted, ref } from "vue";
+import { useI18n } from "vue-i18n";
 
 import { useFocusTrap } from "../../composables/useFocusTrap";
 import type { FolderPicked } from "../../composables/useMailboxActions";
 import type { AccountSummary } from "../../types/mail";
+
+const { t } = useI18n({ useScope: "global" });
 
 const props = defineProps<{
   accounts: AccountSummary[];
@@ -59,14 +62,14 @@ function pick(mailboxId: number, mailboxName: string): void {
         id="move-dialog-title"
         class="title"
       >
-        {{ mode === "move" ? "Move to folder" : "Copy to folder" }}
+        {{ mode === "move" ? t("message.move.moveTitle") : t("message.move.copyTitle") }}
       </h3>
 
       <div
         v-if="accounts.length === 0"
         class="empty"
       >
-        No folders are available yet.
+        {{ t("message.move.noFolders") }}
       </div>
 
       <div
@@ -99,7 +102,7 @@ function pick(mailboxId: number, mailboxName: string): void {
           class="button"
           @click="emit('close')"
         >
-          Cancel
+          {{ t("common.cancel") }}
         </button>
       </div>
     </div>

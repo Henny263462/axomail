@@ -9,6 +9,7 @@
  * on the To field when the dialog opens (the focus trap lives in the shell).
  */
 import { ref } from "vue";
+import { useI18n } from "vue-i18n";
 
 import RecipientInput from "./RecipientInput.vue";
 
@@ -16,6 +17,8 @@ const to = defineModel<string>("to", { default: "" });
 const cc = defineModel<string>("cc", { default: "" });
 const bcc = defineModel<string>("bcc", { default: "" });
 const subject = defineModel<string>("subject", { default: "" });
+
+const { t } = useI18n({ useScope: "global" });
 
 const firstField = ref<InstanceType<typeof RecipientInput> | null>(null);
 
@@ -30,20 +33,20 @@ defineExpose({
     ref="firstField"
     v-model="to"
     field-id="compose-to"
-    label="To"
+    :label="t('compose.fields.to')"
   />
   <RecipientInput
     v-model="cc"
     field-id="compose-cc"
-    label="Cc"
+    :label="t('compose.fields.cc')"
   />
   <RecipientInput
     v-model="bcc"
     field-id="compose-bcc"
-    label="Bcc"
+    :label="t('compose.fields.bcc')"
   />
   <div class="field">
-    <label for="compose-subject">Subject</label>
+    <label for="compose-subject">{{ t("compose.fields.subject") }}</label>
     <input
       id="compose-subject"
       v-model="subject"

@@ -1,0 +1,62 @@
+{
+  "settings": {
+    "autoRead": {
+      "markWhenDisplayed": "Nachrichten beim Anzeigen als gelesen markieren",
+      "delayLabel": "Verzögerung vor dem Markieren als gelesen (Sekunden)",
+      "delayHint": "0 markiert eine Nachricht als gelesen, sobald sie geöffnet wird."
+    },
+    "notifications": {
+      "showForNewMail": "Desktop-Benachrichtigungen für neue Nachrichten anzeigen"
+    },
+    "push": {
+      "title": "Push (IMAP IDLE)",
+      "hint": "Wenn aktiviert, hält die App für Konten, deren Server IDLE unterstützt, eine Verbindung offen, sodass neue Nachrichten sofort ankommen, statt auf die nächste Prüfung zu warten. Konten ohne IDLE rufen weiterhin ab.",
+      "toggleAria": "Push (IMAP IDLE) verwenden, wenn verfügbar",
+      "toggleLabel": "Push verwenden, wenn verfügbar",
+      "unavailable": "Zum Ändern von Push wird die Desktop-App benötigt; in der Browservorschau ist sie nicht verfügbar.",
+      "enabled": "Push aktiviert.",
+      "disabled": "Push deaktiviert; Konten rufen ab."
+    },
+    "sync": {
+      "intervalLabel": "Synchronisierungsintervall (Minuten)"
+    },
+    "junk": {
+      "enable": "Junk-Filter aktivieren (eingehende Mail bewerten und Spam automatisch einordnen)",
+      "threshold": "Junk-Schwellenwert: {n}%",
+      "thresholdHint": "Mail, die mit dieser Sicherheit oder höher bewertet wird, wird nach Junk verschoben.",
+      "trustHeaders": "Server-Junk-Header vertrauen (X-Spam-Flag / X-Spam-Status berücksichtigen)",
+      "whitelist": "Mail von meinen Kontakten nie als Junk markieren",
+      "markRead": "Nachrichten als gelesen markieren, wenn sie als Junk eingeordnet werden",
+      "runButton": "Junk-Kontrollen für Posteingang ausführen",
+      "runningButton": "Wird ausgeführt…",
+      "runHint": "Bewertet den Posteingang jedes Kontos neu und ordnet alles über dem Schwellenwert ein.",
+      "runningStatus": "Junk-Kontrollen werden ausgeführt…",
+      "filedCount": "{count} Nachricht als Junk eingestuft. | {count} Nachrichten als Junk eingestuft.",
+      "unavailable": "Für die Junk-Einstellungen wird die Desktop-App benötigt; in der Browservorschau sind sie nicht verfügbar.",
+      "runUnavailable": "Zum Ausführen der Junk-Kontrollen wird die Desktop-App benötigt; in der Browservorschau ist dies nicht verfügbar."
+    },
+    "pop3": {
+      "title": "POP3-Löschung auf dem Server",
+      "warning": "Löscht Mail nach dem Herunterladen vom Server. Dies kann nicht rückgängig gemacht werden.",
+      "accountFallback": "Konto {id}",
+      "unavailable": "Zum Ändern der Löschrichtlinie wird die Desktop-App benötigt; in der Browservorschau ist sie nicht verfügbar."
+    },
+    "emptyTrash": {
+      "title": "Papierkorb beim Beenden leeren",
+      "hint": "Löscht den Papierkorb jedes ausgewählten Kontos endgültig, wenn die App geschlossen wird.",
+      "unavailable": "Zum Ändern dieser Einstellung wird die Desktop-App benötigt; in der Browservorschau ist sie nicht verfügbar."
+    },
+    "shortcuts": {
+      "title": "Tastenkürzel",
+      "hintBefore": "Diese Tastenkürzel funktionieren überall in axomail. Drücken Sie",
+      "hintMiddle": "an beliebiger Stelle, um diese Liste aufzurufen, oder",
+      "hintAfter": "für die Befehlspalette. Eigene Tastenbelegung folgt in einem späteren Update."
+    },
+    "dialog": {
+      "title": "Einstellungen",
+      "loading": "Einstellungen werden geladen…",
+      "unavailable": "Für die Einstellungen wird die Desktop-App benötigt; in der Browservorschau sind sie nicht verfügbar.",
+      "saveUnavailable": "Zum Speichern der Einstellungen wird die Desktop-App benötigt; in der Browservorschau ist dies nicht verfügbar."
+    }
+  }
+}

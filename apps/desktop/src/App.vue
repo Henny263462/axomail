@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from "vue";
+import { useI18n } from "vue-i18n";
 
 import { cancelAllSyncJobs } from "./api/jobs";
 import { getLanguage, getSettings } from "./api/settings";
@@ -34,6 +35,8 @@ import type {
   SyncEventDto,
   UnifiedItemDto,
 } from "./types/mail";
+
+const { t } = useI18n({ useScope: "global" });
 
 const shell = ref<InstanceType<typeof AppShell> | null>(null);
 
@@ -307,13 +310,13 @@ function onSyncEvent(event: SyncEventDto): void {
       />
       <EmptyState
         v-else-if="activeView === 'drafts'"
-        title="Drafts"
-        detail="Select a draft to continue editing it."
+        :title="t('app.emptyState.draftsTitle')"
+        :detail="t('app.emptyState.draftsDetail')"
       />
       <EmptyState
         v-else
-        title="Outbox"
-        detail="Messages waiting to be delivered are listed here."
+        :title="t('app.emptyState.outboxTitle')"
+        :detail="t('app.emptyState.outboxDetail')"
       />
     </template>
   </AppShell>

@@ -9,6 +9,7 @@
  * an oversized selection is rejected before it ever reaches the send command.
  */
 import { onBeforeUnmount, onMounted, computed } from "vue";
+import { useI18n } from "vue-i18n";
 
 import { onFilesDropped, pickAttachments, statAttachments } from "../../api/attachments";
 import type { AttachmentCandidateDto } from "../../types/mail";
@@ -21,6 +22,8 @@ const attachments = defineModel<AttachmentCandidateDto[]>({ default: () => [] })
 const emit = defineEmits<{
   error: [message: string];
 }>();
+
+const { t } = useI18n({ useScope: "global" });
 
 const totalBytes = computed(() =>
   attachments.value.reduce((sum, item) => sum + item.sizeBytes, 0),
@@ -50,14 +53,14 @@ async function addPaths(paths: string[]): Promise<void> {
 
   const metas = await statAttachments(fresh);
   if (metas === null) {
-    emit("error", "Attachments need the desktop app; they are unavailable in the browser preview.");
+    emit("error", t("compose.attachments.unavailable"));
     return;
   }
   const added = metas.reduce((sum, item) => sum + item.sizeBytes, 0);
   if (totalBytes.value + added > MAX_TOTAL_BYTES) {
     emit(
       "error",
-      `Attachments would exceed the ${formatSize(MAX_TOTAL_BYTES)} limit; some files were not added.`,
+      t("compose.attachments.exceedsLimit", { limit: formatSize(MAX_TOTAL_BYTES) }),
     );
     return;
   }
@@ -87,21 +90,20 @@ function formatSize(bytes: number): string {
         class="attach-button"
         @click="pick"
       >
-        📎 Attach files
+        {{ t("compose.attachments.attach") }}
       </button>
       <span
         v-if="attachments.length > 0"
         class="total"
       >
-        {{ attachments.length }} file{{ attachments.length === 1 ? "" : "s" }} ·
-        {{ formatSize(totalBytes) }}
+        {{ t("compose.attachments.summary", { count: attachments.length, size: formatSize(totalBytes) }, attachments.length) }}
       </span>
     </div>
 
     <ul
       v-if="attachments.length > 0"
       class="chips"
-      aria-label="Attachments"
+      :aria-label="t('compose.attachments.listAria')"
     >
       <li
         v-for="item in attachments"
@@ -113,7 +115,7 @@ function formatSize(bytes: number): string {
         <button
           type="button"
           class="chip-remove"
-          :aria-label="`Remove ${item.filename}`"
+          :aria-label="t('compose.attachments.removeAria', { filename: item.filename })"
           @click="remove(item.path)"
         >
           ×

@@ -1,0 +1,118 @@
+{
+  "message": {
+    "actionBar": {
+      "ariaLabel": "Nachrichtenaktionen",
+      "reply": "Antworten",
+      "replyAll": "Allen antworten",
+      "forward": "Weiterleiten",
+      "archive": "Archivieren",
+      "moveTo": "Verschieben nach…",
+      "copyTo": "Kopieren nach…",
+      "junk": "Junk"
+    },
+    "actions": {
+      "ariaLabel": "Nachrichtenaktionen",
+      "saveEml": "Als .eml speichern",
+      "viewSource": "Quelltext anzeigen",
+      "allHeaders": "Alle Kopfzeilen",
+      "hideHeaders": "Kopfzeilen ausblenden",
+      "print": "Drucken",
+      "headersLabel": "Vollständige Nachrichtenkopfzeilen",
+      "loadingHeaders": "Kopfzeilen werden geladen…",
+      "savedEml": "Nachricht als .eml gespeichert.",
+      "saveEmlError": "Die Nachricht konnte nicht gespeichert werden.",
+      "emlFilterName": "E-Mail-Nachricht"
+    },
+    "attachments": {
+      "ariaLabel": "Anhänge",
+      "unnamed": "(unbenannt)",
+      "save": "{name} speichern",
+      "attachmentFallback": "Anhang",
+      "saveAll": "Alle speichern",
+      "saved": "{name} gespeichert.",
+      "saveError": "Der Anhang konnte nicht gespeichert werden.",
+      "savedCount": "{count} Anhang gespeichert. | {count} Anhänge gespeichert.",
+      "saveAllError": "Die Anhänge konnten nicht gespeichert werden."
+    },
+    "body": {
+      "ariaLabel": "Nachrichtentext",
+      "displayMode": "Anzeigemodus des Nachrichtentexts",
+      "plainText": "Nur Text",
+      "sanitizedHtml": "Bereinigtes HTML",
+      "noPlainText": "Diese Nachricht enthält keinen Nur-Text-Teil.",
+      "linksDisabled": "Links sind in dieser Vorschau deaktiviert.",
+      "htmlPreviewTitle": "HTML-Vorschau der Nachricht"
+    },
+    "detail": {
+      "addStar": "Markierung hinzufügen",
+      "removeStar": "Markierung entfernen",
+      "to": "An",
+      "cc": "Kopie",
+      "date": "Datum",
+      "scamTitle": "Diese Nachricht sieht möglicherweise nach Betrug aus",
+      "remoteBlocked": "Externe Inhalte blockiert ({count})",
+      "showOnce": "Einmal anzeigen",
+      "alwaysAllowFrom": "Immer von {sender} zulassen",
+      "thisSender": "diesem Absender",
+      "activeContentRemoved": "Aktive Inhalte wurden zu Ihrer Sicherheit entfernt."
+    },
+    "invitation": {
+      "kicker": "Kalendereinladung",
+      "fallbackTitle": "Einladung",
+      "organizer": "Organisator",
+      "when": "Wann",
+      "where": "Wo",
+      "agenda": "Agenda",
+      "timeNotSpecified": "Zeit nicht angegeben",
+      "unknownOrganizer": "Unbekannter Organisator",
+      "cancelled": "Diese Veranstaltung wurde vom Organisator abgesagt.",
+      "sendFailed": "Ihre Antwort wurde gespeichert, aber die Rückmeldung an den Organisator wurde nicht gesendet.",
+      "retryGroupLabel": "Senden der Antwort erneut versuchen",
+      "retrySend": "Senden erneut versuchen",
+      "conflictNote": "Konflikte werden nicht geprüft — axomail führt keinen Kalender.",
+      "respondGroupLabel": "Auf Einladung antworten",
+      "accept": "Zusagen",
+      "tentative": "Vorbehalt",
+      "decline": "Ablehnen",
+      "acceptedResponse": "Sie haben dieser Einladung zugesagt.",
+      "tentativeResponse": "Sie haben mit Vorbehalt geantwortet.",
+      "declinedResponse": "Sie haben diese Einladung abgelehnt.",
+      "unavailable": "Zum Beantworten von Einladungen wird die Desktop-App benötigt; in der Browservorschau ist dies nicht verfügbar."
+    },
+    "move": {
+      "moveTitle": "In Ordner verschieben",
+      "copyTitle": "In Ordner kopieren",
+      "noFolders": "Es sind noch keine Ordner verfügbar."
+    },
+    "row": {
+      "noSubject": "(kein Betreff)"
+    },
+    "source": {
+      "heading": "Nachrichtenquelltext — {title}",
+      "loading": "Quelltext wird geladen…",
+      "rawLabel": "Roher Nachrichtenquelltext"
+    },
+    "tags": {
+      "appliedLabel": "Schlagwörter dieser Nachricht",
+      "tagButton": "Schlagwort",
+      "updateError": "Schlagwörter konnten nicht aktualisiert werden.",
+      "defaultLabel": "Schlagwörter",
+      "pickerLabel": "Diese Nachricht mit Schlagwörtern versehen",
+      "noTags": "Noch keine Schlagwörter. Erstellen Sie unten eines.",
+      "newTagName": "Name des neuen Schlagworts"
+    },
+    "view": {
+      "ariaLabel": "Nachricht",
+      "noSelectionTitle": "Keine Nachricht ausgewählt",
+      "noSelectionDetail": "Wählen Sie eine Nachricht aus der Liste, um sie hier zu lesen.",
+      "loading": "Nachricht wird geladen…",
+      "unavailableTitle": "Nachricht nicht verfügbar",
+      "unavailableDetail": "Diese Nachricht konnte nicht geladen werden. Möglicherweise ist die Desktop-App erforderlich.",
+      "offlineTitle": "Offline nicht verfügbar",
+      "offlineDetail": "Diese Nachricht wurde nicht zum Offline-Lesen heruntergeladen. Stellen Sie die Verbindung wieder her, um sie zu laden.",
+      "printCommand": "Nachricht drucken",
+      "rsvpSavedNotSent": "Ihre Antwort wurde gespeichert, aber die Rückmeldung konnte nicht gesendet werden.",
+      "rsvpNotSent": "Die Antwort konnte nicht gesendet werden."
+    }
+  }
+}

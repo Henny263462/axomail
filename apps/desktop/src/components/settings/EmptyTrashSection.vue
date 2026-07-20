@@ -6,12 +6,15 @@
  * through its own command; a rejected toggle reverts.
  */
 import { onMounted, ref } from "vue";
+import { useI18n } from "vue-i18n";
 
 import { getEmptyTrashOnExit, setEmptyTrashOnExit } from "../../api/folders";
 import { isTauri } from "../../lib/tauri";
 import { messageFrom, type SettingsSectionContext } from "./context";
 
 const props = defineProps<{ context: SettingsSectionContext }>();
+
+const { t } = useI18n({ useScope: "global" });
 
 /** Current value per account id (loaded from the backend on mount). */
 const enabled = ref<Record<number, boolean>>({});
@@ -28,9 +31,7 @@ async function onToggle(accountId: number, event: Event): Promise<void> {
   props.context.reportStatus("");
   if (!isTauri()) {
     (event.target as HTMLInputElement).checked = enabled.value[accountId] ?? false;
-    props.context.reportError(
-      "Changing this setting needs the desktop app; it is unavailable in the browser preview.",
-    );
+    props.context.reportError(t("settings.emptyTrash.unavailable"));
     return;
   }
   try {
@@ -50,10 +51,10 @@ async function onToggle(accountId: number, event: Event): Promise<void> {
     class="group"
   >
     <legend class="legend">
-      Empty Trash on exit
+      {{ t("settings.emptyTrash.title") }}
     </legend>
     <p class="hint">
-      Permanently deletes each selected account's Trash when the app closes.
+      {{ t("settings.emptyTrash.hint") }}
     </p>
     <label
       v-for="account in context.accounts"

@@ -1,0 +1,34 @@
+{
+  "compose": {
+    "sendLater": {
+      "preset1h": "In 1 hour",
+      "preset3h": "In 3 hours",
+      "presetTomorrow": "Tomorrow, 8:00",
+      "presetMonday": "Monday, 8:00"
+    }
+  },
+  "setup": {
+    "preview": "Account setup needs the desktop app; it is unavailable in the browser preview.",
+    "validation": {
+      "displayName": "Enter a display name.",
+      "email": "Enter a valid email address.",
+      "incomingHost": "Enter the incoming server address.",
+      "incomingUsername": "Enter the incoming username.",
+      "outgoingHost": "Enter the outgoing server address.",
+      "outgoingUsername": "Enter the outgoing username.",
+      "incomingPassword": "Enter the incoming password.",
+      "outgoingPassword": "Enter the outgoing password.",
+      "clientId": "Enter the OAuth client id.",
+      "authUrl": "Enter the authorization URL.",
+      "tokenUrl": "Enter the token URL.",
+      "scopes": "Enter at least one scope.",
+      "serversBeforeTest": "Enter both server addresses before testing.",
+      "signInBeforeTest": "Sign in with the browser first, then test the connection."
+    },
+    "errors": {
+      "createFailed": "Could not create the account.",
+      "signInDeclined": "Sign-in was declined in the browser. You can try again.",
+      "signInTimedOut": "Sign-in timed out. You can try again."
+    }
+  }
+}

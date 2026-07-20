@@ -3,6 +3,8 @@
  * The unified-inbox list pane: the shared {@link ThreadedMessageList}
  * configured to tag every row with its account's display name.
  */
+import { useI18n } from "vue-i18n";
+
 import type { BulkAction } from "../../composables/useMailboxActions";
 import type { AccountSummary, UnifiedItemDto } from "../../types/mail";
 import ThreadedMessageList from "./ThreadedMessageList.vue";
@@ -33,6 +35,8 @@ const emit = defineEmits<{
   bulkAction: [action: BulkAction, ids: number[]];
   "update:threaded": [value: boolean];
 }>();
+
+const { t } = useI18n({ useScope: "global" });
 </script>
 
 <template>
@@ -42,8 +46,8 @@ const emit = defineEmits<{
     :show-account="true"
     :selected-message-id="selectedMessageId"
     :threaded="threaded"
-    list-label="Unified inbox"
-    empty-detail="Messages from every account's inbox appear here once synchronized."
+    :list-label="t('list.unified.label')"
+    :empty-detail="t('list.unified.empty')"
     :has-more="hasMore"
     :loading-more="loadingMore"
     :selection-reset-key="selectionResetKey"

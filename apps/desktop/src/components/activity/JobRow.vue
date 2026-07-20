@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed } from "vue";
+import { useI18n } from "vue-i18n";
 
 import type { SyncJobDto, SyncJobKind, SyncJobState } from "../../types/mail";
 
@@ -16,31 +17,36 @@ const emit = defineEmits<{
   cancel: [id: number];
 }>();
 
+const { t } = useI18n({ useScope: "global" });
+
 /** Human-readable label for each job kind. */
-const KIND_LABELS: Record<SyncJobKind, string> = {
-  discover: "Folder discovery",
-  mailboxSync: "Mailbox sync",
-  fetch: "Message fetch",
-  send: "Message send",
-  opReplay: "Server updates",
-};
+const KIND_LABELS = computed<Record<SyncJobKind, string>>(() => ({
+  discover: t("activity.kind.discover"),
+  mailboxSync: t("activity.kind.mailboxSync"),
+  fetch: t("activity.kind.fetch"),
+  send: t("activity.kind.send"),
+  opReplay: t("activity.kind.opReplay"),
+}));
 
 /** Human-readable label for each lifecycle state. */
-const STATE_LABELS: Record<SyncJobState, string> = {
-  pending: "Queued",
-  running: "Running",
-  succeeded: "Done",
-  failed: "Failed",
-  cancelled: "Cancelled",
-};
+const STATE_LABELS = computed<Record<SyncJobState, string>>(() => ({
+  pending: t("activity.state.pending"),
+  running: t("activity.state.running"),
+  succeeded: t("activity.state.succeeded"),
+  failed: t("activity.state.failed"),
+  cancelled: t("activity.state.cancelled"),
+}));
 
 const title = computed(
-  () => props.job.mailboxLabel ?? props.job.accountLabel ?? `Job ${props.job.id}`,
+  () =>
+    props.job.mailboxLabel ??
+    props.job.accountLabel ??
+    t("activity.jobFallback", { id: props.job.id }),
 );
 
 /** Kind, optionally suffixed with the account when a mailbox is also named. */
 const context = computed(() => {
-  const parts = [KIND_LABELS[props.job.kind]];
+  const parts = [KIND_LABELS.value[props.job.kind]];
   if (props.job.mailboxLabel !== null && props.job.accountLabel !== null) {
     parts.push(props.job.accountLabel);
   }
@@ -67,10 +73,10 @@ const context = computed(() => {
       type="button"
       class="button small"
       :disabled="busy"
-      :aria-label="`Cancel ${title}`"
+      :aria-label="t('activity.cancelJobAria', { title })"
       @click="emit('cancel', job.id)"
     >
-      Cancel
+      {{ t("common.cancel") }}
     </button>
   </li>
 </template>

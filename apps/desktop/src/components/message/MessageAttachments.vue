@@ -7,6 +7,7 @@
  * in the browser preview, where the dialog/bridge is absent.
  */
 import { ref } from "vue";
+import { useI18n } from "vue-i18n";
 
 import {
   pickDirectoryPath,
@@ -16,6 +17,8 @@ import {
 } from "../../api/attachments";
 import type { AttachmentMetaDto } from "../../types/mail";
 import { formatBytes } from "./format";
+
+const { t } = useI18n({ useScope: "global" });
 
 const props = defineProps<{
   messageId: number;
@@ -33,9 +36,10 @@ async function onSave(index: number, filename: string): Promise<void> {
   status.value = null;
   try {
     const saved = await saveAttachment(props.messageId, index, dest);
-    status.value = saved === null ? null : `Saved ${saved.filename}.`;
+    status.value =
+      saved === null ? null : t("message.attachments.saved", { name: saved.filename });
   } catch {
-    status.value = "Could not save the attachment.";
+    status.value = t("message.attachments.saveError");
   } finally {
     busy.value = false;
   }
@@ -52,9 +56,9 @@ async function onSaveAll(): Promise<void> {
     status.value =
       saved === null
         ? null
-        : `Saved ${saved.length} ${saved.length === 1 ? "attachment" : "attachments"}.`;
+        : t("message.attachments.savedCount", { count: saved.length }, saved.length);
   } catch {
-    status.value = "Could not save the attachments.";
+    status.value = t("message.attachments.saveAllError");
   } finally {
     busy.value = false;
   }
@@ -65,23 +69,23 @@ async function onSaveAll(): Promise<void> {
   <div class="attachments-area">
     <ul
       class="attachments"
-      aria-label="Attachments"
+      :aria-label="t('message.attachments.ariaLabel')"
     >
       <li
         v-for="(attachment, index) in attachments"
         :key="index"
         class="chip"
       >
-        <span class="chip-name">{{ attachment.filename || "(unnamed)" }}</span>
+        <span class="chip-name">{{ attachment.filename || t("message.attachments.unnamed") }}</span>
         <span class="chip-size">{{ formatBytes(attachment.size) }}</span>
         <button
           type="button"
           class="chip-action"
           :disabled="busy"
-          :aria-label="`Save ${attachment.filename || 'attachment'}`"
+          :aria-label="t('message.attachments.save', { name: attachment.filename || t('message.attachments.attachmentFallback') })"
           @click="onSave(index, attachment.filename)"
         >
-          Save
+          {{ t("common.save") }}
         </button>
       </li>
     </ul>
@@ -95,7 +99,7 @@ async function onSaveAll(): Promise<void> {
         :disabled="busy"
         @click="onSaveAll"
       >
-        Save all
+        {{ t("message.attachments.saveAll") }}
       </button>
     </div>
     <p

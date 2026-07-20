@@ -9,6 +9,7 @@
  * account summaries. Selection bubbles up as `selectMailbox`.
  */
 import { computed, reactive, ref } from "vue";
+import { useI18n } from "vue-i18n";
 
 import {
   compactStorage,
@@ -39,6 +40,8 @@ const emit = defineEmits<{
   selectMailbox: [mailboxId: number];
   changed: [];
 }>();
+
+const { t } = useI18n({ useScope: "global" });
 
 /** Ids the user explicitly collapsed; everything else is expanded. */
 const collapsedIds = reactive(new Set<number>());
@@ -158,11 +161,13 @@ const dialogTitle = computed(() => {
   if (state === null) return "";
   if (state.kind === "create") {
     return state.parentLeaf === null
-      ? "New folder"
-      : `New subfolder in ${state.parentLeaf}`;
+      ? t("sidebar.folderTree.newFolder")
+      : t("sidebar.folderTree.newSubfolder", { parent: state.parentLeaf });
   }
-  if (state.kind === "rename") return "Rename folder";
-  return state.kind === "emptyTrash" ? "Empty Trash" : "Delete folder";
+  if (state.kind === "rename") return t("sidebar.folderTree.renameFolder");
+  return state.kind === "emptyTrash"
+    ? t("sidebar.folderTree.emptyTrashTitle")
+    : t("sidebar.folderTree.deleteFolderTitle");
 });
 const dialogInitial = computed(() =>
   dialog.value?.kind === "rename" ? leafName(dialog.value.folder) : "",
@@ -175,14 +180,17 @@ const confirmFolder = computed(() =>
 );
 /** Confirm button label for the destructive dialog. */
 const confirmText = computed(() =>
-  dialog.value?.kind === "emptyTrash" ? "Empty Trash" : "Delete",
+  dialog.value?.kind === "emptyTrash"
+    ? t("sidebar.folderTree.emptyTrashTitle")
+    : t("common.delete"),
 );
 /**
  * The word to retype. Empty Trash is irreversible, so it always demands one
  * ("empty"); a folder delete demands the folder name only when it holds mail.
  */
 const confirmWord = computed(() => {
-  if (dialog.value?.kind === "emptyTrash") return "empty";
+  if (dialog.value?.kind === "emptyTrash")
+    return t("sidebar.folderTree.confirmWordEmpty");
   const folder = confirmFolder.value;
   if (folder === null || (folder.totalCount ?? 0) === 0) return undefined;
   return leafName(folder);
@@ -193,12 +201,12 @@ const confirmBody = computed(() => {
   const count = folder.totalCount ?? 0;
   if (dialog.value?.kind === "emptyTrash") {
     return count > 0
-      ? `This permanently deletes all ${count} message(s) in Trash from the server and this computer. This cannot be undone.`
-      : "Trash is already empty.";
+      ? t("sidebar.folderTree.emptyTrashBody", { count })
+      : t("sidebar.folderTree.trashAlreadyEmpty");
   }
   return count > 0
-    ? `This folder holds ${count} message(s). Deleting it on the server also removes them. This cannot be undone.`
-    : "This deletes the empty folder on the server.";
+    ? t("sidebar.folderTree.deleteFolderBody", { count })
+    : t("sidebar.folderTree.deleteEmptyFolderBody");
 });
 
 async function onDialogSubmit(value: string): Promise<void> {
@@ -241,20 +249,20 @@ async function run(op: () => Promise<unknown>, fromDialog = false): Promise<void
       <button
         type="button"
         class="tool"
-        aria-label="New top-level folder"
-        title="New folder"
+        :aria-label="t('sidebar.folderTree.newTopLevelFolder')"
+        :title="t('sidebar.folderTree.newFolder')"
         @click="openDialog({ kind: 'create', parentId: null, parentLeaf: null })"
       >
-        + Folder
+        + {{ t("sidebar.folderTree.folderShort") }}
       </button>
       <button
         type="button"
         class="tool"
-        aria-label="Refresh folder list"
-        title="Refresh folders from the server"
+        :aria-label="t('sidebar.folderTree.refreshFolderList')"
+        :title="t('sidebar.folderTree.refreshFoldersTitle')"
         @click="refreshFolders(account.id)"
       >
-        ↻ Refresh
+        ↻ {{ t("common.refresh") }}
       </button>
     </div>
 
@@ -313,9 +321,9 @@ async function run(op: () => Promise<unknown>, fromDialog = false): Promise<void
       v-if="dialog !== null && (dialog.kind === 'create' || dialog.kind === 'rename')"
       :mode="'input'"
       :title="dialogTitle"
-      label="Folder name"
+      :label="t('sidebar.folderDialog.folderName')"
       :initial-value="dialogInitial"
-      :confirm-text="dialog.kind === 'rename' ? 'Rename' : 'Create'"
+      :confirm-text="dialog.kind === 'rename' ? t('sidebar.folderTree.rename') : t('common.create')"
       :busy="busy"
       :error-message="errorMessage"
       @submit="onDialogSubmit"

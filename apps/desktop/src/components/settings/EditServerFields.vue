@@ -7,7 +7,11 @@
  * are computed by the parent (which gates the Save button) and passed in for
  * display.
  */
+import { useI18n } from "vue-i18n";
+
 import type { ServerEndpointInput, TransportSecurity } from "../../types/mail";
+
+const { t } = useI18n({ useScope: "global" });
 
 defineProps<{
   /** Prefix for input ids so incoming and outgoing fields stay unique. */
@@ -48,7 +52,7 @@ function onPort(event: Event): void {
     </legend>
 
     <div class="field">
-      <label :for="`${idPrefix}-host`">Server</label>
+      <label :for="`${idPrefix}-host`">{{ t("settings.accounts.server") }}</label>
       <input
         :id="`${idPrefix}-host`"
         type="text"
@@ -66,7 +70,7 @@ function onPort(event: Event): void {
 
     <div class="row">
       <div class="field">
-        <label :for="`${idPrefix}-security`">Security</label>
+        <label :for="`${idPrefix}-security`">{{ t("settings.accounts.security") }}</label>
         <select
           :id="`${idPrefix}-security`"
           :value="model.security"
@@ -81,7 +85,7 @@ function onPort(event: Event): void {
         </select>
       </div>
       <div class="field">
-        <label :for="`${idPrefix}-port`">Port</label>
+        <label :for="`${idPrefix}-port`">{{ t("settings.accounts.port") }}</label>
         <input
           :id="`${idPrefix}-port`"
           type="number"

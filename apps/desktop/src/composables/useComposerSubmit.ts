@@ -145,7 +145,8 @@ export function useComposerSubmit(ctx: ComposerSubmitContext) {
   async function saveAsTemplate(): Promise<void> {
     if (ctx.sending.value || ctx.savingDraft.value) return;
     ctx.errorMessage.value = "";
-    const name = ctx.subject.value.trim() || "Untitled template";
+    const name =
+      ctx.subject.value.trim() || i18n.global.t("app.composer.untitledTemplate");
     const template = await saveTemplate({
       name,
       subject: ctx.subject.value.trim(),
@@ -185,13 +186,12 @@ export function useComposerSubmit(ctx: ComposerSubmitContext) {
     if (ctx.sending.value || ctx.savingDraft.value) return;
     ctx.statusMessage.value = "";
     if (input.to.length === 0) {
-      ctx.errorMessage.value = "Add at least one recipient.";
+      ctx.errorMessage.value = i18n.global.t("app.composer.noRecipients");
       return;
     }
     // Attachment-keyword reminder: warn once, then honour a repeated send.
     if (ctx.attachmentWarning.value === "" && shouldRemindAttachment()) {
-      ctx.attachmentWarning.value =
-        "Your message mentions an attachment, but none is attached. Send again to send anyway.";
+      ctx.attachmentWarning.value = i18n.global.t("app.composer.attachmentReminder");
       return;
     }
     ctx.attachmentWarning.value = "";

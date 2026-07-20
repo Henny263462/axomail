@@ -12,6 +12,7 @@
  * option, Enter selects it, Escape closes.
  */
 import { nextTick, onBeforeUnmount, ref, useId } from "vue";
+import { useI18n } from "vue-i18n";
 
 import { searchRecipients } from "../../api/contacts";
 import type { RecipientSuggestionDto } from "../../types/mail";
@@ -29,6 +30,8 @@ const props = withDefaults(
 );
 
 const model = defineModel<string>({ default: "" });
+
+const { t } = useI18n({ useScope: "global" });
 
 const input = ref<HTMLInputElement | null>(null);
 const suggestions = ref<RecipientSuggestionDto[]>([]);
@@ -142,7 +145,7 @@ function optionId(index: number): string {
         :aria-activedescendant="
           open && activeIndex >= 0 ? optionId(activeIndex) : undefined
         "
-        placeholder="Comma-separated addresses"
+        :placeholder="t('compose.recipients.placeholder')"
         @input="onInput"
         @keydown="onKeydown"
         @blur="close"
@@ -152,7 +155,7 @@ function optionId(index: number): string {
         :id="listId"
         class="listbox"
         role="listbox"
-        :aria-label="`${label} suggestions`"
+        :aria-label="t('compose.recipients.suggestionsAria', { label })"
       >
         <li
           v-for="(item, index) in suggestions"
@@ -170,7 +173,7 @@ function optionId(index: number): string {
               v-if="item.kind === 'group'"
               class="badge"
               aria-hidden="true"
-            >group</span>
+            >{{ t("compose.recipients.groupBadge") }}</span>
             {{ item.label }}
           </span>
           <span class="option-detail">{{ item.detail }}</span>

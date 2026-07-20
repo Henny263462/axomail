@@ -10,21 +10,24 @@
  * produced HTML is always funnelled through the parent's sanitizer.
  */
 import { nextTick, ref } from "vue";
+import { useI18n } from "vue-i18n";
 
 const emit = defineEmits<{
   command: [name: string];
   link: [url: string];
 }>();
 
-/** Simple formatting buttons: [command name, visible label, aria label]. */
+const { t } = useI18n({ useScope: "global" });
+
+/** Simple formatting buttons: [command name, label key, aria label key]. */
 const BUTTONS: ReadonlyArray<readonly [string, string, string]> = [
-  ["bold", "B", "Bold"],
-  ["italic", "I", "Italic"],
-  ["underline", "U", "Underline"],
-  ["insertUnorderedList", "• List", "Bulleted list"],
-  ["insertOrderedList", "1. List", "Numbered list"],
-  ["formatBlock:blockquote", "❝ Quote", "Blockquote"],
-  ["removeFormat", "⨯ Format", "Remove formatting"],
+  ["bold", "compose.toolbar.boldLabel", "compose.toolbar.boldAria"],
+  ["italic", "compose.toolbar.italicLabel", "compose.toolbar.italicAria"],
+  ["underline", "compose.toolbar.underlineLabel", "compose.toolbar.underlineAria"],
+  ["insertUnorderedList", "compose.toolbar.bulletedLabel", "compose.toolbar.bulletedAria"],
+  ["insertOrderedList", "compose.toolbar.numberedLabel", "compose.toolbar.numberedAria"],
+  ["formatBlock:blockquote", "compose.toolbar.quoteLabel", "compose.toolbar.quoteAria"],
+  ["removeFormat", "compose.toolbar.removeFormatLabel", "compose.toolbar.removeFormatAria"],
 ];
 
 const linkOpen = ref(false);
@@ -54,30 +57,30 @@ function confirmLink(): void {
   <div
     class="toolbar"
     role="toolbar"
-    aria-label="Text formatting"
+    :aria-label="t('compose.toolbar.formatting')"
   >
     <button
-      v-for="[name, label, aria] in BUTTONS"
+      v-for="[name, labelKey, ariaKey] in BUTTONS"
       :key="name"
       type="button"
       class="tool"
-      :aria-label="aria"
-      :title="aria"
+      :aria-label="t(ariaKey)"
+      :title="t(ariaKey)"
       @mousedown.prevent
       @click="run(name)"
     >
-      {{ label }}
+      {{ t(labelKey) }}
     </button>
     <button
       type="button"
       class="tool"
-      aria-label="Insert link"
-      title="Insert link"
+      :aria-label="t('compose.toolbar.linkAria')"
+      :title="t('compose.toolbar.linkAria')"
       :aria-expanded="linkOpen"
       @mousedown.prevent
       @click="toggleLink"
     >
-      🔗 Link
+      {{ t("compose.toolbar.linkLabel") }}
     </button>
 
     <div
@@ -89,8 +92,8 @@ function confirmLink(): void {
         ref="linkInput"
         v-model="linkUrl"
         type="url"
-        placeholder="https://example.com"
-        aria-label="Link URL"
+        :placeholder="t('compose.toolbar.linkUrlPlaceholder')"
+        :aria-label="t('compose.toolbar.linkUrlAria')"
         @keydown.enter.prevent="confirmLink"
         @keydown.esc.prevent="linkOpen = false"
       >
@@ -99,7 +102,7 @@ function confirmLink(): void {
         class="tool"
         @click="confirmLink"
       >
-        Insert
+        {{ t("compose.toolbar.insert") }}
       </button>
     </div>
   </div>

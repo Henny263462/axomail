@@ -5,6 +5,7 @@
  * {@link FilterInput} on save; the parent section persists it.
  */
 import { reactive, watch } from "vue";
+import { useI18n } from "vue-i18n";
 
 import type {
   FilterAction,
@@ -28,49 +29,51 @@ const emit = defineEmits<{
   cancel: [];
 }>();
 
-const FIELDS: { value: FilterConditionField; label: string }[] = [
-  { value: "from", label: "From" },
-  { value: "to", label: "To" },
-  { value: "cc", label: "Cc" },
-  { value: "subject", label: "Subject" },
-  { value: "body", label: "Body" },
-  { value: "tag", label: "Tag" },
-  { value: "has_attachment", label: "Has attachment" },
-  { value: "size", label: "Size (bytes)" },
-  { value: "date", label: "Date" },
+const { t } = useI18n({ useScope: "global" });
+
+const FIELDS: { value: FilterConditionField; labelKey: string }[] = [
+  { value: "from", labelKey: "settings.filters.field.from" },
+  { value: "to", labelKey: "settings.filters.field.to" },
+  { value: "cc", labelKey: "settings.filters.field.cc" },
+  { value: "subject", labelKey: "settings.filters.field.subject" },
+  { value: "body", labelKey: "settings.filters.field.body" },
+  { value: "tag", labelKey: "settings.filters.field.tag" },
+  { value: "has_attachment", labelKey: "settings.filters.field.hasAttachment" },
+  { value: "size", labelKey: "settings.filters.field.size" },
+  { value: "date", labelKey: "settings.filters.field.date" },
 ];
 
-const TEXT_OPS: { value: FilterConditionOp; label: string }[] = [
-  { value: "contains", label: "contains" },
-  { value: "not_contains", label: "does not contain" },
-  { value: "is", label: "is" },
-  { value: "is_not", label: "is not" },
-  { value: "starts_with", label: "starts with" },
-  { value: "ends_with", label: "ends with" },
-  { value: "matches_regex", label: "matches regex" },
+const TEXT_OPS: { value: FilterConditionOp; labelKey: string }[] = [
+  { value: "contains", labelKey: "settings.filters.op.contains" },
+  { value: "not_contains", labelKey: "settings.filters.op.notContains" },
+  { value: "is", labelKey: "settings.filters.op.is" },
+  { value: "is_not", labelKey: "settings.filters.op.isNot" },
+  { value: "starts_with", labelKey: "settings.filters.op.startsWith" },
+  { value: "ends_with", labelKey: "settings.filters.op.endsWith" },
+  { value: "matches_regex", labelKey: "settings.filters.op.matchesRegex" },
 ];
-const NUMBER_OPS: { value: FilterConditionOp; label: string }[] = [
-  { value: "greater_than", label: "greater than" },
-  { value: "less_than", label: "less than" },
-  { value: "is", label: "is" },
-  { value: "is_not", label: "is not" },
+const NUMBER_OPS: { value: FilterConditionOp; labelKey: string }[] = [
+  { value: "greater_than", labelKey: "settings.filters.op.greaterThan" },
+  { value: "less_than", labelKey: "settings.filters.op.lessThan" },
+  { value: "is", labelKey: "settings.filters.op.is" },
+  { value: "is_not", labelKey: "settings.filters.op.isNot" },
 ];
-const BOOL_OPS: { value: FilterConditionOp; label: string }[] = [
-  { value: "is", label: "is" },
-  { value: "is_not", label: "is not" },
+const BOOL_OPS: { value: FilterConditionOp; labelKey: string }[] = [
+  { value: "is", labelKey: "settings.filters.op.is" },
+  { value: "is_not", labelKey: "settings.filters.op.isNot" },
 ];
 
-const ACTIONS: { value: FilterActionKind; label: string }[] = [
-  { value: "move", label: "Move to folder" },
-  { value: "copy", label: "Copy to folder" },
-  { value: "tag", label: "Tag" },
-  { value: "star", label: "Star" },
-  { value: "mark_read", label: "Mark read" },
-  { value: "mark_unread", label: "Mark unread" },
-  { value: "mark_junk", label: "Mark as junk" },
-  { value: "delete_to_trash", label: "Delete to Trash" },
-  { value: "forward", label: "Forward to" },
-  { value: "stop", label: "Stop further filters" },
+const ACTIONS: { value: FilterActionKind; labelKey: string }[] = [
+  { value: "move", labelKey: "settings.filters.action.move" },
+  { value: "copy", labelKey: "settings.filters.action.copy" },
+  { value: "tag", labelKey: "settings.filters.action.tag" },
+  { value: "star", labelKey: "settings.filters.action.star" },
+  { value: "mark_read", labelKey: "settings.filters.action.markRead" },
+  { value: "mark_unread", labelKey: "settings.filters.action.markUnread" },
+  { value: "mark_junk", labelKey: "settings.filters.action.markJunk" },
+  { value: "delete_to_trash", labelKey: "settings.filters.action.deleteToTrash" },
+  { value: "forward", labelKey: "settings.filters.action.forward" },
+  { value: "stop", labelKey: "settings.filters.action.stop" },
 ];
 
 const draft = reactive({
@@ -95,7 +98,7 @@ function reset(): void {
 }
 
 /** Which op set a field offers. */
-function opsFor(field: FilterConditionField): { value: FilterConditionOp; label: string }[] {
+function opsFor(field: FilterConditionField): { value: FilterConditionOp; labelKey: string }[] {
   if (field === "size" || field === "date") return NUMBER_OPS;
   if (field === "has_attachment") return BOOL_OPS;
   return TEXT_OPS;
@@ -143,36 +146,36 @@ function save(): void {
 <template>
   <form
     class="editor"
-    aria-label="Filter editor"
+    :aria-label="t('settings.filters.editorLabel')"
     @submit.prevent="save"
   >
     <label class="field">
-      <span>Name</span>
+      <span>{{ t("common.name") }}</span>
       <input
         v-model="draft.name"
         type="text"
-        aria-label="Filter name"
-        placeholder="e.g. File invoices"
+        :aria-label="t('settings.filters.nameLabel')"
+        :placeholder="t('settings.filters.namePlaceholder')"
       >
     </label>
 
     <label class="field">
-      <span>Match</span>
+      <span>{{ t("settings.filters.match") }}</span>
       <select
         v-model="draft.matchType"
-        aria-label="Match type"
+        :aria-label="t('settings.filters.matchTypeLabel')"
       >
         <option value="all">
-          all conditions
+          {{ t("settings.filters.matchAll") }}
         </option>
         <option value="any">
-          any condition
+          {{ t("settings.filters.matchAny") }}
         </option>
       </select>
     </label>
 
     <fieldset class="rows">
-      <legend>Conditions</legend>
+      <legend>{{ t("settings.filters.conditions") }}</legend>
       <div
         v-for="(row, index) in draft.conditions"
         :key="index"
@@ -180,7 +183,7 @@ function save(): void {
       >
         <select
           v-model="row.field"
-          aria-label="Condition field"
+          :aria-label="t('settings.filters.conditionField')"
           @change="onFieldChange(row)"
         >
           <option
@@ -188,43 +191,43 @@ function save(): void {
             :key="f.value"
             :value="f.value"
           >
-            {{ f.label }}
+            {{ t(f.labelKey) }}
           </option>
         </select>
         <select
           v-model="row.op"
-          aria-label="Condition operator"
+          :aria-label="t('settings.filters.conditionOperator')"
         >
           <option
             v-for="o in opsFor(row.field)"
             :key="o.value"
             :value="o.value"
           >
-            {{ o.label }}
+            {{ t(o.labelKey) }}
           </option>
         </select>
         <select
           v-if="row.field === 'has_attachment'"
           v-model="row.value"
-          aria-label="Condition value"
+          :aria-label="t('settings.filters.conditionValue')"
         >
           <option value="true">
-            yes
+            {{ t("settings.filters.yes") }}
           </option>
           <option value="false">
-            no
+            {{ t("settings.filters.no") }}
           </option>
         </select>
         <input
           v-else
           v-model="row.value"
           :type="row.field === 'date' ? 'date' : row.field === 'size' ? 'number' : 'text'"
-          aria-label="Condition value"
+          :aria-label="t('settings.filters.conditionValue')"
         >
         <button
           type="button"
           class="icon"
-          aria-label="Remove condition"
+          :aria-label="t('settings.filters.removeCondition')"
           @click="removeCondition(index)"
         >
           ×
@@ -235,12 +238,12 @@ function save(): void {
         class="link"
         @click="addCondition"
       >
-        + Add condition
+        {{ t("settings.filters.addCondition") }}
       </button>
     </fieldset>
 
     <fieldset class="rows">
-      <legend>Actions</legend>
+      <legend>{{ t("settings.filters.actions") }}</legend>
       <div
         v-for="(row, index) in draft.actions"
         :key="index"
@@ -248,26 +251,26 @@ function save(): void {
       >
         <select
           v-model="row.kind"
-          aria-label="Action"
+          :aria-label="t('settings.filters.actionLabel')"
         >
           <option
             v-for="a in ACTIONS"
             :key="a.value"
             :value="a.value"
           >
-            {{ a.label }}
+            {{ t(a.labelKey) }}
           </option>
         </select>
         <select
           v-if="paramKind(row.kind) === 'folder'"
           v-model="row.param"
-          aria-label="Target folder"
+          :aria-label="t('settings.filters.targetFolder')"
         >
           <option
             value=""
             disabled
           >
-            Choose folder…
+            {{ t("settings.filters.chooseFolder") }}
           </option>
           <option
             v-for="folder in folders"
@@ -281,20 +284,20 @@ function save(): void {
           v-else-if="paramKind(row.kind) === 'tag'"
           v-model="row.param"
           type="text"
-          aria-label="Tag name"
-          placeholder="Tag name"
+          :aria-label="t('settings.filters.tagName')"
+          :placeholder="t('settings.filters.tagName')"
         >
         <input
           v-else-if="paramKind(row.kind) === 'email'"
           v-model="row.param"
           type="email"
-          aria-label="Forward address"
-          placeholder="name@example.com"
+          :aria-label="t('settings.filters.forwardAddressLabel')"
+          :placeholder="t('settings.filters.forwardPlaceholder')"
         >
         <button
           type="button"
           class="icon"
-          aria-label="Remove action"
+          :aria-label="t('settings.filters.removeAction')"
           @click="removeAction(index)"
         >
           ×
@@ -305,7 +308,7 @@ function save(): void {
         class="link"
         @click="addAction"
       >
-        + Add action
+        {{ t("settings.filters.addAction") }}
       </button>
     </fieldset>
 
@@ -314,7 +317,7 @@ function save(): void {
         v-model="draft.stopOnMatch"
         type="checkbox"
       >
-      <span>Stop evaluating later filters when this one matches</span>
+      <span>{{ t("settings.filters.stopHint") }}</span>
     </label>
 
     <div class="buttons">
@@ -323,14 +326,14 @@ function save(): void {
         class="action"
         :disabled="draft.name.trim() === ''"
       >
-        Save filter
+        {{ t("settings.filters.saveFilter") }}
       </button>
       <button
         type="button"
         class="action"
         @click="emit('cancel')"
       >
-        Cancel
+        {{ t("common.cancel") }}
       </button>
     </div>
   </form>

@@ -1,0 +1,75 @@
+{
+  "compose": {
+    "fields": {
+      "to": "To",
+      "cc": "Cc",
+      "bcc": "Bcc",
+      "subject": "Subject"
+    },
+    "recipients": {
+      "placeholder": "Comma-separated addresses",
+      "suggestionsAria": "{label} suggestions",
+      "groupBadge": "group"
+    },
+    "body": {
+      "label": "Message",
+      "plainText": "Plain text",
+      "richText": "Rich text",
+      "bodyAria": "Message body",
+      "placeholder": "Write your message…",
+      "signatureLabel": "Signature (added on send)"
+    },
+    "toolbar": {
+      "boldLabel": "B",
+      "boldAria": "Bold",
+      "italicLabel": "I",
+      "italicAria": "Italic",
+      "underlineLabel": "U",
+      "underlineAria": "Underline",
+      "bulletedLabel": "• List",
+      "bulletedAria": "Bulleted list",
+      "numberedLabel": "1. List",
+      "numberedAria": "Numbered list",
+      "quoteLabel": "❝ Quote",
+      "quoteAria": "Blockquote",
+      "removeFormatLabel": "⨯ Format",
+      "removeFormatAria": "Remove formatting",
+      "linkLabel": "🔗 Link",
+      "linkAria": "Insert link",
+      "linkUrlPlaceholder": "https://example.com",
+      "linkUrlAria": "Link URL",
+      "insert": "Insert",
+      "formatting": "Text formatting"
+    },
+    "attachments": {
+      "attach": "📎 Attach files",
+      "listAria": "Attachments",
+      "summary": "{count} file · {size} | {count} files · {size}",
+      "removeAria": "Remove {filename}",
+      "unavailable": "Attachments need the desktop app; they are unavailable in the browser preview.",
+      "exceedsLimit": "Attachments would exceed the {limit} limit; some files were not added."
+    },
+    "from": {
+      "label": "From",
+      "accountFallback": "Account {id}"
+    },
+    "actions": {
+      "saveDraft": "Save draft"
+    },
+    "sendLater": {
+      "sending": "Sending…",
+      "sendLater": "Send later",
+      "options": "Send later options",
+      "atSpecificTime": "At a specific time",
+      "schedule": "Schedule",
+      "errorNoDateTime": "Choose a date and time.",
+      "errorPastTime": "Pick a time in the future."
+    },
+    "dialog": {
+      "editDraft": "Edit draft",
+      "forward": "Forward",
+      "reply": "Reply",
+      "newMessage": "New message"
+    }
+  }
+}

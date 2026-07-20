@@ -14,6 +14,7 @@ import {
   isChordSequence,
   parseChordSequence,
 } from "../composables/useKeyChords";
+import { i18n } from "../i18n";
 import type { Command } from "../types/command";
 
 /**
@@ -36,28 +37,25 @@ export function formatShortcutHint(spec: string | undefined): string {
   return formatShortcut(spec);
 }
 
-/** Friendly labels for the known command namespaces. */
-const GROUP_LABELS: Record<string, string> = {
-  app: "Application",
-  compose: "Compose",
-  message: "Message",
-  nav: "Navigation",
-  view: "View",
-  contacts: "Contacts",
-  filters: "Filters",
-  junk: "Junk",
-};
-
 /** The namespace of a command id (`"message.reply"` → `"message"`). */
 export function commandGroupId(id: string): string {
   const dot = id.indexOf(".");
   return dot === -1 ? id : id.slice(0, dot);
 }
 
-/** The display label for a command's group. */
+/**
+ * The display label for a command's group, resolved through the shared i18n
+ * catalogue (`command.sections.<namespace>`, the keys the contacts-command
+ * stream added). Reading `i18n.global.t` here couples the label to the active
+ * locale, so a group listing recomputed inside a `computed` re-labels live on a
+ * language switch. An unknown namespace (no section key) falls back to its
+ * capitalized id, matching the pre-i18n behaviour.
+ */
 export function commandGroupLabel(id: string): string {
   const group = commandGroupId(id);
-  return GROUP_LABELS[group] ?? group.charAt(0).toUpperCase() + group.slice(1);
+  const key = `command.sections.${group}`;
+  if (i18n.global.te(key)) return i18n.global.t(key);
+  return group.charAt(0).toUpperCase() + group.slice(1);
 }
 
 /** A labelled bucket of commands sharing a namespace. */

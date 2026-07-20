@@ -16,6 +16,7 @@
  * effort HTML view from the text.
  */
 import { computed, nextTick, onMounted, ref } from "vue";
+import { useI18n } from "vue-i18n";
 
 import { SIGNATURE_DELIMITER } from "../../lib/signature";
 import {
@@ -38,6 +39,8 @@ const props = defineProps<{
 const text = defineModel<string>("text", { default: "" });
 /** Sanitized HTML body (without the signature); `null` in plain-text mode. */
 const html = defineModel<string | null>("html", { default: null });
+
+const { t } = useI18n({ useScope: "global" });
 
 const mode = ref<"html" | "plain">(props.isDraft === true ? "plain" : "html");
 const editor = ref<HTMLElement | null>(null);
@@ -131,7 +134,7 @@ function toggleMode(): void {
   <div class="field">
     <div class="body-head">
       <label :for="mode === 'html' ? 'compose-editor' : 'compose-body'">
-        Message
+        {{ t("compose.body.label") }}
       </label>
       <button
         type="button"
@@ -139,7 +142,7 @@ function toggleMode(): void {
         :aria-pressed="mode === 'plain'"
         @click="toggleMode"
       >
-        {{ mode === "html" ? "Plain text" : "Rich text" }}
+        {{ mode === "html" ? t("compose.body.plainText") : t("compose.body.richText") }}
       </button>
     </div>
 
@@ -155,8 +158,8 @@ function toggleMode(): void {
         contenteditable="true"
         role="textbox"
         aria-multiline="true"
-        aria-label="Message body"
-        data-placeholder="Write your message…"
+        :aria-label="t('compose.body.bodyAria')"
+        :data-placeholder="t('compose.body.placeholder')"
         @input="syncFromEditor"
       />
     </template>
@@ -165,14 +168,14 @@ function toggleMode(): void {
       id="compose-body"
       v-model="text"
       rows="10"
-      aria-label="Message body"
+      :aria-label="t('compose.body.bodyAria')"
     />
 
     <p
       v-if="hasSignature"
       class="signature-preview"
     >
-      <span class="signature-label">Signature (added on send)</span>
+      <span class="signature-label">{{ t("compose.body.signatureLabel") }}</span>
       <span class="signature-body">{{ signaturePreview }}</span>
     </p>
   </div>

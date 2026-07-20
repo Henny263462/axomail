@@ -9,6 +9,7 @@
  * rather than a tab stop per row).
  */
 import { computed } from "vue";
+import { useI18n } from "vue-i18n";
 
 import type { MessageListItem } from "../../types/mail";
 import TagChips from "../message/TagChips.vue";
@@ -39,6 +40,8 @@ const emit = defineEmits<{
   toggleFlag: [messageId: number];
   context: [event: MouseEvent];
 }>();
+
+const { t } = useI18n({ useScope: "global" });
 
 function onItemClick(event: MouseEvent): void {
   if (event.shiftKey) emit("range");
@@ -72,7 +75,7 @@ const date = computed(() => formatDate(props.message.dateUnix));
       class="check"
       tabindex="-1"
       :checked="checked"
-      :aria-label="`Select ${message.subject ?? 'this message'}`"
+      :aria-label="t('list.row.selectMessage', { subject: message.subject ?? t('list.row.thisMessage') })"
       @click.stop
       @change="emit('toggle')"
     >
@@ -82,7 +85,7 @@ const date = computed(() => formatDate(props.message.dateUnix));
       tabindex="-1"
       :class="{ on: message.flagged }"
       :aria-pressed="message.flagged"
-      :aria-label="message.flagged ? 'Remove star' : 'Add star'"
+      :aria-label="message.flagged ? t('list.row.removeStar') : t('list.row.addStar')"
       @click.stop="emit('toggleFlag', message.id)"
     >
       <span aria-hidden="true">{{ message.flagged ? "★" : "☆" }}</span>
@@ -102,7 +105,7 @@ const date = computed(() => formatDate(props.message.dateUnix));
         >{{ accountName }}</span>
         <time class="date">{{ date }}</time>
       </span>
-      <span class="subject">{{ message.subject ?? "(no subject)" }}</span>
+      <span class="subject">{{ message.subject ?? t("list.noSubject") }}</span>
       <span
         v-if="message.preview"
         class="preview"
@@ -111,7 +114,7 @@ const date = computed(() => formatDate(props.message.dateUnix));
         v-if="message.tags.length > 0"
         class="tags"
         :tags="message.tags"
-        :label="`Tags on ${message.subject ?? 'this message'}`"
+        :label="t('list.row.tagsOn', { subject: message.subject ?? t('list.row.thisMessage') })"
       />
     </button>
   </div>

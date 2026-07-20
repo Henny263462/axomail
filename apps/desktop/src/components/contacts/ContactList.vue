@@ -6,6 +6,7 @@
  * and persistence.
  */
 import { ref } from "vue";
+import { useI18n } from "vue-i18n";
 
 import type { ContactDto, ContactGroupDto } from "../../types/mail";
 
@@ -22,6 +23,8 @@ const emit = defineEmits<{
   deleteGroup: [id: number];
 }>();
 
+const { t } = useI18n({ useScope: "global" });
+
 const query = defineModel<string>("query", { default: "" });
 const newGroupName = ref("");
 
@@ -36,12 +39,12 @@ function submitGroup(): void {
 <template>
   <div class="list-pane">
     <label class="search">
-      <span class="sr-only">Search contacts</span>
+      <span class="sr-only">{{ t("contacts.list.searchContacts") }}</span>
       <input
         v-model="query"
         type="search"
-        placeholder="Search contacts"
-        aria-label="Search contacts"
+        :placeholder="t('contacts.list.searchContacts')"
+        :aria-label="t('contacts.list.searchContacts')"
       >
     </label>
     <button
@@ -49,19 +52,19 @@ function submitGroup(): void {
       class="new-button"
       @click="emit('newContact')"
     >
-      + New contact
+      {{ t("contacts.list.newContact") }}
     </button>
 
     <p
       v-if="contacts.length === 0"
       class="empty"
     >
-      No contacts yet. Create one, or import a vCard.
+      {{ t("contacts.list.empty") }}
     </p>
     <ul
       v-else
       class="contacts"
-      aria-label="Contacts"
+      :aria-label="t('contacts.list.contactsAria')"
     >
       <li
         v-for="contact in contacts"
@@ -82,12 +85,12 @@ function submitGroup(): void {
 
     <section class="groups-panel">
       <h3 class="groups-title">
-        Groups
+        {{ t("contacts.list.groupsTitle") }}
       </h3>
       <ul
         v-if="groups.length > 0"
         class="group-list"
-        aria-label="Contact groups"
+        :aria-label="t('contacts.list.groupsAria')"
       >
         <li
           v-for="group in groups"
@@ -98,7 +101,7 @@ function submitGroup(): void {
           <button
             type="button"
             class="icon"
-            :aria-label="`Delete group ${group.name}`"
+            :aria-label="t('contacts.list.deleteGroupAria', { name: group.name })"
             @click="emit('deleteGroup', group.id)"
           >
             ×
@@ -112,15 +115,15 @@ function submitGroup(): void {
         <input
           v-model="newGroupName"
           type="text"
-          placeholder="New group"
-          aria-label="New group name"
+          :placeholder="t('contacts.list.newGroupPlaceholder')"
+          :aria-label="t('contacts.list.newGroupAria')"
         >
         <button
           type="submit"
           class="button"
           :disabled="newGroupName.trim() === ''"
         >
-          Add
+          {{ t("common.add") }}
         </button>
       </form>
     </section>

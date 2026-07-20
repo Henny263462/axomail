@@ -7,6 +7,7 @@
  * group ids on save.
  */
 import { computed, ref, watch } from "vue";
+import { useI18n } from "vue-i18n";
 
 import type {
   ContactDetailDto,
@@ -30,6 +31,8 @@ const emit = defineEmits<{
   save: [input: ContactInput, groupIds: number[], contactId: number | null];
   deleteContact: [contactId: number];
 }>();
+
+const { t } = useI18n({ useScope: "global" });
 
 const displayName = ref("");
 const note = ref("");
@@ -85,7 +88,7 @@ function submit(): void {
     }))
     .filter((row) => row.email !== "");
   if (displayName.value.trim() === "" && emails.length === 0) {
-    error.value = "Add a name or at least one email address.";
+    error.value = t("contacts.editor.errorEmpty");
     return;
   }
   // Ensure exactly one primary survives the empty-row filter.
@@ -114,11 +117,11 @@ function requestDelete(): void {
 <template>
   <form
     class="editor"
-    :aria-label="isNew ? 'New contact' : `Edit ${contact?.displayName}`"
+    :aria-label="isNew ? t('contacts.editor.newContactAria') : t('contacts.editor.editAria', { name: contact?.displayName })"
     @submit.prevent="submit"
   >
     <div class="field">
-      <label for="contact-name">Name</label>
+      <label for="contact-name">{{ t("common.name") }}</label>
       <input
         id="contact-name"
         v-model="displayName"
@@ -128,7 +131,7 @@ function requestDelete(): void {
     </div>
 
     <fieldset class="emails">
-      <legend>Email addresses</legend>
+      <legend>{{ t("contacts.editor.emailAddresses") }}</legend>
       <div
         v-for="(row, index) in rows"
         :key="index"
@@ -138,15 +141,15 @@ function requestDelete(): void {
           v-model="row.email"
           type="email"
           class="email"
-          :aria-label="`Email address ${index + 1}`"
-          placeholder="name@example.org"
+          :aria-label="t('contacts.editor.emailAddressAria', { n: index + 1 })"
+          :placeholder="t('contacts.editor.emailPlaceholder')"
         >
         <input
           v-model="row.label"
           type="text"
           class="label-input"
-          :aria-label="`Label for address ${index + 1}`"
-          placeholder="home / work"
+          :aria-label="t('contacts.editor.labelAria', { n: index + 1 })"
+          :placeholder="t('contacts.editor.labelPlaceholder')"
         >
         <label class="primary">
           <input
@@ -155,12 +158,12 @@ function requestDelete(): void {
             name="primary"
             :value="index"
           >
-          Primary
+          {{ t("contacts.editor.primary") }}
         </label>
         <button
           type="button"
           class="icon"
-          :aria-label="`Remove address ${index + 1}`"
+          :aria-label="t('contacts.editor.removeAddressAria', { n: index + 1 })"
           @click="removeRow(index)"
         >
           ×
@@ -171,12 +174,12 @@ function requestDelete(): void {
         class="link"
         @click="addRow"
       >
-        + Add address
+        {{ t("contacts.editor.addAddress") }}
       </button>
     </fieldset>
 
     <div class="field">
-      <label for="contact-note">Note</label>
+      <label for="contact-note">{{ t("contacts.editor.note") }}</label>
       <textarea
         id="contact-note"
         v-model="note"
@@ -188,7 +191,7 @@ function requestDelete(): void {
       v-if="groups.length > 0"
       class="groups"
     >
-      <legend>Groups</legend>
+      <legend>{{ t("contacts.editor.groups") }}</legend>
       <label
         v-for="group in groups"
         :key="group.id"
@@ -216,19 +219,19 @@ function requestDelete(): void {
         type="submit"
         class="primary-button"
       >
-        {{ isNew ? "Create contact" : "Save changes" }}
+        {{ isNew ? t("contacts.editor.createContact") : t("contacts.editor.saveChanges") }}
       </button>
       <template v-if="!isNew">
         <span
           v-if="confirmingDelete"
           class="confirm"
-        >Delete this contact?</span>
+        >{{ t("contacts.editor.confirmDelete") }}</span>
         <button
           type="button"
           class="danger"
           @click="requestDelete"
         >
-          {{ confirmingDelete ? "Confirm delete" : "Delete" }}
+          {{ confirmingDelete ? t("contacts.editor.confirmDeleteButton") : t("common.delete") }}
         </button>
       </template>
     </div>

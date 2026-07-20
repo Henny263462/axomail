@@ -6,6 +6,7 @@
  * and arrow-key roving over the menu items.
  */
 import { onBeforeUnmount, onMounted, ref } from "vue";
+import { useI18n } from "vue-i18n";
 
 import type { BulkAction } from "../../composables/useMailboxActions";
 
@@ -19,19 +20,21 @@ const emit = defineEmits<{
   close: [];
 }>();
 
+const { t } = useI18n({ useScope: "global" });
+
 const root = ref<HTMLElement | null>(null);
 // The element focused when the menu opened (the originating listbox row);
 // focus returns to it on close so keyboard navigation is not stranded.
 let invoker: HTMLElement | null = null;
 
-const items: { action: BulkAction; label: string; danger?: boolean }[] = [
-  { action: "archive", label: "Archive" },
-  { action: "move", label: "Move to…" },
-  { action: "copy", label: "Copy to…" },
-  { action: "markRead", label: "Mark read" },
-  { action: "junk", label: "Mark as junk" },
-  { action: "notJunk", label: "Not junk" },
-  { action: "delete", label: "Delete", danger: true },
+const items: { action: BulkAction; labelKey: string; danger?: boolean }[] = [
+  { action: "archive", labelKey: "list.context.archive" },
+  { action: "move", labelKey: "list.context.moveTo" },
+  { action: "copy", labelKey: "list.context.copyTo" },
+  { action: "markRead", labelKey: "list.context.markRead" },
+  { action: "junk", labelKey: "list.context.junk" },
+  { action: "notJunk", labelKey: "list.context.notJunk" },
+  { action: "delete", labelKey: "common.delete", danger: true },
 ];
 
 onMounted(() => {
@@ -72,7 +75,7 @@ function onKeydown(event: KeyboardEvent): void {
       ref="root"
       class="menu"
       role="menu"
-      aria-label="Message actions"
+      :aria-label="t('list.context.menuLabel')"
       :style="{ left: x + 'px', top: y + 'px' }"
       @keydown="onKeydown"
     >
@@ -85,7 +88,7 @@ function onKeydown(event: KeyboardEvent): void {
         :class="{ danger: item.danger }"
         @click="choose(item.action)"
       >
-        {{ item.label }}
+        {{ t(item.labelKey) }}
       </button>
     </div>
   </Teleport>

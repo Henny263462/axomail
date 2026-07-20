@@ -1,0 +1,99 @@
+{
+  "list": {
+    "noSubject": "(no subject)",
+    "row": {
+      "selectMessage": "Select {subject}",
+      "thisMessage": "this message",
+      "removeStar": "Remove star",
+      "addStar": "Add star",
+      "tagsOn": "Tags on {subject}"
+    },
+    "bulk": {
+      "archive": "Archive",
+      "moveTo": "Move to…",
+      "markRead": "Mark read",
+      "clear": "Clear"
+    },
+    "quickFilter": {
+      "filtersLabel": "Message list filters",
+      "unread": "Unread",
+      "starred": "Starred",
+      "filterByTag": "Filter by tag",
+      "allTags": "All tags",
+      "filterMessages": "Filter messages",
+      "filterMessagesByText": "Filter messages by text",
+      "sortBy": "Sort by",
+      "sortMessagesBy": "Sort messages by",
+      "sortDate": "Date",
+      "sortSender": "Sender",
+      "sortSubject": "Subject",
+      "sortAscending": "Sort ascending",
+      "sortDescending": "Sort descending",
+      "threadedLabel": "Group messages into conversation threads",
+      "threaded": "Threaded"
+    },
+    "context": {
+      "menuLabel": "Message actions",
+      "archive": "Archive",
+      "moveTo": "Move to…",
+      "copyTo": "Copy to…",
+      "markRead": "Mark read",
+      "junk": "Mark as junk",
+      "notJunk": "Not junk"
+    },
+    "search": {
+      "searchMessages": "Search messages",
+      "searching": "Searching…",
+      "resultCount": "{count} result | {count} results",
+      "resultsEmptyTitle": "No results",
+      "resultsEmptyDetail": "No messages match your search."
+    },
+    "drafts": {
+      "noRecipients": "(no recipients)",
+      "label": "Drafts",
+      "emptyTitle": "No drafts",
+      "emptyDetail": "Messages you save while composing appear here."
+    },
+    "outbox": {
+      "state": {
+        "pending": "Pending",
+        "sending": "Sending",
+        "sent": "Sent",
+        "failed": "Failed"
+      },
+      "queuedOffline": "Queued (offline)",
+      "label": "Outbox",
+      "emptyTitle": "Outbox empty",
+      "emptyDetail": "Messages waiting to be delivered appear here.",
+      "attempts": "{count} attempt | {count} attempts",
+      "scheduledFor": "Scheduled for {time}",
+      "sendNow": "Send now",
+      "cancelSchedule": "Cancel schedule"
+    },
+    "thread": {
+      "accountFallback": "Account {id}",
+      "selectedCount": "{count} selected",
+      "markAllRead": "Mark all read",
+      "emptyTitle": "No messages",
+      "noMatchTitle": "No matching messages",
+      "noMatchDetail": "No messages match the current filter.",
+      "loadingMore": "Loading more…",
+      "messageListLabel": "Message list",
+      "messageListEmpty": "Messages appear here once an account is set up and synchronized.",
+      "messagesCount": "{count} messages",
+      "messagesCountUnread": "{count} messages, {unread} unread",
+      "selectConversation": "Select conversation {subject}",
+      "collapseConversation": "Collapse conversation",
+      "expandConversation": "Expand conversation"
+    },
+    "unified": {
+      "label": "Unified inbox",
+      "empty": "Messages from every account's inbox appear here once synchronized."
+    },
+    "region": {
+      "folderOfflineAvailability": "Folder offline availability",
+      "offlineAvailability": "Offline availability",
+      "offlineButton": "Offline…"
+    }
+  }
+}

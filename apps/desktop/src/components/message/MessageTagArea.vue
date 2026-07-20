@@ -7,6 +7,7 @@
  * the backend is absent (ADR-0005).
  */
 import { computed, ref, watch } from "vue";
+import { useI18n } from "vue-i18n";
 
 import {
   createTag,
@@ -16,6 +17,8 @@ import {
 import type { MessageTagOption, TagChip } from "../../types/mail";
 import TagChips from "./TagChips.vue";
 import TagPicker from "./TagPicker.vue";
+
+const { t } = useI18n({ useScope: "global" });
 
 const props = defineProps<{ messageId: number }>();
 
@@ -119,7 +122,7 @@ function onFocusOut(event: FocusEvent): void {
 function messageFrom(thrown: unknown): string {
   if (typeof thrown === "string") return thrown;
   if (thrown instanceof Error) return thrown.message;
-  return "Could not update tags.";
+  return t("message.tags.updateError");
 }
 </script>
 
@@ -132,7 +135,7 @@ function messageFrom(thrown: unknown): string {
     <div class="row">
       <TagChips
         :tags="appliedChips"
-        label="Tags on this message"
+        :label="t('message.tags.appliedLabel')"
       />
       <button
         type="button"
@@ -141,7 +144,7 @@ function messageFrom(thrown: unknown): string {
         :aria-expanded="open"
         @click="open = !open"
       >
-        Tag
+        {{ t("message.tags.tagButton") }}
       </button>
     </div>
     <div

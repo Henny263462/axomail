@@ -10,6 +10,7 @@
  * interrupts the flow to confirm a consequential, unrecoverable action.
  */
 import { computed, onBeforeUnmount, onMounted, ref } from "vue";
+import { useI18n } from "vue-i18n";
 
 import { useFocusTrap } from "../../composables/useFocusTrap";
 
@@ -28,6 +29,8 @@ const emit = defineEmits<{
   confirm: [];
   cancel: [];
 }>();
+
+const { t } = useI18n({ useScope: "global" });
 
 const typed = ref("");
 const input = ref<HTMLInputElement | null>(null);
@@ -82,23 +85,21 @@ function onConfirm(): void {
         id="delete-account-title"
         class="title"
       >
-        Delete “{{ displayName }}”?
+        {{ t("settings.accounts.deleteTitle", { name: displayName }) }}
       </h3>
 
       <p
         id="delete-account-body"
         class="body"
       >
-        This removes the account and everything axomail stored for it on this
-        computer — downloaded mail, folders, drafts, and the saved password.
-        Mail already on the server is not affected. This cannot be undone.
+        {{ t("settings.accounts.deleteBody") }}
       </p>
 
       <label
         class="field"
         for="delete-account-confirm"
       >
-        Type <span class="email">{{ email }}</span> to confirm
+        {{ t("settings.accounts.deleteConfirmPrefix") }} <span class="email">{{ email }}</span> {{ t("settings.accounts.deleteConfirmSuffix") }}
       </label>
       <input
         id="delete-account-confirm"
@@ -125,7 +126,7 @@ function onConfirm(): void {
           class="button"
           @click="emit('cancel')"
         >
-          Cancel
+          {{ t("common.cancel") }}
         </button>
         <button
           type="button"
@@ -133,7 +134,7 @@ function onConfirm(): void {
           :disabled="!confirmed || deleting"
           @click="onConfirm"
         >
-          {{ deleting ? "Deleting…" : "Delete account" }}
+          {{ deleting ? t("settings.accounts.deleting") : t("settings.accounts.deleteAccount") }}
         </button>
       </div>
     </div>

@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { useI18n } from "vue-i18n";
+
 import type { SearchResultDto } from "../../types/mail";
 import EmptyState from "../common/EmptyState.vue";
 import { parseSnippet } from "./snippet";
@@ -14,6 +16,8 @@ const emit = defineEmits<{
   select: [messageId: number];
 }>();
 
+const { t } = useI18n({ useScope: "global" });
+
 function formatDate(unix: number | null): string {
   if (unix === null) return "";
   return new Date(unix * 1000).toLocaleDateString(undefined, {
@@ -23,16 +27,16 @@ function formatDate(unix: number | null): string {
 }
 
 function statusText(): string {
-  if (props.searching && props.results.length === 0) return "Searching…";
+  if (props.searching && props.results.length === 0) return t("list.search.searching");
   const count = props.results.length;
-  return `${count} result${count === 1 ? "" : "s"}`;
+  return t("list.search.resultCount", { count }, count);
 }
 </script>
 
 <template>
   <section
     class="list"
-    aria-label="Search results"
+    :aria-label="t('search.results.title')"
   >
     <p
       class="count"
@@ -59,7 +63,7 @@ function statusText(): string {
             <span class="from">{{ result.fromName || result.fromAddress }}</span>
             <time class="date">{{ formatDate(result.dateUnix) }}</time>
           </span>
-          <span class="subject">{{ result.subject ?? "(no subject)" }}</span>
+          <span class="subject">{{ result.subject ?? t("list.noSubject") }}</span>
           <span class="snippet">
             <template
               v-for="(segment, index) in parseSnippet(result.snippet)"
@@ -74,8 +78,8 @@ function statusText(): string {
     </ul>
     <EmptyState
       v-else-if="!searching"
-      title="No results"
-      detail="No messages match your search."
+      :title="t('list.search.resultsEmptyTitle')"
+      :detail="t('list.search.resultsEmptyDetail')"
     />
   </section>
 </template>

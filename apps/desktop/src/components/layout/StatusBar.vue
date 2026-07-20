@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { onMounted } from "vue";
+import { useI18n } from "vue-i18n";
 
 import { useAppVersion } from "../../composables/useAppVersion";
 import { usePushStatus } from "../../composables/usePushStatus";
@@ -26,6 +27,7 @@ const emit = defineEmits<{
   cancelSync: [];
 }>();
 
+const { t } = useI18n({ useScope: "global" });
 const { version } = useAppVersion();
 const browserPreview = !isTauri();
 
@@ -51,16 +53,14 @@ async function onToggleOffline(): Promise<void> {
 
 /** Accessible summary of the running indicator. */
 function syncLabel(): string {
-  return props.syncCount === 1
-    ? "1 sync job running — open Activity"
-    : `${props.syncCount} sync jobs running — open Activity`;
+  return t("layout.statusBar.syncLabel", { count: props.syncCount }, props.syncCount);
 }
 </script>
 
 <template>
   <footer
     class="status"
-    aria-label="Status"
+    :aria-label="t('layout.statusBar.status')"
   >
     <span class="app">
       axomail<template v-if="version !== null"> {{ version }}</template>
@@ -74,7 +74,7 @@ function syncLabel(): string {
       <button
         type="button"
         class="dismiss"
-        aria-label="Dismiss error"
+        :aria-label="t('layout.statusBar.dismissError')"
         @click="emit('dismissError')"
       >
         ✕
@@ -84,17 +84,17 @@ function syncLabel(): string {
       v-else-if="browserPreview"
       class="mode"
     >
-      Browser preview — mail features require the desktop app
+      {{ t("layout.statusBar.browserPreview") }}
     </span>
     <div class="controls">
       <LayoutSwitcher />
       <span
         v-if="pushConnected && !browserPreview"
         class="push"
-        title="Connected — receiving new mail by push (IMAP IDLE)"
-        aria-label="Push connected"
+        :title="t('layout.statusBar.pushTitle')"
+        :aria-label="t('layout.statusBar.pushConnectedAria')"
       >
-        Push
+        {{ t("layout.statusBar.push") }}
       </span>
       <button
         v-if="!browserPreview"
@@ -104,13 +104,13 @@ function syncLabel(): string {
         :aria-pressed="offline"
         :aria-label="
           offline
-            ? 'Working offline — click to go back online'
-            : 'Working online — click to work offline'
+            ? t('layout.statusBar.offlineToggleOffAria')
+            : t('layout.statusBar.offlineToggleOnAria')
         "
-        :title="offline ? 'Working offline' : 'Work offline'"
+        :title="offline ? t('layout.statusBar.offlineTitle') : t('layout.statusBar.workOfflineTitle')"
         @click="onToggleOffline"
       >
-        {{ offline ? "Offline" : "Online" }}
+        {{ offline ? t("layout.statusBar.offline") : t("layout.statusBar.online") }}
       </button>
       <span
         v-if="syncing"
@@ -122,13 +122,13 @@ function syncLabel(): string {
           :aria-label="syncLabel()"
           @click="emit('openActivity')"
         >
-          Syncing {{ syncCount }}…
+          {{ t("layout.statusBar.syncing", { count: syncCount }) }}
         </button>
         <button
           type="button"
           class="cancel"
-          aria-label="Cancel all sync jobs"
-          title="Cancel all sync jobs"
+          :aria-label="t('activity.cancelAllSyncAria')"
+          :title="t('activity.cancelAllSyncAria')"
           @click="emit('cancelSync')"
         >
           ✕
@@ -137,8 +137,8 @@ function syncLabel(): string {
       <button
         type="button"
         class="activity"
-        aria-label="Activity"
-        title="Activity"
+        :aria-label="t('activity.title')"
+        :title="t('activity.title')"
         @click="emit('openActivity')"
       >
         ⟳
@@ -146,8 +146,8 @@ function syncLabel(): string {
       <button
         type="button"
         class="settings"
-        aria-label="Settings"
-        title="Settings"
+        :aria-label="t('layout.statusBar.settings')"
+        :title="t('layout.statusBar.settings')"
         @click="emit('openSettings')"
       >
         ⚙

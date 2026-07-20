@@ -10,6 +10,7 @@
  * removal can proceed.
  */
 import { onMounted, ref } from "vue";
+import { useI18n } from "vue-i18n";
 
 import { deleteAccount, listAccountDetails } from "../../api/accounts";
 import type { AccountDetail } from "../../types/mail";
@@ -24,6 +25,8 @@ import DeleteAccountDialog from "./DeleteAccountDialog.vue";
 // `context.notifyAccountsChanged` after a successful edit or delete so the app
 // shell (sidebar, selection) is refreshed too — its list is not the only view.
 const props = defineProps<{ context: SettingsSectionContext }>();
+
+const { t } = useI18n({ useScope: "global" });
 
 type LoadState = "loading" | "ready" | "unavailable";
 
@@ -51,7 +54,7 @@ onMounted(load);
 function messageFrom(error: unknown): string {
   if (typeof error === "string") return error;
   if (error instanceof Error) return error.message;
-  return "The account could not be deleted.";
+  return t("settings.accounts.deleteFailed");
 }
 
 function onEdit(account: AccountDetail): void {
@@ -108,15 +111,14 @@ function protocols(account: AccountDetail): string {
       class="note"
       role="status"
     >
-      Loading accounts…
+      {{ t("settings.accounts.loading") }}
     </p>
     <p
       v-else-if="state === 'unavailable'"
       class="note"
       role="status"
     >
-      Account management needs the desktop app; it is unavailable in the browser
-      preview.
+      {{ t("settings.accounts.unavailable") }}
     </p>
 
     <AccountEditForm
@@ -128,14 +130,14 @@ function protocols(account: AccountDetail): string {
 
     <EmptyState
       v-else-if="accounts.length === 0"
-      title="No accounts yet"
-      detail="Add an account from the sidebar; it will appear here to edit or remove."
+      :title="t('settings.accounts.emptyTitle')"
+      :detail="t('settings.accounts.emptyDetail')"
     />
 
     <ul
       v-else
       class="list"
-      aria-label="Configured accounts"
+      :aria-label="t('settings.accounts.listLabel')"
     >
       <li
         v-for="account in accounts"
@@ -153,14 +155,14 @@ function protocols(account: AccountDetail): string {
             class="button"
             @click="onEdit(account)"
           >
-            Edit
+            {{ t("common.edit") }}
           </button>
           <button
             type="button"
             class="button danger-text"
             @click="onDelete(account)"
           >
-            Delete
+            {{ t("common.delete") }}
           </button>
         </div>
       </li>

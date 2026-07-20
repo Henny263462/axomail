@@ -1,7 +1,11 @@
 <script setup lang="ts">
+import { useI18n } from "vue-i18n";
+
 import type { SettingsSectionContext } from "./context";
 
 const props = defineProps<{ context: SettingsSectionContext }>();
+
+const { t } = useI18n({ useScope: "global" });
 
 function onInput(event: Event): void {
   props.context.setSyncIntervalMinutes(
@@ -12,7 +16,7 @@ function onInput(event: Event): void {
 
 <template>
   <div class="field">
-    <label for="settings-interval">Sync interval (minutes)</label>
+    <label for="settings-interval">{{ t("settings.sync.intervalLabel") }}</label>
     <input
       id="settings-interval"
       type="number"

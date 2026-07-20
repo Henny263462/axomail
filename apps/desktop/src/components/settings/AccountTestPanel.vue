@@ -10,6 +10,7 @@
  * the probe always targets whatever is currently in the form.
  */
 import { ref } from "vue";
+import { useI18n } from "vue-i18n";
 
 import { testConnection } from "../../api/connection";
 import { isTauri } from "../../lib/tauri";
@@ -25,6 +26,8 @@ const props = defineProps<{
   outgoing: ServerEndpointInput;
 }>();
 
+const { t } = useI18n({ useScope: "global" });
+
 const open = ref(false);
 const testing = ref(false);
 const result = ref<ConnectionTestResult | null>(null);
@@ -35,8 +38,7 @@ const outgoingPassword = ref("");
 async function onTest(): Promise<void> {
   result.value = null;
   if (!isTauri()) {
-    message.value =
-      "Testing the connection needs the desktop app; it is unavailable in the browser preview.";
+    message.value = t("settings.accounts.testUnavailable");
     return;
   }
   testing.value = true;
@@ -78,18 +80,17 @@ async function onTest(): Promise<void> {
       :aria-expanded="open"
       @click="open = !open"
     >
-      {{ open ? "Hide connection test" : "Test connection" }}
+      {{ open ? t("settings.accounts.hideTest") : t("settings.accounts.testConnection") }}
     </button>
     <div
       v-if="open"
       class="test-body"
     >
       <p class="hint">
-        Enter the passwords to probe the edited servers. They are used only for
-        this test and are never saved.
+        {{ t("settings.accounts.testHint") }}
       </p>
       <div class="field">
-        <label for="edit-incoming-password">Incoming password</label>
+        <label for="edit-incoming-password">{{ t("settings.accounts.incomingPassword") }}</label>
         <input
           id="edit-incoming-password"
           v-model="incomingPassword"
@@ -98,7 +99,7 @@ async function onTest(): Promise<void> {
         >
       </div>
       <div class="field">
-        <label for="edit-outgoing-password">Outgoing password</label>
+        <label for="edit-outgoing-password">{{ t("settings.accounts.outgoingPassword") }}</label>
         <input
           id="edit-outgoing-password"
           v-model="outgoingPassword"
@@ -112,7 +113,7 @@ async function onTest(): Promise<void> {
         :disabled="testing"
         @click="onTest"
       >
-        {{ testing ? "Testing…" : "Run test" }}
+        {{ testing ? t("settings.accounts.testing") : t("settings.accounts.runTest") }}
       </button>
       <div
         v-if="result !== null"
@@ -121,12 +122,12 @@ async function onTest(): Promise<void> {
         aria-live="polite"
       >
         <p :class="result.incomingOk ? 'ok' : 'fail'">
-          Incoming:
-          {{ result.incomingOk ? "OK" : (result.incomingError ?? "Failed") }}
+          {{ t("settings.accounts.incomingLabel") }}
+          {{ result.incomingOk ? t("common.ok") : (result.incomingError ?? t("settings.accounts.failed")) }}
         </p>
         <p :class="result.outgoingOk ? 'ok' : 'fail'">
-          Outgoing:
-          {{ result.outgoingOk ? "OK" : (result.outgoingError ?? "Failed") }}
+          {{ t("settings.accounts.outgoingLabel") }}
+          {{ result.outgoingOk ? t("common.ok") : (result.outgoingError ?? t("settings.accounts.failed")) }}
         </p>
       </div>
       <p

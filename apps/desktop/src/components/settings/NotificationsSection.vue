@@ -1,7 +1,11 @@
 <script setup lang="ts">
+import { useI18n } from "vue-i18n";
+
 import type { SettingsSectionContext } from "./context";
 
 const props = defineProps<{ context: SettingsSectionContext }>();
+
+const { t } = useI18n({ useScope: "global" });
 
 function onToggle(event: Event): void {
   props.context.setNotificationsEnabled(
@@ -18,7 +22,7 @@ function onToggle(event: Event): void {
       :checked="context.notificationsEnabled"
       @change="onToggle"
     >
-    <span>Show desktop notifications for new mail</span>
+    <span>{{ t("settings.notifications.showForNewMail") }}</span>
   </label>
 </template>
 

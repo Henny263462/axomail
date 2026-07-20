@@ -4,6 +4,10 @@
  * it binds a query string and reports Escape so the host can restore the
  * mailbox view. Debouncing and requests live in the host's `useSearch`.
  */
+import { useI18n } from "vue-i18n";
+
+const { t } = useI18n({ useScope: "global" });
+
 const model = defineModel<string>({ default: "" });
 
 const emit = defineEmits<{
@@ -24,8 +28,8 @@ function onKeydown(event: KeyboardEvent): void {
       class="input"
       type="search"
       role="searchbox"
-      aria-label="Search messages"
-      placeholder="Search messages"
+      :aria-label="t('list.search.searchMessages')"
+      :placeholder="t('list.search.searchMessages')"
       autocomplete="off"
       :value="model"
       @input="model = ($event.target as HTMLInputElement).value"

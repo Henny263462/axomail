@@ -4,6 +4,8 @@
  * button plus the per-direction outcome. It owns no logic — the dialog runs
  * the test and passes the result down.
  */
+import { useI18n } from "vue-i18n";
+
 import type { ConnectionTestResult } from "../../types/mail";
 
 defineProps<{
@@ -15,6 +17,8 @@ defineProps<{
 const emit = defineEmits<{
   test: [];
 }>();
+
+const { t } = useI18n({ useScope: "global" });
 </script>
 
 <template>
@@ -25,7 +29,7 @@ const emit = defineEmits<{
       :disabled="testing"
       @click="emit('test')"
     >
-      {{ testing ? "Testing…" : "Test connection" }}
+      {{ testing ? t("setup.test.testing") : t("setup.test.action") }}
     </button>
     <div
       v-if="result !== null"
@@ -34,12 +38,12 @@ const emit = defineEmits<{
       aria-live="polite"
     >
       <p :class="result.incomingOk ? 'ok' : 'fail'">
-        Incoming:
-        {{ result.incomingOk ? "OK" : (result.incomingError ?? "Failed") }}
+        {{ t("setup.test.incoming") }}
+        {{ result.incomingOk ? t("common.ok") : (result.incomingError ?? t("setup.test.failed")) }}
       </p>
       <p :class="result.outgoingOk ? 'ok' : 'fail'">
-        Outgoing:
-        {{ result.outgoingOk ? "OK" : (result.outgoingError ?? "Failed") }}
+        {{ t("setup.test.outgoing") }}
+        {{ result.outgoingOk ? t("common.ok") : (result.outgoingError ?? t("setup.test.failed")) }}
       </p>
     </div>
     <p

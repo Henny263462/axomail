@@ -8,6 +8,7 @@
  * transient password the user types for a password account.
  */
 import { onBeforeUnmount, ref, watch } from "vue";
+import { useI18n } from "vue-i18n";
 
 import { createAccount, deleteAccount } from "../../api/accounts";
 import { testConnection } from "../../api/connection";
@@ -23,16 +24,15 @@ import type {
 import type { ServerDraft } from "./draft";
 import { useAutoconfigLookup } from "./useAutoconfigLookup";
 
-/** Shown when a backend action is attempted in the browser preview. */
-const PREVIEW_MESSAGE =
-  "Account setup needs the desktop app; it is unavailable in the browser preview.";
-
 /** Callbacks the dialog supplies so the composable can report completion. */
 interface Callbacks {
   onCreated: (account: AccountSummary) => void;
 }
 
 export function useAccountSetup({ onCreated }: Callbacks) {
+  // Global scope so the composable reads the same catalogue the dialog does.
+  const { t } = useI18n({ useScope: "global" });
+
   const displayName = ref("");
   const email = ref("");
 
@@ -135,38 +135,38 @@ export function useAccountSetup({ onCreated }: Callbacks) {
   });
 
   function validate(): string | null {
-    if (displayName.value.trim() === "") return "Enter a display name.";
+    if (displayName.value.trim() === "") return t("setup.validation.displayName");
     const trimmedEmail = email.value.trim();
     if (trimmedEmail === "" || !trimmedEmail.includes("@")) {
-      return "Enter a valid email address.";
+      return t("setup.validation.email");
     }
     if (incoming.value.host.trim() === "") {
-      return "Enter the incoming server address.";
+      return t("setup.validation.incomingHost");
     }
     if (incoming.value.username.trim() === "") {
-      return "Enter the incoming username.";
+      return t("setup.validation.incomingUsername");
     }
     if (outgoing.value.host.trim() === "") {
-      return "Enter the outgoing server address.";
+      return t("setup.validation.outgoingHost");
     }
     if (outgoing.value.username.trim() === "") {
-      return "Enter the outgoing username.";
+      return t("setup.validation.outgoingUsername");
     }
     return isOAuth() ? validateOAuth() : validatePasswords();
   }
 
   function validatePasswords(): string | null {
-    if (incoming.value.password === "") return "Enter the incoming password.";
-    if (outgoing.value.password === "") return "Enter the outgoing password.";
+    if (incoming.value.password === "") return t("setup.validation.incomingPassword");
+    if (outgoing.value.password === "") return t("setup.validation.outgoingPassword");
     return null;
   }
 
   function validateOAuth(): string | null {
-    if (clientId.value.trim() === "") return "Enter the OAuth client id.";
+    if (clientId.value.trim() === "") return t("setup.validation.clientId");
     if (isCustom()) {
-      if (customAuthUrl.value.trim() === "") return "Enter the authorization URL.";
-      if (customTokenUrl.value.trim() === "") return "Enter the token URL.";
-      if (customScopes.value.trim() === "") return "Enter at least one scope.";
+      if (customAuthUrl.value.trim() === "") return t("setup.validation.authUrl");
+      if (customTokenUrl.value.trim() === "") return t("setup.validation.tokenUrl");
+      if (customScopes.value.trim() === "") return t("setup.validation.scopes");
     }
     return null;
   }
@@ -211,7 +211,7 @@ export function useAccountSetup({ onCreated }: Callbacks) {
   function messageFrom(error: unknown): string {
     if (typeof error === "string") return error;
     if (error instanceof Error) return error.message;
-    return "Could not create the account.";
+    return t("setup.errors.createFailed");
   }
 
   async function onTest(): Promise<void> {
@@ -219,11 +219,11 @@ export function useAccountSetup({ onCreated }: Callbacks) {
     testResult.value = null;
     testMessage.value = "";
     if (incoming.value.host.trim() === "" || outgoing.value.host.trim() === "") {
-      testMessage.value = "Enter both server addresses before testing.";
+      testMessage.value = t("setup.validation.serversBeforeTest");
       return;
     }
     if (isOAuth() && createdAccountId.value === null) {
-      testMessage.value = "Sign in with the browser first, then test the connection.";
+      testMessage.value = t("setup.validation.signInBeforeTest");
       return;
     }
     testing.value = true;
@@ -233,7 +233,7 @@ export function useAccountSetup({ onCreated }: Callbacks) {
           ? await testAccountConnection(createdAccountId.value)
           : await testConnection(buildInput());
       if (result === null) {
-        testMessage.value = PREVIEW_MESSAGE;
+        testMessage.value = t("setup.preview");
         return;
       }
       testResult.value = result;
@@ -265,7 +265,7 @@ export function useAccountSetup({ onCreated }: Callbacks) {
     if (createdAccountId.value === null) {
       const account = await createAccount(buildInput());
       if (account === null) {
-        errorMessage.value = PREVIEW_MESSAGE;
+        errorMessage.value = t("setup.preview");
         return;
       }
       createdAccountId.value = account.id;
@@ -278,16 +278,16 @@ export function useAccountSetup({ onCreated }: Callbacks) {
     }
     const result = await oauthAuthorize(createdAccountId.value);
     if (result === null) {
-      errorMessage.value = PREVIEW_MESSAGE;
+      errorMessage.value = t("setup.preview");
       return;
     }
     if (result.status === "authorized") {
       succeeded.value = true;
       onCreated(createdAccount.value as AccountSummary);
     } else if (result.status === "denied") {
-      errorMessage.value = "Sign-in was declined in the browser. You can try again.";
+      errorMessage.value = t("setup.errors.signInDeclined");
     } else {
-      errorMessage.value = "Sign-in timed out. You can try again.";
+      errorMessage.value = t("setup.errors.signInTimedOut");
     }
   }
 

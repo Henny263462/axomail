@@ -7,6 +7,7 @@
  * api and reports outcomes via the shared {@link SettingsSectionContext}.
  */
 import { computed, ref, watch } from "vue";
+import { useI18n } from "vue-i18n";
 
 import {
   createFilter,
@@ -27,6 +28,8 @@ import FilterEditor from "./FilterEditor.vue";
 const GLOBAL = -1;
 
 const props = defineProps<{ context: SettingsSectionContext }>();
+
+const { t } = useI18n({ useScope: "global" });
 
 const scopeId = ref<number>(props.context.accounts[0]?.id ?? GLOBAL);
 const filters = ref<FilterDto[]>([]);
@@ -53,9 +56,7 @@ async function load(): Promise<void> {
 
 function guardTauri(): boolean {
   if (isTauri()) return true;
-  props.context.reportError(
-    "Managing filters needs the desktop app; it is unavailable in the browser preview.",
-  );
+  props.context.reportError(t("settings.filters.unavailable"));
   return false;
 }
 
@@ -72,10 +73,10 @@ async function onSave(input: FilterInput): Promise<void> {
   try {
     if (editing.value.filter) {
       await updateFilter(editing.value.filter.id, input);
-      props.context.reportStatus(`Saved “${input.name}”.`);
+      props.context.reportStatus(t("settings.filters.saved", { name: input.name }));
     } else {
       await createFilter(input);
-      props.context.reportStatus(`Created “${input.name}”.`);
+      props.context.reportStatus(t("settings.filters.created", { name: input.name }));
     }
     props.context.reportError("");
     editing.value = { open: false, filter: null };
@@ -109,7 +110,7 @@ async function remove(filter: FilterDto): Promise<void> {
   try {
     await deleteFilter(filter.id);
     filters.value = filters.value.filter((f) => f.id !== filter.id);
-    props.context.reportStatus(`Deleted “${filter.name}”.`);
+    props.context.reportStatus(t("settings.filters.deleted", { name: filter.name }));
   } catch (error) {
     props.context.reportError(messageFrom(error));
   }
@@ -166,7 +167,10 @@ async function runNow(): Promise<void> {
     const outcome = await runFiltersOnFolder(runFolderId.value);
     if (outcome) {
       props.context.reportStatus(
-        `Ran filters: ${outcome.matched} message(s) matched, ${outcome.actionsApplied} action(s) applied.`,
+        t("settings.filters.ranFilters", {
+          matched: outcome.matched,
+          applied: outcome.actionsApplied,
+        }),
       );
     }
     props.context.reportError("");
@@ -179,14 +183,14 @@ async function runNow(): Promise<void> {
 <template>
   <fieldset class="group">
     <legend class="legend">
-      Filters
+      {{ t("settings.filters.title") }}
     </legend>
 
     <label class="scope">
-      <span>Rules for</span>
+      <span>{{ t("settings.filters.rulesFor") }}</span>
       <select
         v-model.number="scopeId"
-        aria-label="Filter scope"
+        :aria-label="t('settings.filters.scopeLabel')"
       >
         <option
           v-for="account in context.accounts"
@@ -196,7 +200,7 @@ async function runNow(): Promise<void> {
           {{ account.displayName }}
         </option>
         <option :value="GLOBAL">
-          All accounts
+          {{ t("settings.filters.allAccounts") }}
         </option>
       </select>
     </label>
@@ -208,17 +212,17 @@ async function runNow(): Promise<void> {
       <input
         type="checkbox"
         :checked="arrivalEnabled"
-        aria-label="Run filters on new mail"
+        :aria-label="t('settings.filters.arrivalLabel')"
         @change="onArrivalToggle($event)"
       >
-      <span>Run these filters automatically on newly-arrived mail</span>
+      <span>{{ t("settings.filters.arrivalText") }}</span>
     </label>
 
     <p
       v-if="filters.length === 0"
       class="empty"
     >
-      No filters yet. Add one to sort mail automatically.
+      {{ t("settings.filters.empty") }}
     </p>
 
     <ul
@@ -233,14 +237,14 @@ async function runNow(): Promise<void> {
         <input
           type="checkbox"
           :checked="filter.enabled"
-          :aria-label="`Enable ${filter.name}`"
+          :aria-label="t('settings.filters.enableFilter', { name: filter.name })"
           @change="toggle(filter, $event)"
         >
         <span class="name">{{ filter.name }}</span>
         <button
           type="button"
           class="icon"
-          :aria-label="`Move ${filter.name} up`"
+          :aria-label="t('settings.filters.moveUp', { name: filter.name })"
           :disabled="index === 0"
           @click="move(index, -1)"
         >
@@ -249,7 +253,7 @@ async function runNow(): Promise<void> {
         <button
           type="button"
           class="icon"
-          :aria-label="`Move ${filter.name} down`"
+          :aria-label="t('settings.filters.moveDown', { name: filter.name })"
           :disabled="index === filters.length - 1"
           @click="move(index, 1)"
         >
@@ -260,14 +264,14 @@ async function runNow(): Promise<void> {
           class="action"
           @click="startEdit(filter)"
         >
-          Edit
+          {{ t("common.edit") }}
         </button>
         <button
           type="button"
           class="danger"
           @click="remove(filter)"
         >
-          Delete
+          {{ t("common.delete") }}
         </button>
       </li>
     </ul>
@@ -286,7 +290,7 @@ async function runNow(): Promise<void> {
       class="action add"
       @click="startAdd"
     >
-      Add filter
+      {{ t("settings.filters.addFilter") }}
     </button>
 
     <div
@@ -294,10 +298,10 @@ async function runNow(): Promise<void> {
       class="run-now"
     >
       <label>
-        <span>Run now on</span>
+        <span>{{ t("settings.filters.runNowOn") }}</span>
         <select
           v-model.number="runFolderId"
-          aria-label="Run filters on folder"
+          :aria-label="t('settings.filters.runFolderLabel')"
         >
           <option
             v-for="folder in folders"
@@ -313,7 +317,7 @@ async function runNow(): Promise<void> {
         class="action"
         @click="runNow"
       >
-        Run now
+        {{ t("settings.filters.runNow") }}
       </button>
     </div>
   </fieldset>

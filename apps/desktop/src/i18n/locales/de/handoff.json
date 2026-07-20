@@ -1,0 +1,34 @@
+{
+  "compose": {
+    "sendLater": {
+      "preset1h": "In 1 Stunde",
+      "preset3h": "In 3 Stunden",
+      "presetTomorrow": "Morgen, 8:00 Uhr",
+      "presetMonday": "Montag, 8:00 Uhr"
+    }
+  },
+  "setup": {
+    "preview": "Die Kontoeinrichtung benötigt die Desktop-App; in der Browservorschau ist sie nicht verfügbar.",
+    "validation": {
+      "displayName": "Geben Sie einen Anzeigenamen ein.",
+      "email": "Geben Sie eine gültige E-Mail-Adresse ein.",
+      "incomingHost": "Geben Sie die Adresse des Eingangsservers ein.",
+      "incomingUsername": "Geben Sie den Benutzernamen für den Posteingang ein.",
+      "outgoingHost": "Geben Sie die Adresse des Ausgangsservers ein.",
+      "outgoingUsername": "Geben Sie den Benutzernamen für den Postausgang ein.",
+      "incomingPassword": "Geben Sie das Passwort für den Posteingang ein.",
+      "outgoingPassword": "Geben Sie das Passwort für den Postausgang ein.",
+      "clientId": "Geben Sie die OAuth-Client-ID ein.",
+      "authUrl": "Geben Sie die Autorisierungs-URL ein.",
+      "tokenUrl": "Geben Sie die Token-URL ein.",
+      "scopes": "Geben Sie mindestens einen Scope ein.",
+      "serversBeforeTest": "Geben Sie beide Serveradressen ein, bevor Sie testen.",
+      "signInBeforeTest": "Melden Sie sich zuerst im Browser an und testen Sie dann die Verbindung."
+    },
+    "errors": {
+      "createFailed": "Das Konto konnte nicht erstellt werden.",
+      "signInDeclined": "Die Anmeldung wurde im Browser abgelehnt. Sie können es erneut versuchen.",
+      "signInTimedOut": "Zeitüberschreitung bei der Anmeldung. Sie können es erneut versuchen."
+    }
+  }
+}

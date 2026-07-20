@@ -1,11 +1,14 @@
 <script setup lang="ts">
 import { onMounted, ref } from "vue";
+import { useI18n } from "vue-i18n";
 
 import { getPushEnabled, setPushEnabled } from "../../api/settings";
 import { isTauri } from "../../lib/tauri";
 import { messageFrom, type SettingsSectionContext } from "./context";
 
 const props = defineProps<{ context: SettingsSectionContext }>();
+
+const { t } = useI18n({ useScope: "global" });
 
 // Autonomous setting: loaded on mount and saved immediately on toggle, so it
 // does not widen the dialog's batch-saved surface.
@@ -28,9 +31,7 @@ async function onToggle(event: Event): Promise<void> {
   props.context.reportStatus("");
   if (!isTauri()) {
     (event.target as HTMLInputElement).checked = enabled.value;
-    props.context.reportError(
-      "Changing push needs the desktop app; it is unavailable in the browser preview.",
-    );
+    props.context.reportError(t("settings.push.unavailable"));
     return;
   }
   try {
@@ -38,7 +39,7 @@ async function onToggle(event: Event): Promise<void> {
     enabled.value = next;
     props.context.reportError("");
     props.context.reportStatus(
-      next ? "Push enabled." : "Push disabled; accounts will poll.",
+      next ? t("settings.push.enabled") : t("settings.push.disabled"),
     );
   } catch (error) {
     (event.target as HTMLInputElement).checked = enabled.value;
@@ -50,22 +51,20 @@ async function onToggle(event: Event): Promise<void> {
 <template>
   <fieldset class="group">
     <legend class="legend">
-      Push (IMAP IDLE)
+      {{ t("settings.push.title") }}
     </legend>
     <p class="hint">
-      When on, the app keeps a connection open for accounts whose server
-      supports IDLE, so new mail arrives immediately instead of waiting for the
-      next check. Accounts without it keep polling.
+      {{ t("settings.push.hint") }}
     </p>
     <label class="toggle">
       <input
         type="checkbox"
         :checked="enabled"
         :disabled="!loaded"
-        aria-label="Use push (IMAP IDLE) when available"
+        :aria-label="t('settings.push.toggleAria')"
         @change="onToggle($event)"
       >
-      <span>Use push when available</span>
+      <span>{{ t("settings.push.toggleLabel") }}</span>
     </label>
   </fieldset>
 </template>

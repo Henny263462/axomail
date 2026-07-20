@@ -10,6 +10,7 @@
  * form), keeping the section registry uniform.
  */
 import { computed } from "vue";
+import { useI18n } from "vue-i18n";
 
 import { shortcutGroups } from "../../commands/display";
 import { useOptionalCommandRegistry } from "../../composables/useCommandRegistry";
@@ -17,6 +18,8 @@ import ShortcutList from "../command/ShortcutList.vue";
 import type { SettingsSectionContext } from "./context";
 
 defineProps<{ context: SettingsSectionContext }>();
+
+const { t } = useI18n({ useScope: "global" });
 
 // The settings dialog always mounts under the app root (which provides the
 // registry); tolerate its absence so an isolated unit mount degrades to an
@@ -30,13 +33,12 @@ const groups = computed(() =>
 <template>
   <fieldset class="group">
     <legend class="legend">
-      Keyboard shortcuts
+      {{ t("settings.shortcuts.title") }}
     </legend>
     <p class="hint">
-      These shortcuts work throughout axomail. Press
-      <kbd class="inline">?</kbd> anywhere to bring up this list, or
-      <kbd class="inline">Ctrl</kbd>+<kbd class="inline">K</kbd> for the command
-      palette. Custom rebinding is coming in a later update.
+      {{ t("settings.shortcuts.hintBefore") }}
+      <kbd class="inline">?</kbd> {{ t("settings.shortcuts.hintMiddle") }}
+      <kbd class="inline">Ctrl</kbd>+<kbd class="inline">K</kbd> {{ t("settings.shortcuts.hintAfter") }}
     </p>
     <ShortcutList :groups="groups" />
   </fieldset>

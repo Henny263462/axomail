@@ -7,6 +7,7 @@
  * policy through `api/offline` and reports outcomes via an aria-live region.
  */
 import { nextTick, onMounted, ref } from "vue";
+import { useI18n } from "vue-i18n";
 
 import {
   cleanupOfflineCache,
@@ -28,6 +29,8 @@ const props = withDefaults(
 const emit = defineEmits<{
   close: [];
 }>();
+
+const { t } = useI18n({ useScope: "global" });
 
 type LoadState = "loading" | "ready" | "unavailable";
 const state = ref<LoadState>("loading");
@@ -56,9 +59,9 @@ async function onSave(): Promise<void> {
   try {
     const days = Math.max(1, Math.floor(recentDays.value) || 1);
     await setMailboxOfflinePolicy(props.mailboxId, mode.value, days);
-    status.value = "Offline policy saved.";
+    status.value = t("offline.props.saved");
   } catch {
-    status.value = "Could not save the offline policy.";
+    status.value = t("offline.props.saveFailed");
   } finally {
     busy.value = false;
   }
@@ -70,9 +73,9 @@ async function onDownloadNow(): Promise<void> {
   status.value = null;
   try {
     await downloadMailboxNow(props.mailboxId);
-    status.value = "Download started; progress shows in Activity.";
+    status.value = t("offline.props.downloadStarted");
   } catch {
-    status.value = "Could not start the download.";
+    status.value = t("offline.props.downloadFailed");
   } finally {
     busy.value = false;
   }
@@ -86,8 +89,8 @@ async function onCleanup(): Promise<void> {
   busy.value = false;
   status.value =
     purged === null
-      ? "Cache cleanup is unavailable in the browser preview."
-      : `Removed ${purged} cached ${purged === 1 ? "message" : "messages"}.`;
+      ? t("offline.props.cleanupUnavailable")
+      : t("offline.props.cleanupDone", { count: purged }, purged);
 }
 
 function close(): void {
@@ -147,27 +150,26 @@ onMounted(async () => {
           id="folder-props-title"
           class="title"
         >
-          Folder properties{{ mailboxName ? ` — ${mailboxName}` : "" }}
+          {{ t("offline.props.title") }}{{ mailboxName ? t("offline.props.titleSuffix", { name: mailboxName }) : "" }}
         </h2>
       </header>
 
       <h3 class="section-title">
-        Offline availability
+        {{ t("offline.props.availability") }}
       </h3>
       <p
         v-if="state === 'loading'"
         class="note"
         role="status"
       >
-        Loading offline policy…
+        {{ t("offline.props.loading") }}
       </p>
       <p
         v-else-if="state === 'unavailable'"
         class="note"
         role="status"
       >
-        Folder properties require the desktop app; they are unavailable in the
-        browser preview.
+        {{ t("offline.props.unavailable") }}
       </p>
 
       <div
@@ -176,7 +178,7 @@ onMounted(async () => {
       >
         <fieldset class="modes">
           <legend class="legend">
-            Keep available offline
+            {{ t("offline.props.keepOffline") }}
           </legend>
           <label class="choice">
             <input
@@ -185,7 +187,7 @@ onMounted(async () => {
               value="none"
               name="offline-mode"
             >
-            <span>Nothing (fetch bodies on demand)</span>
+            <span>{{ t("offline.props.modeNothing") }}</span>
           </label>
           <label class="choice">
             <input
@@ -194,7 +196,7 @@ onMounted(async () => {
               value="recent"
               name="offline-mode"
             >
-            <span>Recent messages</span>
+            <span>{{ t("offline.props.modeRecent") }}</span>
           </label>
           <label class="choice">
             <input
@@ -203,7 +205,7 @@ onMounted(async () => {
               value="all"
               name="offline-mode"
             >
-            <span>All messages</span>
+            <span>{{ t("offline.props.modeAll") }}</span>
           </label>
         </fieldset>
 
@@ -211,12 +213,12 @@ onMounted(async () => {
           v-if="mode === 'recent'"
           class="days"
         >
-          <span>Days to keep</span>
+          <span>{{ t("offline.props.daysToKeep") }}</span>
           <input
             v-model.number="recentDays"
             type="number"
             min="1"
-            aria-label="Days to keep available offline"
+            :aria-label="t('offline.props.daysToKeepAria')"
           >
         </label>
 
@@ -239,7 +241,7 @@ onMounted(async () => {
           :disabled="busy || state !== 'ready'"
           @click="onDownloadNow"
         >
-          Download now
+          {{ t("offline.props.downloadNow") }}
         </button>
         <button
           type="button"
@@ -247,7 +249,7 @@ onMounted(async () => {
           :disabled="busy || state !== 'ready'"
           @click="onCleanup"
         >
-          Clean up cache
+          {{ t("offline.props.cleanupCache") }}
         </button>
         <span class="spacer" />
         <button
@@ -255,7 +257,7 @@ onMounted(async () => {
           class="button"
           @click="close"
         >
-          Close
+          {{ t("common.close") }}
         </button>
         <button
           type="button"
@@ -263,7 +265,7 @@ onMounted(async () => {
           :disabled="busy || state !== 'ready'"
           @click="onSave"
         >
-          Save
+          {{ t("common.save") }}
         </button>
       </div>
     </div>

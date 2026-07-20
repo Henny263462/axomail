@@ -118,13 +118,15 @@ export function useAppShortcuts(deps: AppShortcutsDeps): AppShortcuts {
     });
   }
 
-  /** Reveals and focuses the folder sidebar (the `g f` chord). */
+  /**
+   * Reveals and focuses the folder sidebar (the `g f` chord). Selects the nav
+   * by its stable `.sidebar` class, not its (now localized) aria-label, so the
+   * shortcut works in every language.
+   */
   function focusSidebar(): void {
     showPane("sidebar");
     void nextTick(() => {
-      document
-        .querySelector<HTMLElement>('nav[aria-label="Accounts and folders"] button')
-        ?.focus();
+      document.querySelector<HTMLElement>("nav.sidebar button")?.focus();
     });
   }
 

@@ -1,5 +1,8 @@
 <script setup lang="ts">
 import { computed, ref, watch } from "vue";
+import { useI18n } from "vue-i18n";
+
+const { t } = useI18n({ useScope: "global" });
 
 const props = defineProps<{
   textBody: string | null;
@@ -28,12 +31,12 @@ const hasLinks = computed(
 <template>
   <section
     class="body"
-    aria-label="Message body"
+    :aria-label="t('message.body.ariaLabel')"
   >
     <div
       class="tabs"
       role="tablist"
-      aria-label="Body display mode"
+      :aria-label="t('message.body.displayMode')"
     >
       <button
         type="button"
@@ -43,7 +46,7 @@ const hasLinks = computed(
         :aria-selected="activeTab === 'text'"
         @click="activeTab = 'text'"
       >
-        Plain Text
+        {{ t("message.body.plainText") }}
       </button>
       <button
         v-if="hasHtml"
@@ -54,7 +57,7 @@ const hasLinks = computed(
         :aria-selected="activeTab === 'html'"
         @click="activeTab = 'html'"
       >
-        Sanitized HTML
+        {{ t("message.body.sanitizedHtml") }}
       </button>
     </div>
 
@@ -71,7 +74,7 @@ const hasLinks = computed(
         v-else
         class="empty-note"
       >
-        This message has no plain-text part.
+        {{ t("message.body.noPlainText") }}
       </p>
     </div>
 
@@ -84,7 +87,7 @@ const hasLinks = computed(
         v-if="hasLinks"
         class="link-note"
       >
-        Links are disabled in this preview.
+        {{ t("message.body.linksDisabled") }}
       </p>
       <!--
         Sanitized in Rust (axomail-security) then rendered in a null-origin,
@@ -94,7 +97,7 @@ const hasLinks = computed(
       -->
       <iframe
         class="html-frame"
-        title="Message HTML preview"
+        :title="t('message.body.htmlPreviewTitle')"
         sandbox=""
         :srcdoc="sanitizedHtml ?? ''"
       />

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref } from "vue";
+import { useI18n } from "vue-i18n";
 
 import {
   datetimeLocalToUnix,
@@ -18,6 +19,8 @@ const emit = defineEmits<{
   /** Schedule the message for the given Unix second. */
   schedule: [unixSeconds: number];
 }>();
+
+const { t } = useI18n({ useScope: "global" });
 
 const menuOpen = ref(false);
 const customValue = ref("");
@@ -44,11 +47,11 @@ function choosePreset(preset: SendLaterPreset): void {
 function scheduleCustom(): void {
   const unix = datetimeLocalToUnix(customValue.value);
   if (unix === null) {
-    customError.value = "Choose a date and time.";
+    customError.value = t("compose.sendLater.errorNoDateTime");
     return;
   }
   if (unix <= Math.floor(Date.now() / 1000)) {
-    customError.value = "Pick a time in the future.";
+    customError.value = t("compose.sendLater.errorPastTime");
     return;
   }
   emit("schedule", unix);
@@ -66,13 +69,13 @@ function scheduleCustom(): void {
       class="button primary send"
       :disabled="busy || disabled"
     >
-      {{ busy ? "Sending…" : "Send" }}
+      {{ busy ? t("compose.sendLater.sending") : t("common.send") }}
     </button>
     <button
       type="button"
       class="button primary caret"
       :disabled="busy || disabled"
-      aria-label="Send later"
+      :aria-label="t('compose.sendLater.sendLater')"
       :aria-expanded="menuOpen"
       aria-haspopup="menu"
       @click="toggleMenu"
@@ -84,7 +87,7 @@ function scheduleCustom(): void {
       v-if="menuOpen"
       class="menu"
       role="menu"
-      aria-label="Send later options"
+      :aria-label="t('compose.sendLater.options')"
     >
       <button
         v-for="preset in SEND_LATER_PRESETS"
@@ -94,11 +97,11 @@ function scheduleCustom(): void {
         role="menuitem"
         @click="choosePreset(preset)"
       >
-        {{ preset.label }}
+        {{ t(preset.labelKey) }}
       </button>
 
       <div class="custom">
-        <label for="send-later-custom">At a specific time</label>
+        <label for="send-later-custom">{{ t("compose.sendLater.atSpecificTime") }}</label>
         <input
           id="send-later-custom"
           v-model="customValue"
@@ -110,7 +113,7 @@ function scheduleCustom(): void {
           class="button schedule"
           @click="scheduleCustom"
         >
-          Schedule
+          {{ t("compose.sendLater.schedule") }}
         </button>
         <p
           class="error"

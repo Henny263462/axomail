@@ -1,0 +1,71 @@
+{
+  "contacts": {
+    "dialog": {
+      "title": "Address book",
+      "importVcard": "Import vCard",
+      "exportVcard": "Export vCard",
+      "closeAria": "Close address book",
+      "empty": "Select a contact to edit, or create a new one.",
+      "desktopOnly": "The address book needs the desktop app; it is unavailable in the browser preview.",
+      "saved": "Saved “{name}”.",
+      "deleted": "Contact deleted.",
+      "imported": "Imported {imported} contact(s); skipped {skipped} already present.",
+      "exported": "Exported {count} contact(s)."
+    },
+    "list": {
+      "searchContacts": "Search contacts",
+      "newContact": "+ New contact",
+      "empty": "No contacts yet. Create one, or import a vCard.",
+      "contactsAria": "Contacts",
+      "groupsTitle": "Groups",
+      "groupsAria": "Contact groups",
+      "deleteGroupAria": "Delete group {name}",
+      "newGroupPlaceholder": "New group",
+      "newGroupAria": "New group name"
+    },
+    "editor": {
+      "newContactAria": "New contact",
+      "editAria": "Edit {name}",
+      "emailAddresses": "Email addresses",
+      "emailAddressAria": "Email address {n}",
+      "emailPlaceholder": "name{'@'}example.org",
+      "labelPlaceholder": "home / work",
+      "labelAria": "Label for address {n}",
+      "primary": "Primary",
+      "removeAddressAria": "Remove address {n}",
+      "addAddress": "+ Add address",
+      "note": "Note",
+      "groups": "Groups",
+      "errorEmpty": "Add a name or at least one email address.",
+      "createContact": "Create contact",
+      "saveChanges": "Save changes",
+      "confirmDelete": "Delete this contact?",
+      "confirmDeleteButton": "Confirm delete"
+    }
+  },
+  "command": {
+    "palette": {
+      "ariaLabel": "Command palette",
+      "searchAria": "Search commands",
+      "placeholder": "Type a command…",
+      "commandsAria": "Commands",
+      "empty": "No matching commands."
+    },
+    "help": {
+      "title": "Keyboard shortcuts"
+    },
+    "list": {
+      "empty": "No keyboard shortcuts are available."
+    },
+    "sections": {
+      "app": "Application",
+      "compose": "Compose",
+      "message": "Message",
+      "nav": "Navigation",
+      "view": "View",
+      "contacts": "Contacts",
+      "filters": "Filters",
+      "junk": "Junk"
+    }
+  }
+}

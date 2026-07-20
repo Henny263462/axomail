@@ -99,23 +99,23 @@ function onSelectMailbox(mailboxId: number): void {
 <template>
   <nav
     class="sidebar"
-    aria-label="Accounts and folders"
+    :aria-label="t('sidebar.ariaLabel')"
   >
     <button
       type="button"
       class="add-account"
       @click="emit('addAccount')"
     >
-      Add account
+      {{ t("sidebar.addAccount") }}
     </button>
     <button
       type="button"
       class="compose"
       :disabled="!hasAccounts"
-      :title="hasAccounts ? undefined : 'Add an account before composing'"
+      :title="hasAccounts ? undefined : t('sidebar.composeDisabledHint')"
       @click="emit('compose')"
     >
-      Compose
+      {{ t("sidebar.compose") }}
     </button>
 
     <SidebarViewSwitcher
@@ -131,15 +131,15 @@ function onSelectMailbox(mailboxId: number): void {
       :aria-current="activeView === 'unified' ? 'true' : undefined"
       @click="emit('selectUnified')"
     >
-      All inboxes
+      {{ t("sidebar.allInboxes") }}
     </button>
 
     <!-- All folders: the full per-account trees (the default view). -->
     <template v-if="folderMode === 'all'">
       <EmptyState
         v-if="!hasAccounts"
-        title="No accounts"
-        detail="Add an account to get started."
+        :title="t('sidebar.noAccounts')"
+        :detail="t('sidebar.noAccountsHint')"
       />
       <template v-else>
         <section
@@ -159,12 +159,12 @@ function onSelectMailbox(mailboxId: number): void {
               v-if="isSyncing(account.id)"
               class="syncing"
               role="status"
-            >Syncing…</span>
+            >{{ t("sidebar.syncing") }}</span>
             <button
               type="button"
               class="sync"
-              :aria-label="`Sync ${account.displayName}`"
-              title="Sync this account"
+              :aria-label="t('sidebar.syncAccount', { name: account.displayName })"
+              :title="t('sidebar.syncThisAccount')"
               @click="emit('syncAccount', account.id)"
             >
               ↻
@@ -229,7 +229,7 @@ function onSelectMailbox(mailboxId: number): void {
         :aria-current="activeView === 'drafts' ? 'true' : undefined"
         @click="emit('selectDrafts')"
       >
-        Drafts
+        {{ t("sidebar.drafts") }}
       </button>
       <button
         type="button"
@@ -238,7 +238,7 @@ function onSelectMailbox(mailboxId: number): void {
         :aria-current="activeView === 'outbox' ? 'true' : undefined"
         @click="emit('selectOutbox')"
       >
-        Outbox
+        {{ t("sidebar.outbox") }}
       </button>
     </div>
   </nav>

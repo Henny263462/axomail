@@ -1,0 +1,75 @@
+{
+  "compose": {
+    "fields": {
+      "to": "An",
+      "cc": "Kopie",
+      "bcc": "Blindkopie",
+      "subject": "Betreff"
+    },
+    "recipients": {
+      "placeholder": "Durch Kommas getrennte Adressen",
+      "suggestionsAria": "Vorschläge für {label}",
+      "groupBadge": "Gruppe"
+    },
+    "body": {
+      "label": "Nachricht",
+      "plainText": "Nur Text",
+      "richText": "Formatierter Text",
+      "bodyAria": "Nachrichtentext",
+      "placeholder": "Verfassen Sie Ihre Nachricht…",
+      "signatureLabel": "Signatur (beim Senden hinzugefügt)"
+    },
+    "toolbar": {
+      "boldLabel": "F",
+      "boldAria": "Fett",
+      "italicLabel": "K",
+      "italicAria": "Kursiv",
+      "underlineLabel": "U",
+      "underlineAria": "Unterstrichen",
+      "bulletedLabel": "• Liste",
+      "bulletedAria": "Aufzählung",
+      "numberedLabel": "1. Liste",
+      "numberedAria": "Nummerierte Liste",
+      "quoteLabel": "❝ Zitat",
+      "quoteAria": "Blockzitat",
+      "removeFormatLabel": "⨯ Format",
+      "removeFormatAria": "Formatierung entfernen",
+      "linkLabel": "🔗 Link",
+      "linkAria": "Link einfügen",
+      "linkUrlPlaceholder": "https://example.com",
+      "linkUrlAria": "Link-URL",
+      "insert": "Einfügen",
+      "formatting": "Textformatierung"
+    },
+    "attachments": {
+      "attach": "📎 Dateien anhängen",
+      "listAria": "Anhänge",
+      "summary": "{count} Datei · {size} | {count} Dateien · {size}",
+      "removeAria": "{filename} entfernen",
+      "unavailable": "Anhänge benötigen die Desktop-App; in der Browservorschau sind sie nicht verfügbar.",
+      "exceedsLimit": "Anhänge würden das Limit von {limit} überschreiten; einige Dateien wurden nicht hinzugefügt."
+    },
+    "from": {
+      "label": "Von",
+      "accountFallback": "Konto {id}"
+    },
+    "actions": {
+      "saveDraft": "Entwurf speichern"
+    },
+    "sendLater": {
+      "sending": "Wird gesendet…",
+      "sendLater": "Später senden",
+      "options": "Optionen zum späteren Senden",
+      "atSpecificTime": "Zu einer bestimmten Zeit",
+      "schedule": "Planen",
+      "errorNoDateTime": "Wählen Sie ein Datum und eine Uhrzeit.",
+      "errorPastTime": "Wählen Sie eine Zeit in der Zukunft."
+    },
+    "dialog": {
+      "editDraft": "Entwurf bearbeiten",
+      "forward": "Weiterleiten",
+      "reply": "Antworten",
+      "newMessage": "Neue Nachricht"
+    }
+  }
+}

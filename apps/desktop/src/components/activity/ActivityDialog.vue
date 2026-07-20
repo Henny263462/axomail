@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, onUnmounted, ref } from "vue";
+import { useI18n } from "vue-i18n";
 
 import { cancelAllSyncJobs, cancelSyncJob, listSyncJobs } from "../../api/jobs";
 import { subscribeSyncEvents } from "../../api/sync";
@@ -9,6 +10,8 @@ import JobRow from "./JobRow.vue";
 const emit = defineEmits<{
   close: [];
 }>();
+
+const { t } = useI18n({ useScope: "global" });
 
 type LoadState = "loading" | "ready" | "unavailable";
 const state = ref<LoadState>("loading");
@@ -135,17 +138,17 @@ onUnmounted(() => {
           id="activity-title"
           class="title"
         >
-          Activity
+          {{ t("activity.title") }}
         </h2>
         <button
           v-if="activeJobs.length > 0"
           type="button"
           class="button danger"
           :disabled="busy"
-          aria-label="Cancel all sync jobs"
+          :aria-label="t('activity.cancelAllSyncAria')"
           @click="onCancelAll"
         >
-          Cancel all
+          {{ t("activity.cancelAll") }}
         </button>
       </header>
 
@@ -154,22 +157,21 @@ onUnmounted(() => {
         class="note"
         role="status"
       >
-        Loading activity…
+        {{ t("activity.loading") }}
       </p>
       <p
         v-else-if="state === 'unavailable'"
         class="note"
         role="status"
       >
-        Background activity requires the desktop app; it is unavailable in the
-        browser preview.
+        {{ t("activity.unavailable") }}
       </p>
       <p
         v-else-if="jobs.length === 0"
         class="note"
         role="status"
       >
-        No background activity. Sync jobs appear here while they run.
+        {{ t("activity.empty") }}
       </p>
 
       <div
@@ -179,10 +181,10 @@ onUnmounted(() => {
         <section
           v-if="activeJobs.length > 0"
           class="group"
-          aria-label="Active jobs"
+          :aria-label="t('activity.activeJobsAria')"
         >
           <h3 class="legend">
-            Active
+            {{ t("activity.active") }}
           </h3>
           <ul class="jobs">
             <JobRow
@@ -199,10 +201,10 @@ onUnmounted(() => {
         <section
           v-if="recentJobs.length > 0"
           class="group"
-          aria-label="Recent jobs"
+          :aria-label="t('activity.recentJobsAria')"
         >
           <h3 class="legend">
-            Recent
+            {{ t("activity.recent") }}
           </h3>
           <ul class="jobs">
             <JobRow
@@ -223,7 +225,7 @@ onUnmounted(() => {
           class="button"
           @click="close"
         >
-          Close
+          {{ t("common.close") }}
         </button>
       </div>
     </div>

@@ -1,0 +1,71 @@
+{
+  "contacts": {
+    "dialog": {
+      "title": "Adressbuch",
+      "importVcard": "vCard importieren",
+      "exportVcard": "vCard exportieren",
+      "closeAria": "Adressbuch schließen",
+      "empty": "Wählen Sie einen Kontakt zum Bearbeiten aus oder erstellen Sie einen neuen.",
+      "desktopOnly": "Das Adressbuch benötigt die Desktop-App; in der Browservorschau ist es nicht verfügbar.",
+      "saved": "„{name}“ gespeichert.",
+      "deleted": "Kontakt gelöscht.",
+      "imported": "{imported} Kontakt(e) importiert; {skipped} bereits vorhandene übersprungen.",
+      "exported": "{count} Kontakt(e) exportiert."
+    },
+    "list": {
+      "searchContacts": "Kontakte suchen",
+      "newContact": "+ Neuer Kontakt",
+      "empty": "Noch keine Kontakte. Erstellen Sie einen oder importieren Sie eine vCard.",
+      "contactsAria": "Kontakte",
+      "groupsTitle": "Gruppen",
+      "groupsAria": "Kontaktgruppen",
+      "deleteGroupAria": "Gruppe {name} löschen",
+      "newGroupPlaceholder": "Neue Gruppe",
+      "newGroupAria": "Name der neuen Gruppe"
+    },
+    "editor": {
+      "newContactAria": "Neuer Kontakt",
+      "editAria": "{name} bearbeiten",
+      "emailAddresses": "E-Mail-Adressen",
+      "emailAddressAria": "E-Mail-Adresse {n}",
+      "emailPlaceholder": "name{'@'}example.org",
+      "labelPlaceholder": "privat / geschäftlich",
+      "labelAria": "Bezeichnung für Adresse {n}",
+      "primary": "Primär",
+      "removeAddressAria": "Adresse {n} entfernen",
+      "addAddress": "+ Adresse hinzufügen",
+      "note": "Notiz",
+      "groups": "Gruppen",
+      "errorEmpty": "Geben Sie einen Namen oder mindestens eine E-Mail-Adresse ein.",
+      "createContact": "Kontakt erstellen",
+      "saveChanges": "Änderungen speichern",
+      "confirmDelete": "Diesen Kontakt löschen?",
+      "confirmDeleteButton": "Löschen bestätigen"
+    }
+  },
+  "command": {
+    "palette": {
+      "ariaLabel": "Befehlspalette",
+      "searchAria": "Befehle suchen",
+      "placeholder": "Befehl eingeben…",
+      "commandsAria": "Befehle",
+      "empty": "Keine passenden Befehle."
+    },
+    "help": {
+      "title": "Tastenkürzel"
+    },
+    "list": {
+      "empty": "Keine Tastenkürzel verfügbar."
+    },
+    "sections": {
+      "app": "Anwendung",
+      "compose": "Verfassen",
+      "message": "Nachricht",
+      "nav": "Navigation",
+      "view": "Ansicht",
+      "contacts": "Kontakte",
+      "filters": "Filter",
+      "junk": "Spam"
+    }
+  }
+}

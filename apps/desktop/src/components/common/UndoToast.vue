@@ -5,6 +5,8 @@
  * (copy confirmation or an error). Both are polite live regions. Rendered at the
  * app root via a Teleport so they float above every pane.
  */
+import { useI18n } from "vue-i18n";
+
 defineProps<{
   /** The undo prompt (e.g. "Archived 3"), or null when there is nothing to undo. */
   undoMessage: string | null;
@@ -16,6 +18,8 @@ const emit = defineEmits<{
   undo: [];
   dismiss: [];
 }>();
+
+const { t } = useI18n({ useScope: "global" });
 </script>
 
 <template>
@@ -42,12 +46,12 @@ const emit = defineEmits<{
           class="undo-button"
           @click="emit('undo')"
         >
-          Undo
+          {{ t("common.undo") }}
         </button>
         <button
           type="button"
           class="close"
-          aria-label="Dismiss"
+          :aria-label="t('common.dismiss')"
           @click="emit('dismiss')"
         >
           <span aria-hidden="true">×</span>

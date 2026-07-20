@@ -5,6 +5,8 @@
  * context) and unread count, and selects the folder on click. An honest empty
  * state is shown when the list is empty.
  */
+import { useI18n } from "vue-i18n";
+
 import type { MailboxSummary } from "../../types/mail";
 import EmptyState from "../common/EmptyState.vue";
 import { leafName } from "./folderTree";
@@ -23,6 +25,8 @@ defineProps<{
 }>();
 
 const emit = defineEmits<{ selectMailbox: [mailboxId: number] }>();
+
+const { t } = useI18n({ useScope: "global" });
 </script>
 
 <template>
@@ -54,7 +58,7 @@ const emit = defineEmits<{ selectMailbox: [mailboxId: number] }>();
           <span
             v-if="entry.mailbox.unreadCount > 0"
             class="unread"
-            :aria-label="`${entry.mailbox.unreadCount} unread`"
+            :aria-label="t('sidebar.unreadCount', { count: entry.mailbox.unreadCount })"
           >
             {{ entry.mailbox.unreadCount }}
           </span>

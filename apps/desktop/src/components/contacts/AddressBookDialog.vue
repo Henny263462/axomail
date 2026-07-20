@@ -7,6 +7,7 @@
  * (shared {@link useFocusTrap}). Honest empty states and aria labels throughout.
  */
 import { nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
+import { useI18n } from "vue-i18n";
 
 import {
   createContactGroup,
@@ -33,6 +34,8 @@ import ContactEditor from "./ContactEditor.vue";
 import ContactList from "./ContactList.vue";
 
 const emit = defineEmits<{ close: [] }>();
+
+const { t } = useI18n({ useScope: "global" });
 
 const root = ref<HTMLElement | null>(null);
 let invoker: HTMLElement | null = null;
@@ -84,8 +87,7 @@ async function loadGroups(): Promise<void> {
 
 function guardDesktop(): boolean {
   if (isTauri()) return true;
-  status.value =
-    "The address book needs the desktop app; it is unavailable in the browser preview.";
+  status.value = t("contacts.dialog.desktopOnly");
   return false;
 }
 
@@ -117,7 +119,7 @@ async function onSave(
         : await updateContact(contactId, input);
     if (saved === null) return;
     await setContactGroups(saved.id, groupIds);
-    status.value = `Saved “${saved.displayName}”.`;
+    status.value = t("contacts.dialog.saved", { name: saved.displayName });
     await load();
     await loadGroups();
     await select(saved.id);
@@ -130,7 +132,7 @@ async function onDelete(contactId: number): Promise<void> {
   if (!guardDesktop()) return;
   try {
     await deleteContact(contactId);
-    status.value = "Contact deleted.";
+    status.value = t("contacts.dialog.deleted");
     showEditor.value = false;
     selectedId.value = null;
     await load();
@@ -144,7 +146,10 @@ async function onImport(): Promise<void> {
   if (!guardDesktop()) return;
   const outcome = await importContactsVcard();
   if (outcome === null) return;
-  status.value = `Imported ${outcome.imported} contact(s); skipped ${outcome.skipped} already present.`;
+  status.value = t("contacts.dialog.imported", {
+    imported: outcome.imported,
+    skipped: outcome.skipped,
+  });
   await load();
   await loadGroups();
 }
@@ -153,7 +158,7 @@ async function onExport(): Promise<void> {
   if (!guardDesktop()) return;
   const count = await exportContactsVcard("3.0");
   if (count === null) return;
-  status.value = `Exported ${count} contact(s).`;
+  status.value = t("contacts.dialog.exported", { count });
 }
 
 async function onCreateGroup(name: string): Promise<void> {
@@ -195,7 +200,7 @@ function messageFrom(error: unknown): string {
           id="address-book-title"
           class="title"
         >
-          Address book
+          {{ t("contacts.dialog.title") }}
         </h2>
         <div class="head-actions">
           <button
@@ -203,22 +208,22 @@ function messageFrom(error: unknown): string {
             class="button"
             @click="onImport"
           >
-            Import vCard
+            {{ t("contacts.dialog.importVcard") }}
           </button>
           <button
             type="button"
             class="button"
             @click="onExport"
           >
-            Export vCard
+            {{ t("contacts.dialog.exportVcard") }}
           </button>
           <button
             type="button"
             class="button"
-            aria-label="Close address book"
+            :aria-label="t('contacts.dialog.closeAria')"
             @click="emit('close')"
           >
-            Close
+            {{ t("common.close") }}
           </button>
         </div>
       </header>
@@ -256,7 +261,7 @@ function messageFrom(error: unknown): string {
             v-else
             class="empty hint"
           >
-            Select a contact to edit, or create a new one.
+            {{ t("contacts.dialog.empty") }}
           </p>
         </div>
       </div>

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, watch } from "vue";
+import { useI18n } from "vue-i18n";
 
 import { respondInvitation } from "../../api/invitations";
 import {
@@ -12,6 +13,8 @@ import { printMessageDocument } from "../../lib/printDocument";
 import type { MessageDetailDto, RsvpChoice } from "../../types/mail";
 import EmptyState from "../common/EmptyState.vue";
 import MessageDetail from "./MessageDetail.vue";
+
+const { t } = useI18n({ useScope: "global" });
 
 const props = defineProps<{
   messageId: number | null;
@@ -72,7 +75,7 @@ function printCurrent(): void {
 try {
   useCommandRegistry().register({
     id: "message.print",
-    title: "Print message",
+    title: t("message.view.printCommand"),
     keywords: ["print"],
     shortcut: "Mod+P",
     run: printCurrent,
@@ -158,16 +161,16 @@ async function respond(choice: RsvpChoice): Promise<void> {
       }
       rsvpSendFailed.value = true;
       rsvpError.value =
-        result.error ?? "Your response was saved, but the reply could not be sent.";
+        result.error ?? t("message.view.rsvpSavedNotSent");
     } else {
       // Nothing was stored: a plain failure the user can simply retry.
       rsvpSendFailed.value = false;
-      rsvpError.value = result.error ?? "The response could not be sent.";
+      rsvpError.value = result.error ?? t("message.view.rsvpNotSent");
     }
   } catch (error) {
     if (props.messageId === id) {
       rsvpError.value =
-        typeof error === "string" ? error : "The response could not be sent.";
+        typeof error === "string" ? error : t("message.view.rsvpNotSent");
     }
   } finally {
     if (props.messageId === id) rsvpBusy.value = false;
@@ -220,29 +223,29 @@ watch(
 <template>
   <section
     class="view"
-    aria-label="Message"
+    :aria-label="t('message.view.ariaLabel')"
   >
     <EmptyState
       v-if="state === 'idle'"
-      title="No message selected"
-      detail="Select a message from the list to read it here."
+      :title="t('message.view.noSelectionTitle')"
+      :detail="t('message.view.noSelectionDetail')"
     />
     <p
       v-else-if="state === 'loading'"
       class="status"
       role="status"
     >
-      Loading message…
+      {{ t("message.view.loading") }}
     </p>
     <EmptyState
       v-else-if="state === 'error' || detail === null"
-      title="Message unavailable"
-      detail="This message could not be loaded. It may require the desktop app."
+      :title="t('message.view.unavailableTitle')"
+      :detail="t('message.view.unavailableDetail')"
     />
     <EmptyState
       v-else-if="detail.offlineUnavailable"
-      title="Not available offline"
-      detail="This message has not been downloaded for offline reading. Reconnect to load it."
+      :title="t('message.view.offlineTitle')"
+      :detail="t('message.view.offlineDetail')"
     />
     <MessageDetail
       v-else

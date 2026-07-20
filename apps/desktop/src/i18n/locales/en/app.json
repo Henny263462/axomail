@@ -1,0 +1,43 @@
+{
+  "app": {
+    "emptyState": {
+      "draftsTitle": "Drafts",
+      "draftsDetail": "Select a draft to continue editing it.",
+      "outboxTitle": "Outbox",
+      "outboxDetail": "Messages waiting to be delivered are listed here."
+    },
+    "undo": {
+      "archived": "Archived {n}",
+      "deleted": "Deleted {n}",
+      "markedJunk": "Marked {n} as junk",
+      "markedNotJunk": "Marked {n} as not junk",
+      "movedTo": "Moved to {name}",
+      "copiedTo": "Copied to {name}",
+      "unavailable": "This action needs the desktop app.",
+      "failed": "The action could not be completed."
+    },
+    "composer": {
+      "untitledTemplate": "Untitled template",
+      "noRecipients": "Add at least one recipient.",
+      "attachmentReminder": "Your message mentions an attachment, but none is attached. Send again to send anyway."
+    },
+    "command": {
+      "commandPalette": { "title": "Command palette", "keywords": "commands,run,actions" },
+      "shortcutHelp": { "title": "Keyboard shortcuts", "keywords": "help,keys,cheat sheet" },
+      "newMessage": { "title": "New message", "keywords": "compose,write,create" },
+      "reply": { "title": "Reply", "keywords": "respond" },
+      "replyAll": { "title": "Reply all", "keywords": "respond,everyone" },
+      "forward": { "title": "Forward", "keywords": "fwd" },
+      "archive": { "title": "Archive", "keywords": "file" },
+      "delete": { "title": "Delete to Trash", "keywords": "trash,remove" },
+      "toggleStar": { "title": "Toggle star", "keywords": "flag,favourite,favorite" },
+      "toggleUnread": { "title": "Toggle unread", "keywords": "read,seen,mark" },
+      "search": { "title": "Search messages", "keywords": "find,filter" },
+      "goInbox": { "title": "Go to Inbox", "keywords": "unified,inbox,home" },
+      "goFolders": { "title": "Go to Folders", "keywords": "sidebar,mailboxes,accounts" },
+      "addressBook": { "title": "Open address book", "keywords": "contacts,addresses,people" },
+      "markJunk": { "title": "Mark as junk", "keywords": "spam,junk" },
+      "markNotJunk": { "title": "Mark as not junk", "keywords": "ham,not spam" }
+    }
+  }
+}

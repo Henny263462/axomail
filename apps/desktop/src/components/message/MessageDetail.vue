@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed } from "vue";
+import { useI18n } from "vue-i18n";
 
 import type { MessageDetailDto, RsvpChoice } from "../../types/mail";
 import { formatDateTime, formatRecipients } from "./format";
@@ -11,6 +12,8 @@ import MessageBody from "./MessageBody.vue";
 import MessageReceiptBar from "./MessageReceiptBar.vue";
 import MessageTagArea from "./MessageTagArea.vue";
 import PgpBadge from "./PgpBadge.vue";
+
+const { t } = useI18n({ useScope: "global" });
 
 const props = withDefaults(
   defineProps<{
@@ -82,14 +85,14 @@ function alwaysAllow(): void {
     <header class="header">
       <div class="subject-row">
         <h1 class="subject">
-          {{ detail.subject ?? "(no subject)" }}
+          {{ detail.subject ?? t("message.row.noSubject") }}
         </h1>
         <button
           type="button"
           class="star"
           :class="{ on: detail.flagged }"
           :aria-pressed="detail.flagged"
-          :aria-label="detail.flagged ? 'Remove star' : 'Add star'"
+          :aria-label="detail.flagged ? t('message.detail.removeStar') : t('message.detail.addStar')"
           @click="emit('toggle-star')"
         >
           <span aria-hidden="true">{{ detail.flagged ? "★" : "☆" }}</span>
@@ -101,15 +104,15 @@ function alwaysAllow(): void {
       </p>
       <dl class="fields">
         <template v-if="toLine">
-          <dt>To</dt>
+          <dt>{{ t("message.detail.to") }}</dt>
           <dd>{{ toLine }}</dd>
         </template>
         <template v-if="ccLine">
-          <dt>Cc</dt>
+          <dt>{{ t("message.detail.cc") }}</dt>
           <dd>{{ ccLine }}</dd>
         </template>
         <template v-if="dateLine">
-          <dt>Date</dt>
+          <dt>{{ t("message.detail.date") }}</dt>
           <dd>{{ dateLine }}</dd>
         </template>
       </dl>
@@ -154,7 +157,7 @@ function alwaysAllow(): void {
       role="alert"
     >
       <p class="scam-title">
-        This message looks like a possible scam
+        {{ t("message.detail.scamTitle") }}
       </p>
       <ul class="scam-reasons">
         <li
@@ -171,14 +174,14 @@ function alwaysAllow(): void {
       class="info-bar"
       role="status"
     >
-      <span class="info-text">Remote content blocked ({{ detail.remoteBlockedCount }})</span>
+      <span class="info-text">{{ t("message.detail.remoteBlocked", { count: detail.remoteBlockedCount }) }}</span>
       <span class="info-actions">
         <button
           type="button"
           class="bar-action"
           @click="emit('show-remote-once')"
         >
-          Show once
+          {{ t("message.detail.showOnce") }}
         </button>
         <button
           type="button"
@@ -186,7 +189,7 @@ function alwaysAllow(): void {
           :disabled="!detail.fromAddress"
           @click="alwaysAllow"
         >
-          Always allow from {{ detail.fromAddress || "this sender" }}
+          {{ t("message.detail.alwaysAllowFrom", { sender: detail.fromAddress || t("message.detail.thisSender") }) }}
         </button>
       </span>
     </div>
@@ -196,7 +199,7 @@ function alwaysAllow(): void {
       class="notice"
       role="note"
     >
-      Active content was removed for your safety.
+      {{ t("message.detail.activeContentRemoved") }}
     </p>
 
     <MessageBody

@@ -34,8 +34,56 @@
  */
 import { createI18n } from "vue-i18n";
 
-import de from "./locales/de.json";
-import en from "./locales/en.json";
+import deBase from "./locales/de.json";
+import enBase from "./locales/en.json";
+
+/** A translation catalogue: nested objects of message strings. */
+type Catalogue = Record<string, unknown>;
+
+/** Narrows to a plain (non-array) object we can deep-merge into. */
+function isRecord(value: unknown): value is Catalogue {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+/** Deep-merges the `source` partial catalogue into `target`, in place. */
+function deepMerge(target: Catalogue, source: Catalogue): void {
+  for (const [key, value] of Object.entries(source)) {
+    const current = target[key];
+    if (isRecord(value) && isRecord(current)) {
+      deepMerge(current, value);
+    } else {
+      target[key] = value;
+    }
+  }
+}
+
+/**
+ * Builds a locale catalogue by deep-merging every per-namespace fragment under
+ * `locales/<lc>/*.json` onto the base `locales/<lc>.json`.
+ *
+ * The 5.4 string extraction grows the catalogue file-by-file (one fragment per
+ * UI area) rather than through a single ever-growing JSON blob, which also lets
+ * independent areas add keys without contending on one shared file. Fragments
+ * are merged in filename order for determinism; each is a partial message tree
+ * (e.g. `{ "message": { "reply": "Reply" } }`).
+ */
+function buildCatalogue<T extends Catalogue>(base: T, fragments: Record<string, unknown>): T {
+  const merged = structuredClone(base);
+  for (const path of Object.keys(fragments).sort()) {
+    const fragment = fragments[path];
+    if (isRecord(fragment)) deepMerge(merged, fragment);
+  }
+  return merged;
+}
+
+const en = buildCatalogue(
+  enBase,
+  import.meta.glob("./locales/en/*.json", { eager: true, import: "default" }),
+);
+const de = buildCatalogue(
+  deBase,
+  import.meta.glob("./locales/de/*.json", { eager: true, import: "default" }),
+);
 
 /** The concrete locales that ship with the app. English is the source. */
 export const SUPPORTED_LOCALES = ["en", "de"] as const;
