@@ -127,12 +127,21 @@ pub async fn send_message_impl(
     } else {
         let mut attachments = read_attachments(input.attachments.clone()).await?;
         attachments.extend(decode_attachments(&input.forwarded_attachments)?);
+        // A read receipt is requested to the sender's own address: the chosen
+        // identity's address when one is selected, else the account address.
+        let disposition_notification_to = input.request_receipt.then(|| {
+            identity.as_ref().map_or_else(
+                || account.email.as_str().to_owned(),
+                |id| id.fields.email.clone(),
+            )
+        });
         MessageExtras {
             in_reply_to: input.in_reply_to.clone(),
             references: input.references.clone(),
             html_body: sanitize_html_body(input.html_body.as_deref()),
             attachments,
             pgp: pgp_plan,
+            disposition_notification_to,
         }
     };
 

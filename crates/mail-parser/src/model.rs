@@ -40,6 +40,14 @@ pub struct ParsedMessage {
     pub preview: String,
     /// Attachments and inline parts in document order.
     pub attachments: Vec<ParsedAttachment>,
+    /// `Disposition-Notification-To` addresses (RFC 8098): a request that a
+    /// read receipt be sent to these addresses when the message is displayed.
+    /// Empty when the header is absent or carries no parseable address.
+    pub disposition_notification_to: Vec<Address>,
+    /// Whether the message looks like automated/list mail — it carries any
+    /// RFC 2369/2919 `List-*` header, or a `Precedence: list`/`bulk`. Read
+    /// receipts are typically not sent for such messages.
+    pub mailing_list: bool,
     /// Redacted notes about content that was skipped (for example malformed
     /// addresses), so callers can surface a "some data could not be read"
     /// hint without failing the whole message.

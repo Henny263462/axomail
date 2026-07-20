@@ -101,6 +101,7 @@ pub fn compose_input(account_id: i64, to: &[&str], subject: &str) -> ComposeInpu
         sign: false,
         encrypt: false,
         pgp_passphrase: None,
+        request_receipt: false,
     }
 }
 

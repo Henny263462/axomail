@@ -10,6 +10,7 @@ import type {
   AccountSummary,
   AttachmentCandidateDto,
   ComposeAttachmentDto,
+  ComposeInitial,
   ComposerPrefillDto,
   DraftDto,
   IdentityDto,
@@ -29,6 +30,8 @@ const props = defineProps<{
   draft?: DraftDto | null;
   /** Reply/forward prefill; when present it seeds the form (see prepare_reply). */
   prefill?: ComposerPrefillDto | null;
+  /** New-message-from-template seed; fills a fresh composition (no draft id). */
+  initial?: ComposeInitial | null;
   /** Accounts, used only to label the From picker's identity groups. */
   accounts?: AccountSummary[];
 }>();
@@ -101,6 +104,8 @@ const pgpRecipients = computed(() =>
     .map((part) => part.trim())
     .filter((part) => part.length > 0),
 );
+// Whether to request a read receipt (MDN) on send.
+const requestReceipt = ref(false);
 
 const sending = ref(false);
 const savingDraft = ref(false);
@@ -134,6 +139,8 @@ onMounted(async () => {
   const prefill = props.prefill ?? null;
   if (draft === null && prefill !== null) {
     loadPrefill(prefill);
+  } else if (draft === null && props.initial != null) {
+    loadInitial(props.initial);
   }
   const loaded = await listIdentities();
   if (loaded !== null) {
@@ -145,7 +152,7 @@ onMounted(async () => {
 
 // Submission orchestration (build payload + send/schedule/save/autosave) lives
 // in a composable so this shell stays under the size gate.
-const { isComposerEmpty, onSend, onSchedule, onSaveDraft, autosave } =
+const { isComposerEmpty, onSend, onSchedule, onSaveDraft, saveAsTemplate, autosave } =
   useComposerSubmit({
     accountId,
     to,
@@ -161,6 +168,7 @@ const { isComposerEmpty, onSend, onSchedule, onSaveDraft, autosave } =
     replySource,
     selectedIdentityId,
     draftId,
+    requestReceipt,
     hasPrefill,
     currentSignatureText,
     sign,
@@ -200,6 +208,16 @@ function loadPrefill(prefill: ComposerPrefillDto): void {
   forwardedAttachments.value = prefill.attachments;
   replySource.value = prefill.source;
   prefillIdentityId.value = prefill.identityId;
+}
+
+/** Fills a fresh composition from a template seed. Unlike a reply prefill the
+ * body carries no placed signature, so signature handling stays enabled. */
+function loadInitial(initial: ComposeInitial): void {
+  to.value = (initial.to ?? []).join(", ");
+  cc.value = (initial.cc ?? []).join(", ");
+  bcc.value = (initial.bcc ?? []).join(", ");
+  subject.value = initial.subject ?? "";
+  bodyText.value = initial.body ?? "";
 }
 
 /** Picks the initial identity — the prefill's guess when present, else the
@@ -287,6 +305,22 @@ function close(): void {
           :from-email="fromEmail"
           :recipients="pgpRecipients"
         />
+        <div class="options">
+          <label class="receipt">
+            <input
+              v-model="requestReceipt"
+              type="checkbox"
+            >
+            {{ $t("compose.requestReceipt") }}
+          </label>
+          <button
+            type="button"
+            class="template-button"
+            @click="saveAsTemplate"
+          >
+            {{ $t("compose.saveAsTemplate") }}
+          </button>
+        </div>
         <p
           v-if="attachmentWarning !== ''"
           class="warning"
@@ -350,5 +384,35 @@ function close(): void {
   border: 1px solid var(--color-border-strong);
   border-radius: var(--radius-sm);
   padding: var(--space-2);
+}
+
+.options {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+
+.receipt {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--text-sm);
+  color: var(--color-text);
+}
+
+.template-button {
+  font-size: var(--text-sm);
+  color: var(--color-accent);
+  background: none;
+  border: none;
+  padding: var(--space-1) var(--space-2);
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+}
+
+.template-button:hover {
+  background: var(--color-bg-subtle);
 }
 </style>

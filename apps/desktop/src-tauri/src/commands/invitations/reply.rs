@@ -89,6 +89,7 @@ pub(super) fn prepare_rsvp(
         sign: false,
         encrypt: false,
         pgp_passphrase: None,
+        request_receipt: false,
     };
 
     let invite = NewInvite {

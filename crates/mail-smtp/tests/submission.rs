@@ -394,6 +394,7 @@ fn sample_message() -> OutgoingMessage {
         }],
         in_reply_to: None,
         references: vec![],
+        disposition_notification_to: None,
     }
 }
 

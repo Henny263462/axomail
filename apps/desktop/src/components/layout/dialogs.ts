@@ -1,15 +1,17 @@
-import type { ComposerPrefillDto, DraftDto } from "../../types/mail";
+import type { ComposeInitial, ComposerPrefillDto, DraftDto } from "../../types/mail";
 import type { SavedSearchDto } from "../../types/search";
 
 /**
- * Payload for opening the composer: which account, an optional draft, and an
- * optional reply/forward prefill. A `prefill` (from `prepare_reply`) seeds the
- * recipients, subject, body, threading headers, and a forwarded attachment.
+ * Payload for opening the composer: which account, an optional draft, an
+ * optional reply/forward prefill, and an optional `initial` seed. A `prefill`
+ * (from `prepare_reply`) seeds recipients, subject, body, threading headers, and
+ * a forwarded attachment; `initial` seeds a fresh message from a template.
  */
 export interface ComposerPayload {
   accountId: number;
   draft: DraftDto | null;
   prefill?: ComposerPrefillDto | null;
+  initial?: ComposeInitial | null;
 }
 
 /** Payload for the move/copy folder picker: which messages, and which action. */
@@ -42,4 +44,6 @@ export type AppDialogMap = {
   shortcutHelp: undefined;
   /** The advanced/faceted search builder. */
   advancedSearch: AdvancedSearchPayload;
+  /** The message-template picker (New message from template). */
+  templates: undefined;
 };

@@ -144,5 +144,43 @@
       "edit": "Edit saved search",
       "delete": "Delete saved search"
     }
+  },
+  "compose": {
+    "requestReceipt": "Request a read receipt",
+    "saveAsTemplate": "Save as template",
+    "templateSaved": "Saved template “{name}”.",
+    "templateUnavailable": "Saving a template needs the desktop app; it is unavailable in the browser preview."
+  },
+  "receipts": {
+    "bar": {
+      "requested": "The sender requested a read receipt.",
+      "send": "Send receipt",
+      "ignore": "Ignore",
+      "sending": "Sending receipt…",
+      "sent": "Read receipt sent.",
+      "failed": "Could not send the read receipt.",
+      "unavailable": "Sending a receipt needs the desktop app."
+    },
+    "settings": {
+      "title": "Read receipts",
+      "hint": "Choose how axomail responds when a sender asks for a read receipt (a message disposition notification).",
+      "policyNever": "Never send a receipt",
+      "policyAsk": "Ask me each time",
+      "policyAlways": "Always send a receipt",
+      "onlyWhenAddressed": "Only when the message is addressed to me",
+      "neverForLists": "Never for mailing-list messages",
+      "statusSaved": "Read-receipt settings updated.",
+      "statusUnavailable": "Changing read-receipt settings needs the desktop app; it is unavailable in the browser preview."
+    }
+  },
+  "templates": {
+    "title": "Templates",
+    "command": "New message from template",
+    "empty": "No templates yet. Use “Save as template” in the composer to create one.",
+    "new": "New message",
+    "delete": "Delete",
+    "close": "Close",
+    "unavailable": "Templates need the desktop app; they are unavailable in the browser preview.",
+    "openAria": "Open message templates"
   }
 }

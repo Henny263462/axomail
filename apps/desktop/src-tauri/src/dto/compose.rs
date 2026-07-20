@@ -96,6 +96,13 @@ pub struct ComposeInput {
     /// (ADR-0015). Its `Debug` is redacted below so it cannot leak in a trace.
     #[serde(default)]
     pub pgp_passphrase: Option<String>,
+    /// When `true`, request a read receipt (message disposition notification,
+    /// RFC 8098): the send path writes a `Disposition-Notification-To` header
+    /// pointing at the sender's own address. Like the threading headers this
+    /// rides only the immediate-send path (the durable outbox row is text-only),
+    /// so a scheduled or offline send omits the request — a documented limit.
+    #[serde(default)]
+    pub request_receipt: bool,
 }
 
 impl std::fmt::Debug for ComposeInput {
@@ -122,6 +129,7 @@ impl std::fmt::Debug for ComposeInput {
                 "pgp_passphrase",
                 &self.pgp_passphrase.as_ref().map(|_| "<redacted>"),
             )
+            .field("request_receipt", &self.request_receipt)
             .finish()
     }
 }

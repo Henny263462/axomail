@@ -95,6 +95,76 @@ impl LanguagePreference {
     }
 }
 
+/// How incoming read-receipt (MDN) requests are honoured.
+///
+/// `Never` never sends a receipt; `Always` sends one automatically; `Ask`
+/// surfaces the request in the reading pane and waits for the user to decide.
+/// The two conditions in [`ReceiptSettingsDto`] can downgrade `Ask`/`Always` to
+/// "do not send" for a specific message. Serialized in `lowercase`
+/// (`"never"`, `"ask"`, `"always"`) to match the frontend union.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum ReceiptPolicy {
+    /// Never send a read receipt.
+    Never,
+    /// Ask before sending (the default): show the request, act on confirmation.
+    #[default]
+    Ask,
+    /// Send a read receipt automatically.
+    Always,
+}
+
+impl ReceiptPolicy {
+    /// The canonical string stored in the `app_settings` table.
+    #[must_use]
+    pub fn as_key(self) -> &'static str {
+        match self {
+            Self::Never => "never",
+            Self::Ask => "ask",
+            Self::Always => "always",
+        }
+    }
+
+    /// Parses the stored key, falling back to [`ReceiptPolicy::Ask`] for an
+    /// absent or unrecognized value (the safe middle ground: never auto-sends,
+    /// never silently suppresses).
+    #[must_use]
+    pub fn from_key(value: &str) -> Self {
+        match value {
+            "never" => Self::Never,
+            "always" => Self::Always,
+            _ => Self::Ask,
+        }
+    }
+}
+
+/// The read-receipt (MDN) honour policy plus its two conditions.
+///
+/// `onlyWhenAddressed`: when `true`, only honour a request for a message that
+/// has one of my addresses in `To`/`Cc`. `neverForMailingLists`: when `true`,
+/// never send a receipt for list/bulk mail. Both are privacy-preserving and on
+/// by default.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ReceiptSettingsDto {
+    /// Base policy for honouring a receipt request.
+    pub policy: ReceiptPolicy,
+    /// Only honour a request when the message is addressed to me.
+    pub only_when_addressed: bool,
+    /// Never honour a request for mailing-list / bulk mail.
+    pub never_for_mailing_lists: bool,
+}
+
+impl Default for ReceiptSettingsDto {
+    fn default() -> Self {
+        Self {
+            policy: ReceiptPolicy::default(),
+            only_when_addressed: true,
+            never_for_mailing_lists: true,
+        }
+    }
+}
+
 /// One account's POP3 server-deletion policy.
 ///
 /// Surfaced read-only through [`SettingsDto`] so the settings view can show

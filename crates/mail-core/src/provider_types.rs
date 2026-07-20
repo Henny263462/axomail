@@ -203,6 +203,11 @@ pub struct OutgoingMessage {
     /// first, ending with the direct parent. Written as a threading header by
     /// the SMTP adapter when non-empty; empty for a fresh message or forward.
     pub references: Vec<String>,
+    /// `Disposition-Notification-To`: when set, requests a message disposition
+    /// notification (a read receipt, RFC 8098) be sent to this address. The
+    /// SMTP adapter writes it as the header value verbatim; `None` requests no
+    /// receipt.
+    pub disposition_notification_to: Option<String>,
 }
 
 /// Acknowledgment for a submitted message.

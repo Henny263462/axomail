@@ -13,6 +13,7 @@ import NotificationsSection from "./NotificationsSection.vue";
 import PgpKeysSection from "./PgpKeysSection.vue";
 import Pop3DeleteSection from "./Pop3DeleteSection.vue";
 import PushSection from "./PushSection.vue";
+import ReceiptsSection from "./ReceiptsSection.vue";
 import ShortcutsSection from "./ShortcutsSection.vue";
 import SyncIntervalSection from "./SyncIntervalSection.vue";
 import TagsSection from "./TagsSection.vue";
@@ -45,6 +46,7 @@ export const settingsSections: SettingsSection[] = [
   { id: "sync-interval", title: "Sync", component: SyncIntervalSection },
   { id: "push", title: "Push", component: PushSection },
   { id: "auto-read", title: "Reading", component: AutoReadSection },
+  { id: "receipts", title: "Read receipts", component: ReceiptsSection },
   { id: "appearance", title: "Appearance", component: AppearanceSection },
   { id: "language", title: "Language", component: LanguageSection },
   {

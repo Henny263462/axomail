@@ -14,6 +14,7 @@ pub mod notifications;
 pub mod oauth;
 pub mod pop3_sync;
 pub mod push;
+pub mod receipts;
 pub mod scheduler;
 pub mod settings;
 pub mod startup;
@@ -150,6 +151,12 @@ pub fn run() {
             commands::compose::list_outbox,
             commands::reply::prepare_reply,
             commands::reply::mark_reply_source,
+            commands::mdn::send_mdn,
+            commands::mdn::get_receipt_settings,
+            commands::mdn::set_receipt_settings,
+            commands::templates::list_templates,
+            commands::templates::save_template,
+            commands::templates::delete_template,
             commands::invitations::respond_invitation,
             commands::attachments::stat_attachments,
             commands::outbox_schedule::send_outbox_now,

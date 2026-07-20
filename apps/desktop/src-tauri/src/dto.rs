@@ -31,6 +31,7 @@ mod invitation;
 mod jobs;
 mod junk;
 mod mbox;
+mod mdn;
 mod message;
 mod oauth;
 mod offline;
@@ -42,6 +43,7 @@ mod search;
 mod settings;
 mod sync_event;
 mod tag;
+mod template;
 mod unified;
 
 pub use account::{
@@ -61,7 +63,9 @@ pub use contact::{
     ContactDetailDto, ContactDto, ContactEmailDto, ContactEmailInput, ContactGroupDto,
     ContactInput, RecipientSuggestionDto, VCardImportDto,
 };
-pub use detail::{AttachmentMetaDto, MessageDetailDto, RecipientDto, ScamFlagDto};
+pub use detail::{
+    AttachmentMetaDto, MessageDetailDto, ReceiptRequestDto, RecipientDto, ScamFlagDto,
+};
 pub use filter::{
     AccountFilterSettingsDto, FilterActionDto, FilterConditionDto, FilterDto, FilterInputDto,
     FilterRunOutcomeDto,
@@ -72,6 +76,7 @@ pub use invitation::{InvitationDto, InvitationResponseDto, RsvpChoice};
 pub use jobs::SyncJobDto;
 pub use junk::JunkSettingsDto;
 pub use mbox::{MboxExportDto, MboxImportDto};
+pub use mdn::MdnOutcomeDto;
 pub use message::{MessageListItemDto, MessageListPageDto};
 pub use oauth::{OAuthAuthorizeResult, OAuthAuthorizeStatus};
 pub use offline::OfflinePolicyDto;
@@ -83,9 +88,13 @@ pub use saved_search::{
     SearchScopeKind,
 };
 pub use search::SearchResultDto;
-pub use settings::{LanguagePreference, Pop3DeletePolicyDto, SettingsDto, ThemePreference};
+pub use settings::{
+    LanguagePreference, Pop3DeletePolicyDto, ReceiptPolicy, ReceiptSettingsDto, SettingsDto,
+    ThemePreference,
+};
 pub use sync_event::SyncEventDto;
 pub use tag::{MessageTagOptionDto, MessageTagOptionsDto, TagChipDto, TagDto};
+pub use template::{MessageTemplateDto, NewTemplateInput};
 pub use unified::{UnifiedItemDto, UnifiedPageDto};
 
 /// Largest integer a JavaScript `number` can represent exactly: `2^53 - 1`.

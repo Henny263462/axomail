@@ -56,6 +56,30 @@ pub(crate) fn first_address(
         .next()
 }
 
+/// Extracts the email addresses from a raw address-list header value (the
+/// unparsed text after the colon), such as `Disposition-Notification-To`.
+///
+/// The `mail_parser` default configuration does not type this header, and
+/// switching its config to do so drops MIME-body parsing (a documented
+/// `mail_parser` builder quirk), so the addresses are recovered here instead.
+/// Comma-separated entries are split; a `Name <addr>` form is reduced to the
+/// bracketed address, a bare token is used as-is; each is validated and
+/// invalid entries are dropped. A quoted display name containing a comma is
+/// not handled (rare for this header) — such an entry is simply skipped.
+pub(crate) fn addresses_from_raw(raw: &str) -> Vec<Address> {
+    raw.split(',')
+        .filter_map(|entry| {
+            let token = match (entry.find('<'), entry.find('>')) {
+                (Some(open), Some(close)) if close > open + 1 => &entry[open + 1..close],
+                _ => entry,
+            };
+            EmailAddress::parse(token.trim())
+                .ok()
+                .map(Address::from_email)
+        })
+        .collect()
+}
+
 /// Trims a display name and drops it when empty.
 fn clean_name(name: Option<&str>) -> Option<String> {
     let trimmed = name?.trim();

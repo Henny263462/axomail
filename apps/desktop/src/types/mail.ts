@@ -18,6 +18,7 @@
 
 import type { AuthMechanism } from "./account";
 import type { InvitationDto } from "./invitation";
+import type { ReceiptRequestDto } from "./receipts";
 
 export * from "./account";
 export * from "./identity";
@@ -261,6 +262,7 @@ export interface MessageDetailDto {
    * invitation, else null/absent.
    */
   invitation?: InvitationDto | null;
+  receiptRequest?: ReceiptRequestDto | null;
 }
 
 /**

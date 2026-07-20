@@ -5,7 +5,7 @@ use mail_parser::{
     ContentType, HeaderValue, Message, MessageParser, MessagePart, MimeHeaders, PartType,
 };
 
-use crate::address::{collect_addresses, first_address};
+use crate::address::{addresses_from_raw, collect_addresses, first_address};
 use crate::model::{ParsedAttachment, ParsedMessage};
 use crate::preview::build_preview;
 
@@ -33,6 +33,13 @@ pub fn parse_message(bytes: &[u8]) -> Result<ParsedMessage, MailError> {
     let to = collect_addresses(message.to(), "to", &mut parse_warnings);
     let cc = collect_addresses(message.cc(), "cc", &mut parse_warnings);
     let reply_to = first_address(message.reply_to(), "reply-to", &mut parse_warnings);
+    // `Disposition-Notification-To` is not typed by the default parser (typing
+    // it drops MIME-body parsing), so its addresses come from the raw value.
+    let disposition_notification_to = message
+        .header_raw("Disposition-Notification-To")
+        .map(addresses_from_raw)
+        .unwrap_or_default();
+    let mailing_list = detect_mailing_list(&message);
 
     let text_body = extract_text_body(&message);
     let html_body = extract_html_body(&message);
@@ -53,7 +60,34 @@ pub fn parse_message(bytes: &[u8]) -> Result<ParsedMessage, MailError> {
         html_body,
         preview,
         attachments,
+        disposition_notification_to,
+        mailing_list,
         parse_warnings,
+    })
+}
+
+/// `List-*` headers (RFC 2369/2919) whose mere presence marks the message as
+/// list mail.
+const MAILING_LIST_HEADERS: [&str; 5] = [
+    "List-Id",
+    "List-Post",
+    "List-Unsubscribe",
+    "List-Help",
+    "List-Archive",
+];
+
+/// Detects automated/list mail: any RFC 2369/2919 `List-*` header, or a
+/// `Precedence` of `list` or `bulk`.
+fn detect_mailing_list(message: &Message<'_>) -> bool {
+    if MAILING_LIST_HEADERS
+        .iter()
+        .any(|name| message.header_raw(*name).is_some())
+    {
+        return true;
+    }
+    message.header_raw("Precedence").is_some_and(|value| {
+        let value = value.trim().to_ascii_lowercase();
+        value == "list" || value == "bulk"
     })
 }
 

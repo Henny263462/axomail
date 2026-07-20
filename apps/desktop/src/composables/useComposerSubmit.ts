@@ -9,6 +9,8 @@ import type { ComputedRef, Ref } from "vue";
 
 import { saveDraft, sendMessage } from "../api/compose";
 import { markReplySource } from "../api/reply";
+import { saveTemplate } from "../api/templates";
+import { i18n } from "../i18n";
 import { mentionsAttachmentKeyword, signatureHtml } from "../lib/htmlBody";
 import { signatureBlock } from "../lib/signature";
 import type {
@@ -34,6 +36,8 @@ export interface ComposerSubmitContext {
   replySource: Ref<PrefillSourceDto | null>;
   selectedIdentityId: Ref<number | null>;
   draftId: Ref<number | null>;
+  /** Whether to request a read receipt (MDN) on this send. */
+  requestReceipt: Ref<boolean>;
   /** True for a reply/forward whose body already carries a placed signature. */
   hasPrefill: Ref<boolean>;
   currentSignatureText: ComputedRef<string>;
@@ -127,7 +131,36 @@ export function useComposerSubmit(ctx: ComposerSubmitContext) {
     if (ctx.encrypt.value) {
       input.encrypt = true;
     }
+    if (ctx.requestReceipt.value) {
+      input.requestReceipt = true;
+    }
     return input;
+  }
+
+  /**
+   * Saves the composer's current content as a reusable template, named after
+   * the subject (falling back to a placeholder). Reports the outcome through the
+   * shared status/error live regions.
+   */
+  async function saveAsTemplate(): Promise<void> {
+    if (ctx.sending.value || ctx.savingDraft.value) return;
+    ctx.errorMessage.value = "";
+    const name = ctx.subject.value.trim() || "Untitled template";
+    const template = await saveTemplate({
+      name,
+      subject: ctx.subject.value.trim(),
+      to: splitAddresses(ctx.to.value),
+      cc: splitAddresses(ctx.cc.value),
+      bcc: splitAddresses(ctx.bcc.value),
+      bodyText: ctx.bodyText.value,
+    });
+    if (template === null) {
+      ctx.errorMessage.value = i18n.global.t("compose.templateUnavailable");
+      return;
+    }
+    ctx.statusMessage.value = i18n.global.t("compose.templateSaved", {
+      name: template.name,
+    });
   }
 
   /** After a successful reply/forward send, marks the source message answered
@@ -237,6 +270,7 @@ export function useComposerSubmit(ctx: ComposerSubmitContext) {
     onSend,
     onSchedule,
     onSaveDraft,
+    saveAsTemplate,
     autosave,
   };
 }
