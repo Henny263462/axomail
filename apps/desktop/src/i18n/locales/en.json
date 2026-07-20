@@ -11,6 +11,19 @@
       "darkHint": "Always use the dark theme."
     }
   },
+  "setup": {
+    "autoconfig": {
+      "action": "Find settings automatically",
+      "searching": "Searching for settings…",
+      "foundVia": "Settings found via {source}. Review them below.",
+      "sourceAutoconfig": "the mail provider",
+      "sourceIspdb": "the Mozilla provider database",
+      "sourceGuess": "a common-provider guess",
+      "notFound": "No settings found automatically. Enter them below.",
+      "unavailable": "Automatic search needs the desktop app. Enter the settings below.",
+      "needEmail": "Enter an email address first."
+    }
+  },
   "language": {
     "title": "Language",
     "hint": "Choose the language axomail uses. \"System default\" follows your operating system's language.",

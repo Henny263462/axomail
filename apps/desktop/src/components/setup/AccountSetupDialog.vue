@@ -3,6 +3,7 @@ import { computed, onMounted, ref } from "vue";
 
 import type { AccountSummary } from "../../types/mail";
 import AuthMethodFields from "./AuthMethodFields.vue";
+import AutoconfigPanel from "./AutoconfigPanel.vue";
 import ConnectionTestPanel from "./ConnectionTestPanel.vue";
 import ServerConfigFields from "./ServerConfigFields.vue";
 import { useAccountSetup } from "./useAccountSetup";
@@ -28,7 +29,10 @@ const {
   testing,
   testResult,
   testMessage,
+  autoconfigStatus,
+  autoconfigSource,
   isOAuth,
+  onFindSettings,
   onTest,
   onSubmit,
 } = useAccountSetup({ onCreated: (account) => emit("created", account) });
@@ -119,6 +123,12 @@ function onKeydown(event: KeyboardEvent): void {
             autocomplete="off"
           >
         </div>
+
+        <AutoconfigPanel
+          :status="autoconfigStatus"
+          :source="autoconfigSource"
+          @find="onFindSettings"
+        />
 
         <AuthMethodFields
           v-model:mechanism="mechanism"

@@ -9,6 +9,7 @@ pub mod account_secrets;
 pub mod accounts;
 pub mod actions;
 pub mod attachments;
+pub mod autoconfig;
 pub mod compose;
 pub mod connection;
 pub mod contacts;
