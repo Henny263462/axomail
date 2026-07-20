@@ -213,6 +213,29 @@ pub struct SendResult {
     pub server_reply: Option<String>,
 }
 
+/// How an [`idle`](crate::IncomingMailProvider::idle) wait ended.
+///
+/// The push (IMAP IDLE, RFC 2177) supervisor drives one `idle` call per waiting
+/// period and reacts to which of these it got back: [`Notified`](Self::Notified)
+/// means the server pushed a mailbox change (trigger an immediate sync);
+/// [`TimedOut`](Self::TimedOut) is the renewal cue (re-issue IDLE before the
+/// server's ~29-minute inactivity limit); [`Interrupted`](Self::Interrupted)
+/// means the caller's interrupt future fired (a clean shutdown/cancel, after
+/// which the adapter has already sent `DONE`). In every case the adapter leaves
+/// the session usable for the next call.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum IdleOutcome {
+    /// The server reported a change to the idled mailbox (new mail, an
+    /// expunge, or a flag update). The caller should sync the mailbox now.
+    Notified,
+    /// The wait reached its renewal deadline without a server change. The
+    /// caller should re-issue IDLE to keep the push connection alive.
+    TimedOut,
+    /// The caller's interrupt future fired (cancel/shutdown). `DONE` has been
+    /// sent; the caller should stop idling.
+    Interrupted,
+}
+
 /// Result of an `APPEND` of a message into a server mailbox.
 ///
 /// `remote_id` is the server identity the appended message was assigned, when

@@ -35,14 +35,16 @@ pub struct SyncEventDto {
 }
 
 impl SyncEventDto {
-    /// Maps an engine event to its DTO, validating the ids it carries.
+    /// Maps a job-lifecycle engine event to its DTO, validating the ids it
+    /// carries. Returns `None` for non-job events (push status), which travel
+    /// on their own channel (see [`PushStatusDto`](super::PushStatusDto)).
     ///
     /// # Errors
     ///
     /// Returns [`MailError::Configuration`] if a job or mailbox id is out of
     /// the JavaScript safe integer range.
-    pub fn from_event(event: &SyncEvent) -> Result<Self, MailError> {
-        Ok(match event {
+    pub fn from_event(event: &SyncEvent) -> Result<Option<Self>, MailError> {
+        Ok(Some(match event {
             SyncEvent::JobQueued {
                 job_id, mailbox_id, ..
             } => {
@@ -91,7 +93,9 @@ impl SyncEventDto {
                 dto.message = Some(message.clone());
                 dto
             }
-        })
+            // Push status is not a job event; it rides `axomail://push`.
+            SyncEvent::PushStateChanged { .. } => return Ok(None),
+        }))
     }
 
     /// Starts a DTO for `kind` with a validated job id and empty fields.

@@ -414,10 +414,14 @@ pub async fn update_account(
         .map_err(map_command_error)
 }
 
-/// Pushes the current inbox target set into the scheduler, logging (never
-/// surfacing) a failure: the account change already succeeded.
+/// Pushes the current inbox target set into the background scheduler and the
+/// IMAP IDLE push supervisor, logging (never surfacing) a failure: the account
+/// change already succeeded.
 async fn refresh_scheduler_targets(state: &AppState) {
     if let Err(error) = state.scheduler().refresh_targets().await {
         tracing::warn!(error = %error, "could not refresh background-sync targets");
+    }
+    if let Err(error) = state.push().refresh_targets().await {
+        tracing::warn!(error = %error, "could not refresh push targets");
     }
 }

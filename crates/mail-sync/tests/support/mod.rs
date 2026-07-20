@@ -15,10 +15,10 @@ use std::time::Duration;
 
 use axomail_core::{
     Account, AccountAuth, AccountId, Address, AppendOutcome, ConnectionSecurity, CredentialRef,
-    EmailAddress, FlagDelta, FlagSet, IncomingMailProvider, IncomingProtocol, IncomingServerConfig,
-    MailError, MailboxId, MailboxName, MailboxRole, MessageFlags, OutgoingServerConfig, RawMessage,
-    RemoteEnvelope, RemoteMailboxState, RemoteMessageId, ServerEndpoint, SyncOutcome, SyncRequest,
-    UtcTimestamp,
+    EmailAddress, FlagDelta, FlagSet, IdleOutcome, IncomingMailProvider, IncomingProtocol,
+    IncomingServerConfig, MailError, MailboxId, MailboxName, MailboxRole, MessageFlags,
+    OutgoingServerConfig, RawMessage, RemoteEnvelope, RemoteMailboxState, RemoteMessageId,
+    ServerEndpoint, SyncOutcome, SyncRequest, UtcTimestamp,
 };
 use axomail_storage::{NewAccount, NewMailbox, NewPendingOp, Store};
 use axomail_sync::{ProviderFactory, SyncConfig, SyncEvent, SyncJobId};
@@ -99,6 +99,24 @@ pub struct FakeWorld {
     // claim but before its terminal transition (a command's OpReplay enqueue
     // would be deduped away here). Consumed on first use.
     inject_on_disconnect: Mutex<Option<(Store, NewPendingOp)>>,
+    // Push (IDLE) scripting (track 4.7). `idle_supported` gates `supports_idle`;
+    // `idle_script` feeds one outcome per `idle` call (an empty script parks on
+    // the interrupt, modelling a steady, quiet connection); `idle_calls` counts
+    // the calls across every provider instance sharing this world.
+    idle_supported: Mutex<bool>,
+    idle_script: Mutex<VecDeque<IdleStep>>,
+    idle_calls: Mutex<usize>,
+}
+
+/// One scripted [`IncomingMailProvider::idle`] outcome for [`FakeWorld`].
+#[derive(Debug, Clone, Copy)]
+pub enum IdleStep {
+    /// The server pushed a change: `idle` returns [`IdleOutcome::Notified`].
+    Notified,
+    /// The renewal window elapsed: `idle` returns [`IdleOutcome::TimedOut`].
+    TimedOut,
+    /// The connection dropped: `idle` returns an error of this class.
+    Fail(FailKind),
 }
 
 impl FakeWorld {
@@ -219,6 +237,23 @@ impl FakeWorld {
     /// OpReplay drains it rather than stranding it.
     pub fn inject_op_on_disconnect(&self, store: Store, op: NewPendingOp) {
         *lock(&self.inject_on_disconnect) = Some((store, op));
+    }
+
+    /// Makes `supports_idle` report `supported` (default `false`).
+    pub fn set_idle_supported(&self, supported: bool) {
+        *lock(&self.idle_supported) = supported;
+    }
+
+    /// Installs the outcomes `idle` returns, one per call, in order. When the
+    /// script is exhausted `idle` parks on the interrupt (a quiet connection).
+    pub fn script_idle(&self, steps: Vec<IdleStep>) {
+        *lock(&self.idle_script) = steps.into();
+    }
+
+    /// Number of `idle` calls observed across every provider on this world.
+    #[must_use]
+    pub fn idle_calls(&self) -> usize {
+        *lock(&self.idle_calls)
     }
 
     /// The mailbox names the write-back executor selected, in call order.
@@ -463,6 +498,29 @@ impl IncomingMailProvider for FakeProvider {
         _subscribed: bool,
     ) -> Result<(), MailError> {
         Ok(())
+    }
+
+    fn supports_idle(&self) -> bool {
+        *lock(&self.world.idle_supported)
+    }
+
+    async fn idle(
+        &mut self,
+        _max_wait: Duration,
+        interrupt: impl Future<Output = ()> + Send,
+    ) -> Result<IdleOutcome, MailError> {
+        *lock(&self.world.idle_calls) += 1;
+        let step = lock(&self.world.idle_script).pop_front();
+        match step {
+            Some(IdleStep::Notified) => Ok(IdleOutcome::Notified),
+            Some(IdleStep::TimedOut) => Ok(IdleOutcome::TimedOut),
+            Some(IdleStep::Fail(kind)) => Err(kind.build()),
+            // A quiet, steady connection: wait until the supervisor cancels.
+            None => {
+                interrupt.await;
+                Ok(IdleOutcome::Interrupted)
+            }
+        }
     }
 
     async fn disconnect(&mut self) -> Result<(), MailError> {

@@ -12,6 +12,7 @@
 //! | `auto_mark_read_delay_ms` | decimal integer, clamped `<= 30000` | `0` |
 //! | `work_offline` | `"true"`/`"false"` | `false` |
 //! | `list_threaded` | `"true"`/`"false"` | `false` |
+//! | `push_enabled` | `"true"`/`"false"` | `true` |
 //! | `pop3_delete_policy.<accountId>` | `"true"`/`"false"` | `false` |
 //! | `empty_trash_on_exit.<accountId>` | `"true"`/`"false"` | `false` |
 //!
@@ -40,6 +41,8 @@ const KEY_AUTO_MARK_READ_DELAY: &str = "auto_mark_read_delay_ms";
 const KEY_WORK_OFFLINE: &str = "work_offline";
 /// Whether the message list groups messages into conversation threads.
 const KEY_LIST_THREADED: &str = "list_threaded";
+/// Whether IMAP IDLE push is used when the server supports it.
+const KEY_PUSH_ENABLED: &str = "push_enabled";
 /// Prefix of the per-account POP3 server-deletion policy key.
 const KEY_POP3_DELETE_PREFIX: &str = "pop3_delete_policy.";
 /// Prefix of the per-account "empty Trash on exit" policy key.
@@ -60,6 +63,9 @@ pub const MAX_AUTO_MARK_READ_DELAY_MS: u32 = 30_000;
 /// The message list starts flat (not threaded) so a fresh install behaves like
 /// the pre-threading UI until the user opts in.
 const DEFAULT_LIST_THREADED: bool = false;
+/// Push is on by default and used automatically wherever the server advertises
+/// IDLE; accounts without it fall back to polling.
+const DEFAULT_PUSH_ENABLED: bool = true;
 
 /// Clamps a requested auto-mark-read delay to the supported ceiling.
 #[must_use]
@@ -226,6 +232,34 @@ pub async fn set_list_threaded(store: &Store, threaded: bool) -> Result<(), Mail
     store
         .settings()
         .set(KEY_LIST_THREADED, bool_str(threaded))
+        .await
+}
+
+/// Reads whether IMAP IDLE push is enabled (default `true`).
+///
+/// Push is only ever used where the server advertises IDLE; this flag lets the
+/// user turn it off entirely (falling back to polling everywhere).
+///
+/// # Errors
+///
+/// Returns [`MailError::Database`] on any query failure.
+pub async fn push_enabled(store: &Store) -> Result<bool, MailError> {
+    Ok(store
+        .settings()
+        .get(KEY_PUSH_ENABLED)
+        .await?
+        .map_or(DEFAULT_PUSH_ENABLED, |value| value == "true"))
+}
+
+/// Persists whether IMAP IDLE push is enabled.
+///
+/// # Errors
+///
+/// Returns [`MailError::Database`] on any query failure.
+pub async fn set_push_enabled(store: &Store, enabled: bool) -> Result<(), MailError> {
+    store
+        .settings()
+        .set(KEY_PUSH_ENABLED, bool_str(enabled))
         .await
 }
 

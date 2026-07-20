@@ -970,5 +970,6 @@ fn event_kind(event: &SyncEvent) -> &'static str {
         SyncEvent::OpsReplayed { .. } => "opsReplayed",
         SyncEvent::JobCancelled { .. } => "cancelled",
         SyncEvent::JobFailed { .. } => "failed",
+        SyncEvent::PushStateChanged { .. } => "pushStateChanged",
     }
 }

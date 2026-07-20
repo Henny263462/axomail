@@ -87,6 +87,12 @@ pub async fn start_background_services(state: &AppState) {
     if let Err(error) = state.scheduler().launch(interval).await {
         tracing::warn!(error = %error, "could not launch the background scheduler");
     }
+    // Push runs alongside the poller: it opens IDLE connections where the server
+    // supports it, honouring the persisted `push_enabled` setting and the
+    // offline gate (it starts effectively disabled while offline).
+    if let Err(error) = state.push().launch().await {
+        tracing::warn!(error = %error, "could not launch IMAP IDLE push");
+    }
     // While offline, queued sends wait in the outbox; the poller drains them
     // once the app is back online (the engine and scheduler are gated too).
     if state.is_offline() {

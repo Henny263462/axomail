@@ -13,6 +13,9 @@ vi.mock("../src/api/settings", () => ({
   getSettings: vi.fn(),
   updateSettings: vi.fn(),
   setPop3DeletePolicy: vi.fn(),
+  // The Push section loads its state on mount when the dialog renders it.
+  getPushEnabled: vi.fn().mockResolvedValue(true),
+  setPushEnabled: vi.fn().mockResolvedValue(null),
 }));
 
 const getSettingsMock = vi.mocked(getSettings);
@@ -111,7 +114,13 @@ describe("SettingsDialog", () => {
     const wrapper = mount(SettingsDialog, { props: { accounts } });
     await flushPromises();
 
-    await wrapper.get('fieldset input[type="checkbox"]').setValue(true);
+    // Target the POP3 fieldset specifically — other sections also render
+    // checkbox fieldsets (e.g. Push), so a generic selector is ambiguous.
+    const pop3 = wrapper
+      .findAll("fieldset")
+      .find((set) => set.text().includes("POP3 server deletion"));
+    if (pop3 === undefined) throw new Error("POP3 fieldset not rendered");
+    await pop3.get('input[type="checkbox"]').setValue(true);
     await flushPromises();
 
     expect(setPop3DeletePolicyMock).toHaveBeenCalledWith(2, true);

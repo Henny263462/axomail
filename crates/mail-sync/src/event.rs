@@ -59,6 +59,21 @@ impl SyncJobSummary {
     }
 }
 
+/// The push (IMAP IDLE) connection state of one account, surfaced so the UI
+/// can distinguish a live push connection from plain polling.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PushState {
+    /// A persistent IDLE connection is established and watching a mailbox; new
+    /// mail triggers an immediate sync.
+    Connected,
+    /// No push connection: the server does not advertise IDLE, or push is
+    /// disabled. The background poller keeps the mailbox fresh instead.
+    Polling,
+    /// The push connection dropped and is being re-established with backoff.
+    Reconnecting,
+}
+
 /// A progress event emitted during a job's lifecycle.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
@@ -128,5 +143,16 @@ pub enum SyncEvent {
         class: SyncErrorClass,
         /// Redacted, user-safe reason.
         message: String,
+    },
+    /// The push (IMAP IDLE) connection state of an account changed. Emitted by
+    /// the [`PushSupervisor`](crate::PushSupervisor); carries no job id.
+    PushStateChanged {
+        /// Account whose push state changed.
+        account_id: AccountId,
+        /// Mailbox the push connection watches when
+        /// [`PushState::Connected`]; `None` for `Polling`/`Reconnecting`.
+        mailbox_id: Option<MailboxId>,
+        /// The new push connection state.
+        state: PushState,
     },
 }

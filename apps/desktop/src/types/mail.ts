@@ -327,6 +327,20 @@ export interface SyncEventDto {
   message: string | null;
 }
 
+/** The push (IMAP IDLE) connection state of an account. */
+export type PushConnState = "connected" | "polling" | "reconnecting";
+
+/**
+ * A push connection-state change, delivered on the `axomail://push` channel
+ * (mirrors the Rust `PushStatusDto`). `connected` means an IDLE connection is
+ * watching `mailboxId`; `polling`/`reconnecting` carry a `null` mailbox.
+ */
+export interface PushStatusDto {
+  accountId: number;
+  mailboxId: number | null;
+  state: PushConnState;
+}
+
 /** Kind of work a background job represents (mirrors the Rust `JobKind`). */
 export type SyncJobKind =
   | "discover"

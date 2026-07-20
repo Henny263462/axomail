@@ -45,6 +45,23 @@ pub enum Disruption {
     CloseAfterLogin,
 }
 
+/// How the scripted server responds to `IDLE` (RFC 2177), driving the push
+/// tests.
+#[derive(Clone, Copy)]
+pub enum IdleBehavior {
+    /// Acknowledge `IDLE` with a continuation, then wait for `DONE` without
+    /// pushing anything. The client's wait either times out (renewal) or is
+    /// interrupted (cancel), and in both cases it sends `DONE`.
+    Quiet,
+    /// Acknowledge `IDLE`, then push `* {0} EXISTS` and wait for `DONE`. Models
+    /// new mail arriving while the client idles.
+    PushExists(u32),
+    /// Drop the connection the moment `IDLE` is received (before the
+    /// continuation), so the client's `IDLE` init fails. Drives the
+    /// reconnect-on-drop path.
+    DropOnIdle,
+}
+
 /// One message the server can report.
 #[derive(Clone)]
 pub struct Message {
@@ -107,6 +124,9 @@ pub struct Spec {
     /// (verbatim, no trailing CRLF) instead of the `vanished`-derived one —
     /// used to script malformed/ambiguous responses.
     pub vanished_override: Option<String>,
+    /// How the server answers `IDLE` (RFC 2177). Only exercised by the push
+    /// tests, which also add `IDLE` to [`Spec::capabilities`].
+    pub idle_behavior: IdleBehavior,
 }
 
 impl Spec {
@@ -127,6 +147,7 @@ impl Spec {
             highest_modseq: None,
             vanished: Vec::new(),
             vanished_override: None,
+            idle_behavior: IdleBehavior::Quiet,
         }
     }
 }
@@ -329,6 +350,10 @@ where
             handle_uid_fetch(stream, tag, rest, spec).await?;
         } else if upper.starts_with("APPEND") {
             handle_append(stream, tag, rest, spec).await?;
+        } else if upper.starts_with("IDLE") {
+            if !handle_idle(stream, tag, spec, commands).await? {
+                return Ok(());
+            }
         } else if upper.starts_with("LOGOUT") {
             send(stream, "* BYE Logging out\r\n").await?;
             send(stream, &format!("{tag} OK LOGOUT completed\r\n")).await?;
@@ -607,6 +632,45 @@ where
         &format!("{tag} OK [APPENDUID 42 1000] APPEND completed\r\n"),
     )
     .await
+}
+
+/// Handles `IDLE` (RFC 2177) per [`Spec::idle_behavior`].
+///
+/// Returns `true` once the client's `DONE` has been acknowledged (so the
+/// command loop continues, allowing renewal with a second `IDLE`), or `false`
+/// if the connection should close (a scripted drop, or the client hanging up).
+/// The `DONE` line the client sends is recorded so tests can assert on it.
+async fn handle_idle<S>(
+    stream: &mut BufReader<S>,
+    tag: &str,
+    spec: &Spec,
+    commands: &Arc<Mutex<Vec<String>>>,
+) -> io::Result<bool>
+where
+    S: AsyncRead + AsyncWrite + Unpin,
+{
+    if let IdleBehavior::DropOnIdle = spec.idle_behavior {
+        // Drop before the continuation so the client's IDLE init fails.
+        return Ok(false);
+    }
+    send(stream, "+ idling\r\n").await?;
+    if let IdleBehavior::PushExists(count) = spec.idle_behavior {
+        // A short pause so the client's IDLE init completes on the continuation
+        // before the unsolicited EXISTS arrives (mirrors mail landing mid-idle).
+        tokio::time::sleep(Duration::from_millis(30)).await;
+        send(stream, &format!("* {count} EXISTS\r\n")).await?;
+    }
+    // Wait for the client's untagged `DONE`, then acknowledge, ending the IDLE.
+    loop {
+        let Some(line) = read_line(stream).await? else {
+            return Ok(false);
+        };
+        record(commands, &line);
+        if line.trim().eq_ignore_ascii_case("DONE") {
+            send(stream, &format!("{tag} OK IDLE terminated\r\n")).await?;
+            return Ok(true);
+        }
+    }
 }
 
 /// Parses the `{len}` (or `{len+}`) sync-literal size at the end of an APPEND

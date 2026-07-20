@@ -30,6 +30,7 @@ mod date;
 mod discover;
 mod error;
 mod folder_ops;
+mod idle;
 mod message_ops;
 mod provider;
 mod rfc2047;
