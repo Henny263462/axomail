@@ -300,7 +300,11 @@ mod tests {
             .await
             .unwrap();
         let mut conn = pool.acquire().await.unwrap();
-        assert!(!is_whitelisted(&mut conn, "grace@example.org").await.unwrap());
+        assert!(
+            !is_whitelisted(&mut conn, "grace@example.org")
+                .await
+                .unwrap()
+        );
     }
 
     #[tokio::test]
@@ -319,7 +323,11 @@ mod tests {
         let mut conn = pool.acquire().await.unwrap();
         // The address book is global: a saved contact address is whitelisted,
         // matched case-insensitively via the column's NOCASE collation.
-        assert!(is_whitelisted(&mut conn, "grace@example.org").await.unwrap());
+        assert!(
+            is_whitelisted(&mut conn, "grace@example.org")
+                .await
+                .unwrap()
+        );
         // A stranger is not.
         assert!(!is_whitelisted(&mut conn, "spam@example.org").await.unwrap());
     }

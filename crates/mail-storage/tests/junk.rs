@@ -239,7 +239,11 @@ async fn whitelisted_sender_is_not_an_auto_junk_candidate() {
     for _ in 0..6 {
         store
             .junk()
-            .train(account, &message_tokens(Some("cheap viagra"), &[], ""), true)
+            .train(
+                account,
+                &message_tokens(Some("cheap viagra"), &[], ""),
+                true,
+            )
             .await
             .unwrap();
         store
