@@ -98,6 +98,7 @@ describe("settings section registry", () => {
       "identities",
       "tags",
       "contacts",
+      "filters",
       "accounts",
     ]);
   });

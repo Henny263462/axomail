@@ -24,6 +24,7 @@ mod address_json;
 mod contacts;
 mod drafts;
 mod error_map;
+mod filters;
 mod identities;
 mod identity_prefs;
 mod ingest;
@@ -54,6 +55,11 @@ pub use contacts::{
     ContactUpdate, NewContact, NewContactEmail,
 };
 pub use drafts::{DraftId, DraftRecord, DraftRepo, NewDraft};
+pub use filters::{
+    ActionKind, ArrivalState, ConditionField, ConditionOp, Filter, FilterAction, FilterCondition,
+    FilterId, FilterInput, FilterMessageFacts, FilterProgram, FilterRepo, MatchType,
+    validate_filter_input,
+};
 pub use identities::{Identity, IdentityFields, IdentityId, IdentityRepo, NewIdentity};
 pub use identity_prefs::{ArchiveGranularity, ForwardMode, ReplyPosition, SignaturePlacement};
 pub use ingest::{IngestRepo, IngestSummary};

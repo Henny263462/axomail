@@ -48,7 +48,7 @@ where
     // Decide the QRESYNC present-set safety-net cadence once per job, so a
     // reconcile pass is consistent across this job's retries and passes.
     let full_reconcile = shared.take_full_reconcile(mailbox_id);
-    run_with_retry(
+    let summary = run_with_retry(
         shared,
         job.id,
         mailbox_id,
@@ -57,7 +57,14 @@ where
         full_reconcile,
         token,
     )
-    .await
+    .await?;
+
+    // Run-on-arrival filters: applied after a successful inbox sync. A failure
+    // here never fails the sync — it is logged and the pass continues.
+    if let Err(error) = super::filter_arrival::run(shared, account_id, mailbox_id).await {
+        tracing::warn!(error = %error, "run-on-arrival filter pass failed");
+    }
+    Ok(summary)
 }
 
 /// Finds the remote name of `mailbox_id` within its account.

@@ -51,6 +51,12 @@ sqlx = { version = "0.9.0", default-features = false, features = [
 keyring = { version = "4.1.5", features = ["v1"] }
 tracing = "0.1.44"
 tempfile = "3"
+# Linear-time regular expressions for user-supplied message-filter patterns
+# (Track 4.2). The `regex` engine has no catastrophic backtracking, so an
+# arbitrary user pattern is ReDoS-safe. Already present transitively in the
+# lock; pinned to the resolved version. MIT/Apache-2.0. Verified against
+# crates.io on 2026-07-20.
+regex = "1.13.1"
 
 # Phase 2+ protocol and content stack (ADR-0006).
 async-imap = { version = "0.11.3", default-features = false, features = ["runtime-tokio"] }

@@ -23,6 +23,7 @@ mod compose;
 mod connection;
 mod contact;
 mod detail;
+mod filter;
 mod folder;
 mod identity;
 mod jobs;
@@ -53,6 +54,10 @@ pub use contact::{
     ContactInput, RecipientSuggestionDto, VCardImportDto,
 };
 pub use detail::{AttachmentMetaDto, MessageDetailDto, RecipientDto, ScamFlagDto};
+pub use filter::{
+    AccountFilterSettingsDto, FilterActionDto, FilterConditionDto, FilterDto, FilterInputDto,
+    FilterRunOutcomeDto,
+};
 pub use folder::{CreateFolderInput, RenameFolderInput, SetFolderSubscribedInput};
 pub use identity::{IdentityDto, IdentityInput};
 pub use jobs::SyncJobDto;
