@@ -1,16 +1,24 @@
 <script setup lang="ts">
 import { computed } from "vue";
 
-import type { MessageDetailDto } from "../../types/mail";
+import type { MessageDetailDto, RsvpChoice } from "../../types/mail";
 import { formatDateTime, formatRecipients } from "./format";
+import InvitationCard from "./InvitationCard.vue";
 import MessageActions from "./MessageActions.vue";
 import MessageAttachments from "./MessageAttachments.vue";
 import MessageBody from "./MessageBody.vue";
 import MessageTagArea from "./MessageTagArea.vue";
 
-const props = defineProps<{
-  detail: MessageDetailDto;
-}>();
+const props = withDefaults(
+  defineProps<{
+    detail: MessageDetailDto;
+    /** True while an RSVP request is in flight. */
+    rsvpBusy?: boolean;
+    /** A redacted failure reason from the last RSVP attempt, if any. */
+    rsvpError?: string | null;
+  }>(),
+  { rsvpBusy: false, rsvpError: null },
+);
 
 const emit = defineEmits<{
   (event: "show-remote-once"): void;
@@ -23,6 +31,7 @@ const emit = defineEmits<{
   (event: "copy"): void;
   (event: "archive"): void;
   (event: "delete"): void;
+  (event: "rsvp", choice: RsvpChoice): void;
 }>();
 
 const toLine = computed(() => formatRecipients(props.detail.to));
@@ -140,6 +149,14 @@ function alwaysAllow(): void {
       </dl>
       <MessageTagArea :message-id="detail.id" />
     </header>
+
+    <InvitationCard
+      v-if="detail.invitation"
+      :invitation="detail.invitation"
+      :busy="rsvpBusy"
+      :error="rsvpError"
+      @rsvp="(choice) => emit('rsvp', choice)"
+    />
 
     <MessageActions
       :message-id="detail.id"

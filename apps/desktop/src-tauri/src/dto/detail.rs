@@ -8,6 +8,7 @@ use axomail_security::{
 };
 use serde::Serialize;
 
+use super::InvitationDto;
 use super::checked_id;
 
 /// A recipient with an optional display name.
@@ -137,6 +138,9 @@ pub struct MessageDetailDto {
     /// fields are still populated from the stored envelope; every body field
     /// is empty. The frontend renders an honest "not available offline" state.
     pub offline_unavailable: bool,
+    /// The iMIP invitation card payload when the message carries a
+    /// `text/calendar` invitation, else `None`.
+    pub invitation: Option<InvitationDto>,
 }
 
 impl MessageDetailDto {
@@ -152,6 +156,7 @@ impl MessageDetailDto {
         parsed: &ParsedMessage,
         policy: RemoteContentPolicy,
         flagged: bool,
+        invitation: Option<InvitationDto>,
     ) -> Result<Self, MailError> {
         // Embed message-local inline `cid:` images as `data:` URIs so a
         // `multipart/related` body renders its logo/signature images with no
@@ -210,6 +215,7 @@ impl MessageDetailDto {
             in_reply_to: parsed.in_reply_to.clone(),
             references: parsed.references.clone(),
             offline_unavailable: false,
+            invitation,
         })
     }
 
@@ -251,6 +257,7 @@ impl MessageDetailDto {
             in_reply_to: Vec::new(),
             references: Vec::new(),
             offline_unavailable: true,
+            invitation: None,
         })
     }
 }

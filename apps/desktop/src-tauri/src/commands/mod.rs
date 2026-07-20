@@ -15,6 +15,7 @@ pub mod detail;
 pub mod drafts;
 pub mod folders;
 pub mod identities;
+pub mod invitations;
 pub mod jobs;
 pub mod messages;
 pub mod meta;

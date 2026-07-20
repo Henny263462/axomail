@@ -21,6 +21,7 @@
 
 mod accounts;
 mod address_json;
+mod calendar_invites;
 mod drafts;
 mod error_map;
 mod identities;
@@ -47,6 +48,7 @@ mod threading_json;
 mod unified;
 
 pub use accounts::{AccountRepo, AccountUpdate, NewAccount};
+pub use calendar_invites::{CalendarInvite, CalendarInviteRepo, InviteId, NewInvite, RsvpStatus};
 pub use drafts::{DraftId, DraftRecord, DraftRepo, NewDraft};
 pub use identities::{Identity, IdentityFields, IdentityId, IdentityRepo, NewIdentity};
 pub use identity_prefs::{ArchiveGranularity, ForwardMode, ReplyPosition, SignaturePlacement};

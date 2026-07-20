@@ -24,6 +24,7 @@ use sqlx::migrate::Migrator;
 use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions, SqliteSynchronous};
 
 use crate::accounts::AccountRepo;
+use crate::calendar_invites::CalendarInviteRepo;
 use crate::drafts::DraftRepo;
 use crate::error_map::{map_migrate, map_sqlx};
 use crate::identities::IdentityRepo;
@@ -142,6 +143,12 @@ impl Store {
     #[must_use]
     pub fn messages(&self) -> MessageRepo<'_> {
         MessageRepo::new(&self.pool)
+    }
+
+    /// The calendar-invitation (iMIP RSVP) repository.
+    #[must_use]
+    pub fn calendar_invites(&self) -> CalendarInviteRepo<'_> {
+        CalendarInviteRepo::new(&self.pool)
     }
 
     /// The key/value settings repository.

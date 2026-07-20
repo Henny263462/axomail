@@ -16,12 +16,17 @@
 #![forbid(unsafe_code)]
 
 mod address;
+mod icalendar;
 mod model;
 mod parse;
 mod preview;
 mod redact;
 mod text;
 
+pub use icalendar::{
+    CalAddress, CalAttendee, CalDateTime, CalendarEvent, CalendarMethod, Invitation, ReplyParams,
+    TzSpec, build_reply, extract_invitation, format_when, parse_calendar,
+};
 pub use model::{ParsedAttachment, ParsedMessage};
 pub use parse::parse_message;
 pub use text::html_to_plain_text;
