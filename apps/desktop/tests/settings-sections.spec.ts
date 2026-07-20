@@ -97,6 +97,7 @@ describe("settings section registry", () => {
       "empty-trash-on-exit",
       "identities",
       "tags",
+      "filters",
       "accounts",
     ]);
   });

@@ -26,6 +26,7 @@ use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions, S
 use crate::accounts::AccountRepo;
 use crate::drafts::DraftRepo;
 use crate::error_map::{map_migrate, map_sqlx};
+use crate::filters::FilterRepo;
 use crate::identities::IdentityRepo;
 use crate::ingest::IngestRepo;
 use crate::mailboxes::MailboxRepo;
@@ -202,6 +203,12 @@ impl Store {
     #[must_use]
     pub fn tags(&self) -> TagRepo<'_> {
         TagRepo::new(&self.pool)
+    }
+
+    /// The message-filter (rules engine) repository.
+    #[must_use]
+    pub fn filters(&self) -> FilterRepo<'_> {
+        FilterRepo::new(&self.pool)
     }
 
     /// The POP3 `UIDL` de-duplication repository.

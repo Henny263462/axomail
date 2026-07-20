@@ -13,6 +13,7 @@ pub mod compose;
 pub mod connection;
 pub mod detail;
 pub mod drafts;
+pub mod filters;
 pub mod folders;
 pub mod identities;
 pub mod jobs;

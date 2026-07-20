@@ -9,6 +9,7 @@
 //! per-message and per-tag association reads, and the batched tags-for-a-page
 //! read the message list uses for row chips without an N+1 query.
 
+mod ensure;
 mod types;
 
 pub(crate) mod sync;

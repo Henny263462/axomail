@@ -34,6 +34,7 @@ mod config;
 mod engine;
 mod event;
 mod factory;
+mod filter_run;
 mod job;
 mod op_payload;
 mod scheduler;
@@ -44,6 +45,7 @@ pub use config::SyncConfig;
 pub use engine::{EngineOptions, SyncEngine};
 pub use event::{SyncErrorClass, SyncEvent, SyncJobSummary};
 pub use factory::ProviderFactory;
+pub use filter_run::{FilterRunReport, run_filters_on_messages};
 pub use job::{SyncMailbox, WorkRequest};
 // Write-back op-payload builders, used by the command layer to enqueue ops.
 pub use op_payload::{answered_op, copy_op, delete_op, flagged_op, keyword_op, move_op, seen_op};

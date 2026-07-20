@@ -118,6 +118,21 @@ export interface TagDto {
   usageCount: number;
 }
 
+// Message-filter DTOs live in ./filters and are re-exported here so callers can
+// keep importing filter and mail types from one module.
+export type {
+  AccountFilterSettings,
+  FilterAction,
+  FilterActionKind,
+  FilterCondition,
+  FilterConditionField,
+  FilterConditionOp,
+  FilterDto,
+  FilterInput,
+  FilterMatchType,
+  FilterRunOutcome,
+} from "./filters";
+
 /** One option in the per-message tag picker. */
 export interface MessageTagOption {
   id: number;
