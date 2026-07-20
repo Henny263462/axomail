@@ -22,5 +22,51 @@
     "deHint": "Always use German.",
     "statusSaved": "Language updated.",
     "statusUnavailable": "Changing the language needs the desktop app; it is unavailable in the browser preview."
+  },
+  "layout": {
+    "label": "Layout",
+    "classic": "Classic",
+    "vertical": "Vertical",
+    "wide": "Wide",
+    "cycle": "Cycle window layout"
+  },
+  "panes": {
+    "resizeSidebar": "Resize folder pane",
+    "resizeList": "Resize message list",
+    "resizeReading": "Resize reading pane"
+  },
+  "folderView": {
+    "label": "Folder view",
+    "all": "All",
+    "unified": "Unified",
+    "favorite": "Favorite",
+    "tags": "Tags",
+    "recent": "Recent",
+    "favoritesEmpty": "No favorite folders yet.",
+    "favoritesEmptyHint": "Open a folder's menu and choose \"Add to Favorites\".",
+    "recentEmpty": "No recently used folders yet.",
+    "addFavorite": "Add to Favorites",
+    "removeFavorite": "Remove from Favorites"
+  },
+  "retention": {
+    "title": "Message retention",
+    "hint": "Limit how much mail is kept in this folder. Starred messages are always kept.",
+    "modeKeepAll": "Keep all messages",
+    "modeByAge": "Keep messages by age",
+    "modeByCount": "Keep a maximum number of messages",
+    "days": "Days to keep",
+    "maxCount": "Messages to keep",
+    "action": "When over the limit",
+    "actionTrash": "Move older messages to Trash",
+    "actionPurge": "Remove the local copy only",
+    "actionHint": "\"Move to Trash\" relocates over-limit messages to Trash — never a permanent server delete. \"Remove the local copy only\" drops the cached body; nothing leaves the server and it is re-fetched on demand.",
+    "save": "Save",
+    "apply": "Apply now",
+    "applying": "Applying…",
+    "saved": "Retention policy saved.",
+    "saveFailed": "Could not save the retention policy.",
+    "applied": "Retention applied: {trashed} moved to Trash, {purged} local copies removed.",
+    "applyFailed": "Could not apply retention.",
+    "unavailable": "Retention needs the desktop app; it is unavailable in the browser preview."
   }
 }

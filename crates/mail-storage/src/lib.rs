@@ -41,6 +41,7 @@ mod pending_ops;
 mod pop3_uidl;
 mod raw_store;
 mod remote_content;
+mod retention;
 mod search;
 mod settings;
 mod store;
@@ -79,6 +80,7 @@ pub use pending_ops::{
 pub use pop3_uidl::Pop3UidlRepo;
 pub use raw_store::{raw_message_path, read_raw, remove_raw, write_raw_atomically};
 pub use remote_content::RemoteContentRepo;
+pub use retention::{RetentionAction, RetentionMode, RetentionPolicy, RetentionRepo};
 pub use search::{SearchHit, SearchRepo};
 pub use settings::SettingsRepo;
 pub use store::Store;

@@ -15,6 +15,7 @@ import {
   setMailboxOfflinePolicy,
 } from "../../api/offline";
 import type { OfflineMode } from "../../types/mail";
+import FolderRetentionSection from "./FolderRetentionSection.vue";
 
 const props = withDefaults(
   defineProps<{
@@ -146,10 +147,13 @@ onMounted(async () => {
           id="folder-props-title"
           class="title"
         >
-          Offline availability{{ mailboxName ? ` — ${mailboxName}` : "" }}
+          Folder properties{{ mailboxName ? ` — ${mailboxName}` : "" }}
         </h2>
       </header>
 
+      <h3 class="section-title">
+        Offline availability
+      </h3>
       <p
         v-if="state === 'loading'"
         class="note"
@@ -225,6 +229,8 @@ onMounted(async () => {
           {{ status }}
         </p>
       </div>
+
+      <FolderRetentionSection :mailbox-id="mailboxId" />
 
       <div class="actions">
         <button
@@ -305,6 +311,14 @@ onMounted(async () => {
   display: flex;
   flex-direction: column;
   gap: var(--space-4);
+}
+
+.section-title {
+  font-size: var(--text-xs);
+  font-weight: var(--weight-semibold);
+  color: var(--color-text-tertiary);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
 }
 
 .modes {

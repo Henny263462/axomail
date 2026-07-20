@@ -8,20 +8,27 @@
  * server-side removal happens); Compact is offered on any folder.
  */
 import { onMounted, ref } from "vue";
+import { useI18n } from "vue-i18n";
 
 import type { MailboxSummary } from "../../types/mail";
 import { leafName } from "./folderTree";
 
-defineProps<{
-  folder: MailboxSummary;
-  x: number;
-  y: number;
-}>();
+withDefaults(
+  defineProps<{
+    folder: MailboxSummary;
+    x: number;
+    y: number;
+    /** Whether this folder is currently marked as a favorite. */
+    isFavorite?: boolean;
+  }>(),
+  { isFavorite: false },
+);
 
 const emit = defineEmits<{
   create: [];
   rename: [];
   toggleSubscribe: [];
+  toggleFavorite: [];
   properties: [];
   exportFolder: [];
   importFolder: [];
@@ -30,6 +37,8 @@ const emit = defineEmits<{
   compact: [];
   close: [];
 }>();
+
+const { t } = useI18n({ useScope: "global" });
 
 const menuEl = ref<HTMLElement | null>(null);
 
@@ -91,6 +100,13 @@ function onMenuKeydown(event: KeyboardEvent): void {
       @click="emit('toggleSubscribe')"
     >
       {{ folder.subscribed === false ? "Subscribe" : "Unsubscribe" }}
+    </button>
+    <button
+      type="button"
+      role="menuitem"
+      @click="emit('toggleFavorite')"
+    >
+      {{ isFavorite ? t("folderView.removeFavorite") : t("folderView.addFavorite") }}
     </button>
     <button
       type="button"

@@ -22,5 +22,51 @@
     "deHint": "Immer Deutsch verwenden.",
     "statusSaved": "Sprache aktualisiert.",
     "statusUnavailable": "Zum Ändern der Sprache wird die Desktop-App benötigt; in der Browservorschau ist sie nicht verfügbar."
+  },
+  "layout": {
+    "label": "Layout",
+    "classic": "Klassisch",
+    "vertical": "Vertikal",
+    "wide": "Breit",
+    "cycle": "Fensterlayout wechseln"
+  },
+  "panes": {
+    "resizeSidebar": "Ordnerbereich anpassen",
+    "resizeList": "Nachrichtenliste anpassen",
+    "resizeReading": "Lesebereich anpassen"
+  },
+  "folderView": {
+    "label": "Ordneransicht",
+    "all": "Alle",
+    "unified": "Vereint",
+    "favorite": "Favoriten",
+    "tags": "Schlagwörter",
+    "recent": "Zuletzt",
+    "favoritesEmpty": "Noch keine Favoritenordner.",
+    "favoritesEmptyHint": "Öffnen Sie das Menü eines Ordners und wählen Sie „Zu Favoriten hinzufügen“.",
+    "recentEmpty": "Noch keine zuletzt verwendeten Ordner.",
+    "addFavorite": "Zu Favoriten hinzufügen",
+    "removeFavorite": "Aus Favoriten entfernen"
+  },
+  "retention": {
+    "title": "Aufbewahrung",
+    "hint": "Begrenzen Sie, wie viele Nachrichten in diesem Ordner behalten werden. Markierte Nachrichten werden immer behalten.",
+    "modeKeepAll": "Alle Nachrichten behalten",
+    "modeByAge": "Nachrichten nach Alter behalten",
+    "modeByCount": "Höchstzahl an Nachrichten behalten",
+    "days": "Tage behalten",
+    "maxCount": "Nachrichten behalten",
+    "action": "Bei Überschreitung",
+    "actionTrash": "Ältere Nachrichten in den Papierkorb verschieben",
+    "actionPurge": "Nur die lokale Kopie entfernen",
+    "actionHint": "„In den Papierkorb verschieben“ verschiebt Nachrichten über dem Limit in den Papierkorb – niemals ein endgültiges Löschen auf dem Server. „Nur die lokale Kopie entfernen“ verwirft den zwischengespeicherten Inhalt; nichts verlässt den Server und er wird bei Bedarf erneut geladen.",
+    "save": "Speichern",
+    "apply": "Jetzt anwenden",
+    "applying": "Wird angewendet…",
+    "saved": "Aufbewahrungsrichtlinie gespeichert.",
+    "saveFailed": "Aufbewahrungsrichtlinie konnte nicht gespeichert werden.",
+    "applied": "Aufbewahrung angewendet: {trashed} in den Papierkorb verschoben, {purged} lokale Kopien entfernt.",
+    "applyFailed": "Aufbewahrung konnte nicht angewendet werden.",
+    "unavailable": "Aufbewahrung erfordert die Desktop-App; in der Browservorschau ist sie nicht verfügbar."
   }
 }

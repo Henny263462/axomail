@@ -205,7 +205,11 @@ function openMenuAt(x: number, y: number): void {
 }
 
 .folder-row:hover .folder-menu,
-.folder-row.selected .folder-menu {
+.folder-row.selected .folder-menu,
+/* Reveal on keyboard focus too, so the actions menu (rename / favorite /
+   properties / delete) is reachable without a mouse hover or right-click. */
+.folder-row:focus-within .folder-menu,
+.folder-menu:focus-visible {
   visibility: visible;
 }
 
