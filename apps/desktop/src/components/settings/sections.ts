@@ -10,6 +10,7 @@ import IdentitiesSection from "./IdentitiesSection.vue";
 import JunkSection from "./JunkSection.vue";
 import NotificationsSection from "./NotificationsSection.vue";
 import Pop3DeleteSection from "./Pop3DeleteSection.vue";
+import PushSection from "./PushSection.vue";
 import SyncIntervalSection from "./SyncIntervalSection.vue";
 import TagsSection from "./TagsSection.vue";
 
@@ -39,6 +40,7 @@ export const settingsSections: SettingsSection[] = [
     component: NotificationsSection,
   },
   { id: "sync-interval", title: "Sync", component: SyncIntervalSection },
+  { id: "push", title: "Push", component: PushSection },
   { id: "auto-read", title: "Reading", component: AutoReadSection },
   { id: "appearance", title: "Appearance", component: AppearanceSection },
   {

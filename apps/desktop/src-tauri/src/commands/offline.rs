@@ -17,13 +17,15 @@ use axomail_sync::{ProviderFactory, SyncEngine, SyncMailbox};
 
 use crate::commands::map_command_error;
 use crate::dto::OfflinePolicyDto;
+use crate::push::PushControl;
 use crate::scheduler::SchedulerControl;
 use crate::settings;
 use crate::state::AppState;
 
 /// Sets the global Work Offline state: persists it, flips the engine gate
-/// (which resumes queued jobs when returning online), and pauses/resumes the
-/// background scheduler.
+/// (which resumes queued jobs when returning online), pauses/resumes the
+/// background scheduler, and stops/restores IMAP IDLE push (offline means no
+/// network connections at all).
 ///
 /// # Errors
 ///
@@ -32,6 +34,7 @@ pub async fn set_work_offline_impl<P, F>(
     store: &Store,
     engine: &SyncEngine<P, F>,
     scheduler: &SchedulerControl,
+    push: &PushControl,
     offline: bool,
 ) -> Result<(), MailError>
 where
@@ -41,6 +44,7 @@ where
     settings::set_work_offline(store, offline).await?;
     engine.set_offline(offline);
     scheduler.set_offline(offline);
+    push.set_offline(offline);
     Ok(())
 }
 
@@ -171,9 +175,15 @@ pub async fn set_work_offline(
     state: tauri::State<'_, AppState>,
     offline: bool,
 ) -> Result<(), String> {
-    set_work_offline_impl(state.store(), state.engine(), state.scheduler(), offline)
-        .await
-        .map_err(map_command_error)
+    set_work_offline_impl(
+        state.store(),
+        state.engine(),
+        state.scheduler(),
+        state.push(),
+        offline,
+    )
+    .await
+    .map_err(map_command_error)
 }
 
 /// Reads the current Work Offline mode.

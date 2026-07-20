@@ -136,6 +136,34 @@ where
             .map_err(|_| MailError::Cancelled)
     }
 
+    /// Clones the provider factory the engine builds sessions with.
+    ///
+    /// The [`PushSupervisor`](crate::PushSupervisor) reuses it to open its own
+    /// dedicated IDLE connections, so the composition root supplies the factory
+    /// only once (to the engine).
+    #[must_use]
+    pub fn provider_factory(&self) -> Arc<F> {
+        Arc::clone(&self.shared.factory)
+    }
+
+    /// Emits a push-connection status change on the engine's event channel.
+    ///
+    /// The [`PushSupervisor`](crate::PushSupervisor) calls this so IDLE state
+    /// rides the same [`SyncEvent`] stream the frontend already consumes for
+    /// job progress. A pure fan-out; never blocks.
+    pub fn report_push_state(
+        &self,
+        account_id: AccountId,
+        mailbox_id: Option<MailboxId>,
+        state: crate::event::PushState,
+    ) {
+        self.shared.emit(SyncEvent::PushStateChanged {
+            account_id,
+            mailbox_id,
+            state,
+        });
+    }
+
     /// Requests cancellation of a single in-flight or queued job.
     ///
     /// Cancellation is cooperative: the job stops at its next checkpoint

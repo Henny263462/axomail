@@ -15,6 +15,7 @@ use axomail_storage::Store;
 use axomail_sync::{EngineOptions, SyncConfig, SyncEngine};
 
 use crate::composition::{AnyIncomingProvider, AppProviderFactory};
+use crate::push::PushControl;
 use crate::scheduler::SchedulerControl;
 
 /// A thread-safe, shareable secret store handle.
@@ -37,6 +38,7 @@ pub struct AppState {
     factory: AppProviderFactory,
     engine: Arc<AppSyncEngine>,
     scheduler: Arc<SchedulerControl>,
+    push: Arc<PushControl>,
     raw_root: PathBuf,
     /// Global Work Offline flag, shared with the sync engine (which gates job
     /// claims on it) and the scheduler. `set_work_offline` flips it through the
@@ -80,12 +82,20 @@ impl AppState {
             store.clone(),
             Arc::clone(&offline),
         ));
+        // Push runs alongside the poller: IDLE accelerates delivery where the
+        // server supports it, sharing the same offline gate.
+        let push = Arc::new(PushControl::new(
+            Arc::clone(&engine),
+            store.clone(),
+            Arc::clone(&offline),
+        ));
         Self {
             store,
             secrets,
             factory,
             engine,
             scheduler,
+            push,
             raw_root,
             offline,
         }
@@ -119,6 +129,12 @@ impl AppState {
     #[must_use]
     pub fn scheduler(&self) -> &Arc<SchedulerControl> {
         &self.scheduler
+    }
+
+    /// Borrows the IMAP IDLE push control.
+    #[must_use]
+    pub fn push(&self) -> &Arc<PushControl> {
+        &self.push
     }
 
     /// Root directory under which raw message bytes are cached

@@ -39,3 +39,21 @@ export function setPop3DeletePolicy(
 ): Promise<null> {
   return invokeOrThrow<null>("set_pop3_delete_policy", { accountId, enabled });
 }
+
+/**
+ * Reads whether IMAP IDLE push is enabled (default `true`). `null` in the
+ * browser preview.
+ */
+export function getPushEnabled(): Promise<boolean | null> {
+  return safeInvoke<boolean>("get_push_enabled");
+}
+
+/**
+ * Enables or disables IMAP IDLE push. When on, the app keeps an IDLE
+ * connection open per account that supports it, so new mail arrives without
+ * waiting for the next poll; when off, every account polls. Rejects with the
+ * backend's user-facing error string on failure.
+ */
+export function setPushEnabled(enabled: boolean): Promise<null> {
+  return invokeOrThrow<null>("set_push_enabled", { enabled });
+}

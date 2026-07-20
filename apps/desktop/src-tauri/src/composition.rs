@@ -13,11 +13,12 @@
 //! before each sync and record newly ingested `UIDL`s afterwards.
 
 use std::sync::Arc;
+use std::time::Duration;
 
 use axomail_core::{
     Account, AccountAuth, AppendOutcome, ConnectionCredential, CredentialRef, FlagDelta, FlagSet,
-    IncomingMailProvider, IncomingProtocol, MailError, MailboxName, RawMessage, RemoteMailboxState,
-    RemoteMessageId, SyncOutcome, SyncRequest,
+    IdleOutcome, IncomingMailProvider, IncomingProtocol, MailError, MailboxName, RawMessage,
+    RemoteMailboxState, RemoteMessageId, SyncOutcome, SyncRequest,
 };
 use axomail_imap::{ImapConfig, ImapProvider};
 use axomail_pop3::{Pop3Config, Pop3Provider};
@@ -169,6 +170,26 @@ impl IncomingMailProvider for AnyIncomingProvider {
         match self {
             Self::Imap(provider) => provider.set_mailbox_subscribed(path, subscribed).await,
             Self::Pop3(provider) => provider.set_mailbox_subscribed(path, subscribed).await,
+        }
+    }
+
+    fn supports_idle(&self) -> bool {
+        match self {
+            Self::Imap(provider) => provider.supports_idle(),
+            // POP3 has no server push; it uses the trait default (false).
+            Self::Pop3(provider) => provider.supports_idle(),
+        }
+    }
+
+    async fn idle(
+        &mut self,
+        max_wait: Duration,
+        interrupt: impl Future<Output = ()> + Send,
+    ) -> Result<IdleOutcome, MailError> {
+        match self {
+            Self::Imap(provider) => provider.idle(max_wait, interrupt).await,
+            // POP3 uses the trait default (UnsupportedCapability).
+            Self::Pop3(provider) => provider.idle(max_wait, interrupt).await,
         }
     }
 

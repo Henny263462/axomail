@@ -18,6 +18,7 @@ use axomail_desktop_lib::commands::offline::{
     set_mailbox_offline_policy_impl, set_work_offline_impl,
 };
 use axomail_desktop_lib::composition::AppProviderFactory;
+use axomail_desktop_lib::push::PushControl;
 use axomail_desktop_lib::scheduler::SchedulerControl;
 use axomail_desktop_lib::settings::work_offline;
 use axomail_desktop_lib::state::{AppSyncEngine, SharedSecretStore};
@@ -26,12 +27,13 @@ use axomail_sync::{EngineOptions, SyncConfig, SyncEngine, SyncEvent};
 
 use common::{compose_input, secret_stores, valid_input};
 
-/// Builds an engine and scheduler control sharing one offline flag.
+/// Builds an engine, scheduler control, and push control sharing one offline
+/// flag.
 fn engine_and_scheduler(
     store: &Store,
     secrets: &SharedSecretStore,
     offline: Arc<AtomicBool>,
-) -> (Arc<AppSyncEngine>, SchedulerControl) {
+) -> (Arc<AppSyncEngine>, SchedulerControl, PushControl) {
     let factory = AppProviderFactory::new(secrets.clone(), store.clone());
     let engine = Arc::new(SyncEngine::start_with_options(
         store.clone(),
@@ -42,8 +44,9 @@ fn engine_and_scheduler(
             raw_root: None,
         },
     ));
-    let scheduler = SchedulerControl::new(Arc::clone(&engine), store.clone(), offline);
-    (engine, scheduler)
+    let scheduler = SchedulerControl::new(Arc::clone(&engine), store.clone(), Arc::clone(&offline));
+    let push = PushControl::new(Arc::clone(&engine), store.clone(), offline);
+    (engine, scheduler, push)
 }
 
 /// Creates one account and returns its id and its inbox mailbox id.
@@ -64,15 +67,15 @@ async fn set_work_offline_toggles_the_engine_and_persists_the_setting() {
     let store = Store::open_in_memory().await.unwrap();
     let (_concrete, secrets) = secret_stores();
     let offline = Arc::new(AtomicBool::new(false));
-    let (engine, scheduler) = engine_and_scheduler(&store, &secrets, Arc::clone(&offline));
+    let (engine, scheduler, push) = engine_and_scheduler(&store, &secrets, Arc::clone(&offline));
 
-    set_work_offline_impl(&store, &engine, &scheduler, true)
+    set_work_offline_impl(&store, &engine, &scheduler, &push, true)
         .await
         .unwrap();
     assert!(engine.is_offline());
     assert!(work_offline(&store).await.unwrap());
 
-    set_work_offline_impl(&store, &engine, &scheduler, false)
+    set_work_offline_impl(&store, &engine, &scheduler, &push, false)
         .await
         .unwrap();
     assert!(!engine.is_offline());
@@ -117,7 +120,7 @@ async fn download_now_marks_full_download_and_enqueues_a_job() {
     // Offline engine: the enqueued job stays pending (never claims), so the
     // assertions are race-free.
     let offline = Arc::new(AtomicBool::new(true));
-    let (engine, _scheduler) = engine_and_scheduler(&store, &secrets, Arc::clone(&offline));
+    let (engine, _scheduler, _push) = engine_and_scheduler(&store, &secrets, Arc::clone(&offline));
     let (_account, inbox) = account_with_inbox(&store, &secrets).await;
 
     let mut events = engine.subscribe();

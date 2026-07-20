@@ -15,6 +15,10 @@ vi.mock("../src/api/settings", () => ({
   getSettings: vi.fn(),
   updateSettings: vi.fn(),
   setPop3DeletePolicy: vi.fn(),
+  // The Push section loads its state on mount; a resolved default lets the
+  // registry tests mount it without a live backend.
+  getPushEnabled: vi.fn().mockResolvedValue(true),
+  setPushEnabled: vi.fn().mockResolvedValue(null),
 }));
 
 // The Tags section loads its list on mount; stub the tag api so the registry
@@ -98,6 +102,7 @@ describe("settings section registry", () => {
     expect(settingsSections.map((section) => section.id)).toEqual([
       "notifications",
       "sync-interval",
+      "push",
       "auto-read",
       "appearance",
       "pop3-delete",

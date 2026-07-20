@@ -13,6 +13,7 @@ use axomail_storage::Store;
 
 use crate::commands::map_command_error;
 use crate::dto::{Pop3DeletePolicyDto, SettingsDto};
+use crate::push::PushControl;
 use crate::scheduler::SchedulerControl;
 use crate::settings;
 use crate::state::AppState;
@@ -99,6 +100,34 @@ pub async fn set_list_threaded_impl(store: &Store, threaded: bool) -> Result<(),
     settings::set_list_threaded(store, threaded).await
 }
 
+/// Reads whether IMAP IDLE push is enabled (default `true`).
+///
+/// Like the threaded-list toggle, push lives outside [`SettingsDto`] as its own
+/// read/write pair rather than widening the batch-saved settings surface.
+///
+/// # Errors
+///
+/// Returns [`MailError::Database`] on any query failure.
+pub async fn get_push_enabled_impl(store: &Store) -> Result<bool, MailError> {
+    settings::push_enabled(store).await
+}
+
+/// Persists the push preference, then applies it to the running supervisor
+/// (which starts or stops IDLE connections accordingly).
+///
+/// # Errors
+///
+/// Returns [`MailError::Database`] on any query failure.
+pub async fn set_push_enabled_impl(
+    store: &Store,
+    push: &PushControl,
+    enabled: bool,
+) -> Result<(), MailError> {
+    settings::set_push_enabled(store, enabled).await?;
+    push.set_user_enabled(enabled);
+    Ok(())
+}
+
 /// Sets one account's POP3 server-deletion policy after verifying the account
 /// exists and is a POP3 account. This explicit call is the only way to enable
 /// server deletion.
@@ -161,6 +190,25 @@ pub async fn set_list_threaded(
     threaded: bool,
 ) -> Result<(), String> {
     set_list_threaded_impl(state.store(), threaded)
+        .await
+        .map_err(map_command_error)
+}
+
+/// Reads whether IMAP IDLE push is enabled.
+#[tauri::command]
+pub async fn get_push_enabled(state: tauri::State<'_, AppState>) -> Result<bool, String> {
+    get_push_enabled_impl(state.store())
+        .await
+        .map_err(map_command_error)
+}
+
+/// Sets whether IMAP IDLE push is enabled, applying it to the supervisor.
+#[tauri::command]
+pub async fn set_push_enabled(
+    state: tauri::State<'_, AppState>,
+    enabled: bool,
+) -> Result<(), String> {
+    set_push_enabled_impl(state.store(), state.push(), enabled)
         .await
         .map_err(map_command_error)
 }

@@ -2,6 +2,7 @@
 import { onMounted } from "vue";
 
 import { useAppVersion } from "../../composables/useAppVersion";
+import { usePushStatus } from "../../composables/usePushStatus";
 import { useWorkOffline } from "../../composables/useWorkOffline";
 import { isTauri } from "../../lib/tauri";
 
@@ -26,6 +27,10 @@ const emit = defineEmits<{
 
 const { version } = useAppVersion();
 const browserPreview = !isTauri();
+
+// Push (IMAP IDLE) status: a small badge appears while at least one account
+// holds a live push connection, distinguishing it from plain polling.
+const { anyConnected: pushConnected } = usePushStatus();
 
 // Work Offline state is shared (see useWorkOffline): this bar owns the toggle,
 // the outbox list reads the same flag. Load the persisted value on mount.
@@ -81,6 +86,14 @@ function syncLabel(): string {
       Browser preview — mail features require the desktop app
     </span>
     <div class="controls">
+      <span
+        v-if="pushConnected && !browserPreview"
+        class="push"
+        title="Connected — receiving new mail by push (IMAP IDLE)"
+        aria-label="Push connected"
+      >
+        Push
+      </span>
       <button
         v-if="!browserPreview"
         type="button"
@@ -183,6 +196,16 @@ function syncLabel(): string {
 .offline-toggle.active {
   color: var(--color-danger);
   border-color: var(--color-danger);
+  font-weight: var(--weight-medium);
+}
+
+.push {
+  font-size: var(--text-xs);
+  line-height: 1;
+  color: var(--color-accent);
+  padding: 2px var(--space-2);
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--color-accent);
   font-weight: var(--weight-medium);
 }
 

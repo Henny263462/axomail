@@ -21,6 +21,9 @@ vi.mock("../src/api/settings", () => ({
   getSettings: vi.fn().mockResolvedValue(null),
   updateSettings: vi.fn(),
   setPop3DeletePolicy: vi.fn(),
+  // The Push section loads its state on mount when the dialog renders it.
+  getPushEnabled: vi.fn().mockResolvedValue(true),
+  setPushEnabled: vi.fn().mockResolvedValue(null),
 }));
 
 const account: AccountSummary = {

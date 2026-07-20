@@ -11,13 +11,15 @@
 //! engine passes known state in via [`SyncRequest`] and persists the
 //! returned [`SyncOutcome`].
 
+use std::time::Duration;
+
 use crate::error::MailError;
 use crate::id::RemoteMessageId;
 use crate::keyword::{FlagDelta, FlagSet};
 use crate::mailbox::MailboxName;
 use crate::provider_types::{
-    AppendOutcome, OutgoingMessage, RawMessage, RemoteMailboxState, SendResult, SyncOutcome,
-    SyncRequest,
+    AppendOutcome, IdleOutcome, OutgoingMessage, RawMessage, RemoteMailboxState, SendResult,
+    SyncOutcome, SyncRequest,
 };
 
 /// A source of incoming mail (IMAP or POP3).
@@ -165,6 +167,51 @@ pub trait IncomingMailProvider: Send {
         path: &MailboxName,
         subscribed: bool,
     ) -> impl Future<Output = Result<(), MailError>> + Send;
+
+    /// Whether this provider's server advertises push notifications (IMAP
+    /// IDLE, RFC 2177).
+    ///
+    /// Only meaningful after [`connect`](Self::connect) has recorded the
+    /// server's capabilities. The default is `false`, so a protocol without
+    /// push (POP3) and any adapter that does not override this reports "no
+    /// push", and the caller keeps polling.
+    fn supports_idle(&self) -> bool {
+        false
+    }
+
+    /// Blocks on a single IDLE waiting period on the **currently selected**
+    /// mailbox, returning how the wait ended (see [`IdleOutcome`]).
+    ///
+    /// The caller selects the mailbox first (via [`select_mailbox`](Self::select_mailbox)),
+    /// then calls this in a loop to maintain a push connection: issue IDLE,
+    /// wait up to `max_wait` for a server change, and return. `max_wait`
+    /// bounds one wait so the caller can renew IDLE before the server's
+    /// ~29-minute inactivity limit. `interrupt` is a future the caller uses to
+    /// cancel the wait (e.g. on shutdown); when it resolves first, the adapter
+    /// sends `DONE` and returns [`IdleOutcome::Interrupted`]. `DONE` is always
+    /// sent before a successful return, leaving the session ready for the next
+    /// call.
+    ///
+    /// A dedicated push connection only ever idles and reports changes; it
+    /// never mutates the mailbox, so it can safely run outside the sync/
+    /// write-back connection lock (a second connection per account).
+    ///
+    /// The default returns [`MailError::UnsupportedCapability`], which is the
+    /// correct answer for a protocol without server-side push (POP3) or any
+    /// adapter that does not implement IDLE. A connection error propagates and
+    /// leaves the session unusable (the caller reconnects).
+    fn idle(
+        &mut self,
+        max_wait: Duration,
+        interrupt: impl Future<Output = ()> + Send,
+    ) -> impl Future<Output = Result<IdleOutcome, MailError>> + Send {
+        // Consume both parameters so a non-overriding adapter drops the
+        // interrupt future without polling it, then report "no push".
+        let _ = (max_wait, interrupt);
+        std::future::ready(Err(MailError::UnsupportedCapability {
+            capability: "IDLE".to_owned(),
+        }))
+    }
 
     /// Closes the connection gracefully.
     fn disconnect(&mut self) -> impl Future<Output = Result<(), MailError>> + Send;
@@ -322,6 +369,9 @@ mod tests {
             &MailboxName::new("Archive"),
         ));
         assert_send_future(provider.expunge_mailbox(&MailboxName::new("Trash")));
+        // The default `idle` future must be `Send`, and the interrupt future
+        // (here a `Send` `Pending`) is threaded through by value.
+        assert_send_future(provider.idle(Duration::from_secs(1), std::future::pending::<()>()));
         assert_send_future(provider.disconnect());
     }
 

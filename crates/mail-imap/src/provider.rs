@@ -1,15 +1,17 @@
 //! The [`ImapProvider`] adapter implementing [`IncomingMailProvider`].
 
+use std::time::Duration;
+
 use axomail_core::{
-    AppendOutcome, FlagDelta, FlagSet, IncomingMailProvider, MailError, MailboxName, RawMessage,
-    RemoteMailboxState, RemoteMessageId, SyncOutcome, SyncRequest,
+    AppendOutcome, FlagDelta, FlagSet, IdleOutcome, IncomingMailProvider, MailError, MailboxName,
+    RawMessage, RemoteMailboxState, RemoteMessageId, SyncOutcome, SyncRequest,
 };
 
 use crate::config::ImapConfig;
 use crate::connection::{self, Connected};
 use crate::convert::flag_set_to_imap_list;
 use crate::error::{map_imap_error, with_deadline};
-use crate::{append, discover, folder_ops, message_ops, sync, utf7};
+use crate::{append, discover, folder_ops, idle, message_ops, sync, utf7};
 
 /// Records which mailbox the session currently has selected, so that
 /// per-message operations can validate the caller's message identity.
@@ -240,6 +242,33 @@ impl IncomingMailProvider for ImapProvider {
         let encoded = utf7::encode(path.as_str());
         let connected = self.require_session()?;
         folder_ops::set_subscribed(connected, &encoded, subscribed, timeout).await
+    }
+
+    fn supports_idle(&self) -> bool {
+        self.connected
+            .as_ref()
+            .is_some_and(|connected| connected.has_capability("IDLE"))
+    }
+
+    async fn idle(
+        &mut self,
+        max_wait: Duration,
+        interrupt: impl Future<Output = ()> + Send,
+    ) -> Result<IdleOutcome, MailError> {
+        let timeout = self.config.timeout;
+        // Take the session out for the duration of the wait: async-imap's IDLE
+        // handle consumes the session by value and hands it back on `DONE`.
+        let connected = self
+            .connected
+            .take()
+            .ok_or_else(|| MailError::Configuration {
+                message: "the IMAP session is not connected; call connect first".to_owned(),
+            })?;
+        // On error the session is not returned (the connection is broken), so
+        // `self.connected` stays `None` and the caller reconnects.
+        let (connected, outcome) = idle::run(connected, max_wait, interrupt, timeout).await?;
+        self.connected = Some(connected);
+        Ok(outcome)
     }
 
     async fn disconnect(&mut self) -> Result<(), MailError> {

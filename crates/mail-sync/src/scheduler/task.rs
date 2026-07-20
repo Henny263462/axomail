@@ -189,7 +189,9 @@ fn handle_event(
         }
         SyncEvent::JobStarted { .. }
         | SyncEvent::BatchIngested { .. }
-        | SyncEvent::OpsReplayed { .. } => {}
+        | SyncEvent::OpsReplayed { .. }
+        // Push-connection status is informational; it never drives poll backoff.
+        | SyncEvent::PushStateChanged { .. } => {}
     }
 }
 

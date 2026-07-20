@@ -11,6 +11,7 @@ pub mod dto;
 pub mod notifications;
 pub mod oauth;
 pub mod pop3_sync;
+pub mod push;
 pub mod scheduler;
 pub mod settings;
 pub mod startup;
@@ -18,13 +19,14 @@ pub mod state;
 
 use std::sync::Arc;
 
+use axomail_core::{AccountId, MailboxId};
 use axomail_security::KeyringSecretStore;
 use axomail_storage::Store;
-use axomail_sync::SyncEvent;
+use axomail_sync::{PushState, SyncEvent};
 use tauri::{Emitter, Manager};
 use tokio::sync::broadcast::error::RecvError;
 
-use crate::dto::SyncEventDto;
+use crate::dto::{PushStatusDto, SyncEventDto};
 use crate::notifications::{NewMailNotifier, TauriNotifier, maybe_notify_new_messages};
 use crate::state::{AppState, SharedSecretStore};
 
@@ -33,6 +35,10 @@ const DATABASE_FILE: &str = "axomail.db";
 
 /// Tauri event channel carrying [`SyncEventDto`] progress to the frontend.
 const SYNC_EVENT: &str = "axomail://sync";
+
+/// Tauri event channel carrying [`PushStatusDto`] IDLE connection-state
+/// changes to the frontend.
+const PUSH_EVENT: &str = "axomail://push";
 
 /// Builds and runs the Tauri application.
 ///
@@ -179,6 +185,8 @@ pub fn run() {
             commands::settings::update_settings,
             commands::settings::get_list_threaded,
             commands::settings::set_list_threaded,
+            commands::settings::get_push_enabled,
+            commands::settings::set_push_enabled,
             commands::settings::set_pop3_delete_policy,
             commands::offline::set_work_offline,
             commands::offline::get_work_offline,
@@ -268,16 +276,48 @@ fn forward_sync_events(
     });
 }
 
-/// Emits one engine event to the frontend as a [`SyncEventDto`].
+/// Emits one engine event to the frontend: job-lifecycle events go to
+/// [`SYNC_EVENT`] as a [`SyncEventDto`]; push connection-state changes go to
+/// [`PUSH_EVENT`] as a [`PushStatusDto`].
 fn forward_one(app: &tauri::AppHandle, event: &SyncEvent) {
+    if let SyncEvent::PushStateChanged {
+        account_id,
+        mailbox_id,
+        state,
+    } = event
+    {
+        forward_push(app, *account_id, *mailbox_id, *state);
+        return;
+    }
     match SyncEventDto::from_event(event) {
-        Ok(dto) => {
+        Ok(Some(dto)) => {
             if let Err(error) = app.emit(SYNC_EVENT, dto) {
                 tracing::warn!(error = %error, "failed to emit sync event");
             }
         }
+        // Non-job events (push status) are routed above; nothing to emit here.
+        Ok(None) => {}
         Err(error) => {
             tracing::warn!(error = %error, "dropping sync event with out-of-range id");
+        }
+    }
+}
+
+/// Emits one push connection-state change to the frontend as a [`PushStatusDto`].
+fn forward_push(
+    app: &tauri::AppHandle,
+    account_id: AccountId,
+    mailbox_id: Option<MailboxId>,
+    state: PushState,
+) {
+    match PushStatusDto::new(account_id.value(), mailbox_id.map(MailboxId::value), state) {
+        Ok(dto) => {
+            if let Err(error) = app.emit(PUSH_EVENT, dto) {
+                tracing::warn!(error = %error, "failed to emit push status");
+            }
+        }
+        Err(error) => {
+            tracing::warn!(error = %error, "dropping push status with out-of-range id");
         }
     }
 }

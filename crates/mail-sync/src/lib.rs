@@ -38,13 +38,14 @@ mod filter_run;
 mod job;
 mod junk;
 mod op_payload;
+mod push;
 mod scheduler;
 mod shared;
 mod worker;
 
 pub use config::SyncConfig;
 pub use engine::{EngineOptions, SyncEngine};
-pub use event::{SyncErrorClass, SyncEvent, SyncJobSummary};
+pub use event::{PushState, SyncErrorClass, SyncEvent, SyncJobSummary};
 pub use factory::ProviderFactory;
 pub use filter_run::{FilterRunReport, run_filters_on_messages};
 pub use job::{SyncMailbox, WorkRequest};
@@ -52,6 +53,7 @@ pub use job::{SyncMailbox, WorkRequest};
 pub use junk::{route_from_junk, route_to_junk};
 // Write-back op-payload builders, used by the command layer to enqueue ops.
 pub use op_payload::{answered_op, copy_op, delete_op, flagged_op, keyword_op, move_op, seen_op};
+pub use push::{PushConfig, PushSupervisor, PushTarget};
 pub use scheduler::{BackgroundScheduler, SchedulerConfig, SchedulerStatus};
 
 // Re-exported so callers can name job identifiers and states without a

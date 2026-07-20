@@ -15,7 +15,14 @@ use crate::config::SyncConfig;
 /// Computes the backoff delay before retrying after transient failure
 /// number `attempt` (1-based).
 pub(crate) fn backoff_delay(attempt: u32, config: &SyncConfig) -> Duration {
-    let capped = capped_delay(attempt, config);
+    backoff_from(attempt, config.backoff_base, config.backoff_cap)
+}
+
+/// Equal-jitter backoff for `attempt` (1-based) with an explicit `base` and
+/// `cap`. Shared by the sync retry loop ([`backoff_delay`]) and the push
+/// supervisor's reconnect loop, so both use one jitter source and formula.
+pub(crate) fn backoff_from(attempt: u32, base: Duration, cap: Duration) -> Duration {
+    let capped = capped_delay(attempt, base, cap);
     let capped_ms = u64::try_from(capped.as_millis()).unwrap_or(u64::MAX);
     let half = capped_ms / 2;
     let span = capped_ms - half;
@@ -27,14 +34,14 @@ pub(crate) fn backoff_delay(attempt: u32, config: &SyncConfig) -> Duration {
     Duration::from_millis(half + jitter)
 }
 
-/// The exponential delay for `attempt`, clamped to the configured cap.
-fn capped_delay(attempt: u32, config: &SyncConfig) -> Duration {
+/// The exponential delay for `attempt`, clamped to `cap`.
+fn capped_delay(attempt: u32, base: Duration, cap: Duration) -> Duration {
     let shift = attempt.saturating_sub(1).min(31);
     let factor = 1u64.checked_shl(shift).unwrap_or(u64::MAX);
-    let base_ms = u64::try_from(config.backoff_base.as_millis()).unwrap_or(u64::MAX);
+    let base_ms = u64::try_from(base.as_millis()).unwrap_or(u64::MAX);
     let scaled_ms = base_ms.saturating_mul(factor);
     let scaled = Duration::from_millis(scaled_ms);
-    scaled.min(config.backoff_cap)
+    scaled.min(cap)
 }
 
 /// Draws the next pseudo-random `u64` from a lazily seeded xorshift state.
@@ -81,7 +88,7 @@ mod tests {
         let config = config();
         // Equal jitter keeps every delay in [capped/2, capped].
         for attempt in 1..=4 {
-            let capped = capped_delay(attempt, &config);
+            let capped = capped_delay(attempt, config.backoff_base, config.backoff_cap);
             let delay = backoff_delay(attempt, &config);
             assert!(delay >= capped / 2, "attempt {attempt}: {delay:?} < half");
             assert!(delay <= capped, "attempt {attempt}: {delay:?} > capped");
@@ -92,9 +99,21 @@ mod tests {
     fn respects_the_cap() {
         let config = config();
         // A very high attempt saturates at the cap, never overflowing.
-        let capped = capped_delay(30, &config);
+        let capped = capped_delay(30, config.backoff_base, config.backoff_cap);
         assert_eq!(capped, config.backoff_cap);
         let delay = backoff_delay(30, &config);
         assert!(delay <= config.backoff_cap);
+    }
+
+    #[test]
+    fn explicit_base_and_cap_track_the_config_form() {
+        // `backoff_from` with the config's own base/cap equals `backoff_delay`'s
+        // bounds, proving the shared formula.
+        let config = config();
+        for attempt in 1..=6 {
+            let capped = capped_delay(attempt, config.backoff_base, config.backoff_cap);
+            let delay = backoff_from(attempt, config.backoff_base, config.backoff_cap);
+            assert!(delay >= capped / 2 && delay <= capped);
+        }
     }
 }
