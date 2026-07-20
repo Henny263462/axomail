@@ -229,6 +229,8 @@ mod tests {
             html_body: html.map(str::to_owned),
             preview: String::new(),
             attachments: Vec::new(),
+            disposition_notification_to: Vec::new(),
+            mailing_list: false,
             parse_warnings: Vec::new(),
         }
     }

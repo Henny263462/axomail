@@ -107,6 +107,7 @@ describe("settings section registry", () => {
       "sync-interval",
       "push",
       "auto-read",
+      "receipts",
       "appearance",
       "language",
       "pop3-delete",

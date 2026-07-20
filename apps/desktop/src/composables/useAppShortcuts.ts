@@ -14,6 +14,7 @@ import { nextTick, type ComputedRef, type Ref } from "vue";
 
 import { buildContextCommands, useAppCommands } from "./useAppCommands";
 import { provideCommandRegistry } from "./useCommandRegistry";
+import { i18n } from "../i18n";
 import type { Pane } from "./usePaneNavigation";
 import type { DialogController } from "./useDialogs";
 import type { AppDialogMap } from "../components/layout/dialogs";
@@ -101,7 +102,8 @@ export function useAppShortcuts(deps: AppShortcutsDeps): AppShortcuts {
       dialogs.isOpen("activity") ||
       dialogs.isOpen("addressBook") ||
       dialogs.isOpen("moveToFolder") ||
-      dialogs.isOpen("shortcutHelp")
+      dialogs.isOpen("shortcutHelp") ||
+      dialogs.isOpen("templates")
     );
   }
 
@@ -137,6 +139,17 @@ export function useAppShortcuts(deps: AppShortcutsDeps): AppShortcuts {
       notJunk: (id) => void mailboxActions.notJunk([id]),
     }),
   );
+
+  // "New message from template" — palette-only (no default shortcut); opens the
+  // template picker, which then opens the composer pre-filled. Modal-gated and
+  // auto-disposed with the calling component like the other registrations.
+  registry.register({
+    id: "compose.newFromTemplate",
+    title: i18n.global.t("templates.command"),
+    keywords: ["template", "templates", "boilerplate", "canned"],
+    run: () => dialogs.open("templates"),
+    isEnabled: () => !isModalOpen(),
+  });
 
   // The global mail shortcut map + go-to chords.
   useAppCommands(registry, {

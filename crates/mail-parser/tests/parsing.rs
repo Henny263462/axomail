@@ -18,6 +18,64 @@ fn parse(raw: &str) -> ParsedMessage {
 }
 
 #[test]
+fn parses_disposition_notification_to_request() {
+    let parsed = parse(
+        "From: Ada Lovelace <ada@example.org>\n\
+         To: Charles <charles@example.com>\n\
+         Subject: Please confirm\n\
+         Disposition-Notification-To: Ada <ada@example.org>\n\
+         \n\
+         Did you read this?\n",
+    );
+    assert_eq!(parsed.disposition_notification_to.len(), 1);
+    assert_eq!(
+        parsed.disposition_notification_to[0].email.as_str(),
+        "ada@example.org"
+    );
+    assert!(!parsed.mailing_list);
+}
+
+#[test]
+fn no_receipt_request_when_header_absent() {
+    let parsed = parse(
+        "From: Ada <ada@example.org>\n\
+         To: Charles <charles@example.com>\n\
+         Subject: Hello\n\
+         \n\
+         Plain message.\n",
+    );
+    assert!(parsed.disposition_notification_to.is_empty());
+}
+
+#[test]
+fn detects_mailing_list_from_list_id_header() {
+    let parsed = parse(
+        "From: list@example.org\n\
+         To: subscriber@example.com\n\
+         Subject: Digest\n\
+         List-Id: Example Discussion <discuss.example.org>\n\
+         Disposition-Notification-To: list@example.org\n\
+         \n\
+         Weekly digest.\n",
+    );
+    assert!(parsed.mailing_list);
+    assert_eq!(parsed.disposition_notification_to.len(), 1);
+}
+
+#[test]
+fn detects_mailing_list_from_precedence_bulk() {
+    let parsed = parse(
+        "From: noreply@example.org\n\
+         To: subscriber@example.com\n\
+         Subject: Notice\n\
+         Precedence: bulk\n\
+         \n\
+         Automated notice.\n",
+    );
+    assert!(parsed.mailing_list);
+}
+
+#[test]
 fn simple_plain_extracts_all_envelope_fields() {
     let parsed = parse(
         "From: Ada Lovelace <ada@example.org>\n\

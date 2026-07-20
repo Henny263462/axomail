@@ -79,6 +79,11 @@ pub fn render_message(message: &OutgoingMessage) -> Result<RenderedMessage, Mail
     if !references.is_empty() {
         builder = builder.references(MessageId::from(references));
     }
+    // A read-receipt request (RFC 8098): the header value is written verbatim,
+    // so the caller supplies a bare or display-name-qualified address.
+    if let Some(receipt_to) = &message.disposition_notification_to {
+        builder = builder.header("Disposition-Notification-To", Raw::new(receipt_to.clone()));
+    }
     if let Some(html) = &message.html_body {
         builder = builder.html_body(html.as_str());
     }
@@ -213,7 +218,7 @@ fn address_list(addresses: &[Address]) -> BuilderAddress<'_> {
 /// Uniqueness comes from the wall-clock timestamp, a process-wide counter, and
 /// a randomly seeded hash, so two messages built in the same nanosecond still
 /// differ. The sender's domain is used as the right-hand side.
-fn generate_message_id(domain: &str) -> String {
+pub(crate) fn generate_message_id(domain: &str) -> String {
     use std::hash::{BuildHasher, Hasher, RandomState};
 
     static COUNTER: AtomicU64 = AtomicU64::new(0);
@@ -261,6 +266,7 @@ mod tests {
             attachments: vec![],
             in_reply_to: None,
             references: vec![],
+            disposition_notification_to: None,
         }
     }
 

@@ -58,6 +58,10 @@ pub(super) struct MessageExtras {
     /// Attachments to include: picked files read from disk and any forwarded
     /// `message/rfc822` parts, each with a sanitized name and MIME type.
     pub attachments: Vec<OutgoingAttachment>,
+    /// `Disposition-Notification-To` value (the read-receipt request address)
+    /// when the composer asked for a receipt; `None` requests no receipt. Like
+    /// the other extras it rides only the immediate-send path.
+    pub disposition_notification_to: Option<String>,
 }
 
 /// Submits one outbox row (already transitioned to `sending`) over SMTP and
@@ -173,6 +177,7 @@ fn build_message(
         attachments: extras.attachments,
         in_reply_to: extras.in_reply_to,
         references: extras.references,
+        disposition_notification_to: extras.disposition_notification_to,
     })
 }
 

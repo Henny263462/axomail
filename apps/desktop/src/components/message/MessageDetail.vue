@@ -8,6 +8,7 @@ import MessageActionBar from "./MessageActionBar.vue";
 import MessageActions from "./MessageActions.vue";
 import MessageAttachments from "./MessageAttachments.vue";
 import MessageBody from "./MessageBody.vue";
+import MessageReceiptBar from "./MessageReceiptBar.vue";
 import MessageTagArea from "./MessageTagArea.vue";
 
 const props = withDefaults(
@@ -123,6 +124,13 @@ function alwaysAllow(): void {
       :unavailable="rsvpUnavailable"
       @rsvp="(choice) => emit('rsvp', choice)"
       @retry-send="emit('retry-rsvp')"
+    />
+
+    <MessageReceiptBar
+      v-if="detail.receiptRequest"
+      :key="detail.id"
+      :receipt="detail.receiptRequest"
+      :message-id="detail.id"
     />
 
     <MessageActions

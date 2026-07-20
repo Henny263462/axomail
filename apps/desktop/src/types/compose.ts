@@ -46,6 +46,12 @@ export interface ComposeInput {
    * {@link attachments} into one `multipart/mixed`; immediate-send only.
    */
   forwardedAttachments?: ComposeAttachmentDto[];
+  /**
+   * When true, request a read receipt (MDN): the send path writes a
+   * `Disposition-Notification-To` header pointing at the sender's address.
+   * Immediate-send only (dropped on a scheduled or offline send).
+   */
+  requestReceipt?: boolean;
 }
 
 /**
@@ -60,6 +66,15 @@ export interface ComposeAttachmentDto {
 
 /** Which reply operation a composer prefill is prepared for. */
 export type ReplyMode = "reply" | "replyAll" | "forward";
+
+/** Field seed for a fresh composition (used by "New message from template"). */
+export interface ComposeInitial {
+  to?: string[];
+  cc?: string[];
+  bcc?: string[];
+  subject?: string;
+  body?: string;
+}
 
 /** How a source message is marked once its reply/forward is sent. */
 export type SourceMark = "answered" | "forwarded";

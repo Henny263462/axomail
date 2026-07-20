@@ -82,6 +82,13 @@ pub struct ComposeInput {
     /// immediate-send path.
     #[serde(default)]
     pub forwarded_attachments: Vec<ComposeAttachmentDto>,
+    /// When `true`, request a read receipt (message disposition notification,
+    /// RFC 8098): the send path writes a `Disposition-Notification-To` header
+    /// pointing at the sender's own address. Like the threading headers this
+    /// rides only the immediate-send path (the durable outbox row is text-only),
+    /// so a scheduled or offline send omits the request — a documented limit.
+    #[serde(default)]
+    pub request_receipt: bool,
 }
 
 /// Metadata for one candidate attachment, returned by `stat_attachments` so the

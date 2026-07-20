@@ -394,6 +394,7 @@ mod tests {
             attachments: vec![],
             in_reply_to: None,
             references: vec![],
+            disposition_notification_to: None,
         };
         assert_send_future(provider.send(&message));
     }

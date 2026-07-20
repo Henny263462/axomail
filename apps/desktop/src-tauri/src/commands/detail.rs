@@ -132,12 +132,17 @@ where
     // CANCEL retires any stored RSVP for its event as a side effect.
     let invitation =
         crate::commands::invitations::detail_invitation(store, message_id, &parsed).await?;
+    // Surface a pending read-receipt request when the message asked for one and
+    // the honour policy decides it should be acted on (and none was sent yet).
+    let receipt_request =
+        crate::receipts::receipt_request_for(store, message_id, envelope.mailbox, &parsed).await?;
     MessageDetailDto::from_parsed(
         message_id,
         &parsed,
         policy,
         envelope.flags.flagged,
         invitation,
+        receipt_request,
     )
 }
 

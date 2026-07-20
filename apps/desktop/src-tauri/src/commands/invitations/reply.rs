@@ -85,6 +85,7 @@ pub(super) fn prepare_rsvp(
         // The reply rides as a text/calendar part through the shared attachment
         // path (base64 in, one multipart/mixed out).
         forwarded_attachments: vec![calendar],
+        request_receipt: false,
     };
 
     let invite = NewInvite {

@@ -8,10 +8,12 @@ import ActivityDialog from "../activity/ActivityDialog.vue";
 import CommandPalette from "../command/CommandPalette.vue";
 import ShortcutHelp from "../command/ShortcutHelp.vue";
 import ComposerDialog from "../compose/ComposerDialog.vue";
+import TemplatePickerDialog from "../compose/TemplatePickerDialog.vue";
 import AddressBookDialog from "../contacts/AddressBookDialog.vue";
 import MoveToFolderDialog from "../message/MoveToFolderDialog.vue";
 import SettingsDialog from "../settings/SettingsDialog.vue";
 import AccountSetupDialog from "../setup/AccountSetupDialog.vue";
+import type { MessageTemplateDto } from "../../types/templates";
 import type { AppDialogMap } from "./dialogs";
 
 const props = defineProps<{
@@ -39,6 +41,7 @@ const composer = computed(
       accountId: 0,
       draft: null,
       prefill: null,
+      initial: null,
     },
 );
 
@@ -51,6 +54,26 @@ const moveTarget = computed(
 function onPicked(payload: FolderPicked): void {
   emit("folderPicked", payload);
   props.dialogs.close("moveToFolder");
+}
+
+/**
+ * Opens the composer pre-filled from a chosen template. Templates are
+ * account-agnostic, so the first account seeds the From field; the composer's
+ * own From picker lets the user switch identity/account.
+ */
+function onTemplateSelected(template: MessageTemplateDto): void {
+  props.dialogs.close("templates");
+  props.dialogs.open("composer", {
+    accountId: props.accounts[0]?.id ?? 0,
+    draft: null,
+    initial: {
+      to: template.to,
+      cc: template.cc,
+      bcc: template.bcc,
+      subject: template.subject,
+      body: template.bodyText,
+    },
+  });
 }
 </script>
 
@@ -65,10 +88,16 @@ function onPicked(payload: FolderPicked): void {
     :account-id="composer.accountId"
     :draft="composer.draft"
     :prefill="composer.prefill ?? null"
+    :initial="composer.initial ?? null"
     :accounts="accounts"
     @close="dialogs.close('composer')"
     @sent="emit('composerSent', $event)"
     @saved="emit('composerSaved')"
+  />
+  <TemplatePickerDialog
+    v-if="dialogs.isOpen('templates')"
+    @close="dialogs.close('templates')"
+    @select="onTemplateSelected"
   />
   <SettingsDialog
     v-if="dialogs.isOpen('settings')"

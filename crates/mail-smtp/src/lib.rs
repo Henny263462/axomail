@@ -35,11 +35,13 @@
 
 mod config;
 mod error_map;
+mod mdn;
 mod mime;
 mod provider;
 mod redact;
 mod tls;
 
 pub use config::{DEFAULT_TIMEOUT, SmtpConfig};
+pub use mdn::{MdnDisposition, MdnReport, render_mdn};
 pub use mime::{RenderedMessage, render_message};
 pub use provider::SmtpProvider;

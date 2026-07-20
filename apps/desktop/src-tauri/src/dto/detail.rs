@@ -83,6 +83,22 @@ impl ScamFlagDto {
     }
 }
 
+/// A pending read-receipt (MDN) request surfaced on a received message.
+///
+/// Present only when the message carried a `Disposition-Notification-To`
+/// header, the configured receipt policy decides the request should be acted
+/// on, and no receipt has been sent yet. `action` is `"ask"` (show the request
+/// and wait for the user to confirm) or `"send"` (the "always send" policy: the
+/// frontend sends the receipt automatically).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ReceiptRequestDto {
+    /// Address the receipt would be sent to (the request header value).
+    pub to: String,
+    /// Suggested action: `"ask"` or `"send"`.
+    pub action: &'static str,
+}
+
 /// Full detail of one message, ready for the reading pane.
 ///
 /// `sanitizedHtml` is the output of the sanitizer and is safe to hand to the
@@ -141,6 +157,10 @@ pub struct MessageDetailDto {
     /// The iMIP invitation card payload when the message carries a
     /// `text/calendar` invitation, else `None`.
     pub invitation: Option<InvitationDto>,
+    /// A pending read-receipt (MDN) request to surface, or `None` when the
+    /// message requested no receipt, the policy decided not to honour it, or a
+    /// receipt was already sent.
+    pub receipt_request: Option<ReceiptRequestDto>,
 }
 
 impl MessageDetailDto {
@@ -157,6 +177,7 @@ impl MessageDetailDto {
         policy: RemoteContentPolicy,
         flagged: bool,
         invitation: Option<InvitationDto>,
+        receipt_request: Option<ReceiptRequestDto>,
     ) -> Result<Self, MailError> {
         // Embed message-local inline `cid:` images as `data:` URIs so a
         // `multipart/related` body renders its logo/signature images with no
@@ -216,6 +237,7 @@ impl MessageDetailDto {
             references: parsed.references.clone(),
             offline_unavailable: false,
             invitation,
+            receipt_request,
         })
     }
 
@@ -258,6 +280,7 @@ impl MessageDetailDto {
             references: Vec::new(),
             offline_unavailable: true,
             invitation: None,
+            receipt_request: None,
         })
     }
 }

@@ -22,5 +22,43 @@
     "deHint": "Immer Deutsch verwenden.",
     "statusSaved": "Sprache aktualisiert.",
     "statusUnavailable": "Zum Ändern der Sprache wird die Desktop-App benötigt; in der Browservorschau ist sie nicht verfügbar."
+  },
+  "compose": {
+    "requestReceipt": "Lesebestätigung anfordern",
+    "saveAsTemplate": "Als Vorlage speichern",
+    "templateSaved": "Vorlage „{name}“ gespeichert.",
+    "templateUnavailable": "Zum Speichern einer Vorlage wird die Desktop-App benötigt; in der Browservorschau ist sie nicht verfügbar."
+  },
+  "receipts": {
+    "bar": {
+      "requested": "Der Absender hat eine Lesebestätigung angefordert.",
+      "send": "Bestätigung senden",
+      "ignore": "Ignorieren",
+      "sending": "Bestätigung wird gesendet …",
+      "sent": "Lesebestätigung gesendet.",
+      "failed": "Die Lesebestätigung konnte nicht gesendet werden.",
+      "unavailable": "Zum Senden einer Bestätigung wird die Desktop-App benötigt."
+    },
+    "settings": {
+      "title": "Lesebestätigungen",
+      "hint": "Legen Sie fest, wie axomail reagiert, wenn ein Absender eine Lesebestätigung (Message Disposition Notification) anfordert.",
+      "policyNever": "Nie senden",
+      "policyAsk": "Jedes Mal fragen",
+      "policyAlways": "Immer senden",
+      "onlyWhenAddressed": "Nur wenn die Nachricht an mich adressiert ist",
+      "neverForLists": "Nie für Mailinglisten-Nachrichten",
+      "statusSaved": "Einstellungen für Lesebestätigungen aktualisiert.",
+      "statusUnavailable": "Zum Ändern der Lesebestätigungs-Einstellungen wird die Desktop-App benötigt; in der Browservorschau ist sie nicht verfügbar."
+    }
+  },
+  "templates": {
+    "title": "Vorlagen",
+    "command": "Neue Nachricht aus Vorlage",
+    "empty": "Noch keine Vorlagen. Verwenden Sie „Als Vorlage speichern“ im Editor, um eine zu erstellen.",
+    "new": "Neue Nachricht",
+    "delete": "Löschen",
+    "close": "Schließen",
+    "unavailable": "Für Vorlagen wird die Desktop-App benötigt; in der Browservorschau sind sie nicht verfügbar.",
+    "openAria": "Nachrichtenvorlagen öffnen"
   }
 }

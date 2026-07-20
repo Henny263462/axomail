@@ -243,6 +243,8 @@ mod tests {
             html_body: None,
             preview: String::new(),
             attachments: Vec::new(),
+            disposition_notification_to: Vec::new(),
+            mailing_list: false,
             parse_warnings: Vec::new(),
         }
     }
