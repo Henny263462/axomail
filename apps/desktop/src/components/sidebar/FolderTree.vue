@@ -19,6 +19,7 @@ import {
   renameFolder,
   setFolderSubscribed,
 } from "../../api/folders";
+import { useFolderImportExport } from "../../composables/useFolderImportExport";
 import type { AccountSummary, MailboxSummary } from "../../types/mail";
 import FolderPropertiesDialog from "../offline/FolderPropertiesDialog.vue";
 import FolderContextMenu from "./FolderContextMenu.vue";
@@ -128,6 +129,19 @@ function menuEmptyTrash(): void {
 async function menuCompact(): Promise<void> {
   closeMenu();
   await run(() => compactStorage());
+}
+
+// mbox export / import (dialog-driven; own status message).
+const portability = useFolderImportExport(() => emit("changed"));
+function menuExport(): void {
+  const folder = menuFolder.value;
+  closeMenu();
+  if (folder !== null) void portability.exportFolder(folder);
+}
+function menuImport(): void {
+  const folder = menuFolder.value;
+  closeMenu();
+  if (folder !== null) void portability.importFolder(folder);
 }
 
 const dialogTitle = computed(() => {
@@ -259,10 +273,21 @@ async function run(op: () => Promise<unknown>, fromDialog = false): Promise<void
       @toggle-subscribe="menuToggleSubscribe"
       @properties="menuProperties"
       @compact="menuCompact"
+      @export-folder="menuExport"
+      @import-folder="menuImport"
       @empty-trash="menuEmptyTrash"
       @delete="menuDelete"
       @close="closeMenu"
     />
+
+    <p
+      v-if="portability.message.value !== null"
+      class="portability-status"
+      role="status"
+      aria-live="polite"
+    >
+      {{ portability.message.value }}
+    </p>
 
     <Teleport to="body">
       <FolderPropertiesDialog
@@ -329,5 +354,12 @@ async function run(op: () => Promise<unknown>, fromDialog = false): Promise<void
   margin: 0;
   padding: 0;
   list-style: none;
+}
+
+.portability-status {
+  padding: var(--space-1) var(--space-2);
+  font-size: var(--text-xs);
+  color: var(--color-text-secondary);
+  overflow-wrap: anywhere;
 }
 </style>

@@ -7,6 +7,8 @@ import {
   setMessageFlagged,
   setRemoteContentAllowed,
 } from "../../api/messages";
+import { useCommandRegistry } from "../../composables/useCommandRegistry";
+import { printMessageDocument } from "../../lib/printDocument";
 import type { MessageDetailDto, RsvpChoice } from "../../types/mail";
 import EmptyState from "../common/EmptyState.vue";
 import MessageDetail from "./MessageDetail.vue";
@@ -38,6 +40,30 @@ const detail = ref<MessageDetailDto | null>(null);
 // RSVP request state for the invitation card, reset per selection.
 const rsvpBusy = ref(false);
 const rsvpError = ref<string | null>(null);
+
+/** Prints the open message as a sanitized, chrome-free document (ADR-0007). */
+function printCurrent(): void {
+  if (detail.value !== null && !detail.value.offlineUnavailable) {
+    printMessageDocument(detail.value);
+  }
+}
+
+// Global "Print message" command (Ctrl/Cmd+P); enabled only while a readable
+// message is open. Auto-unregisters when this pane unmounts. Guarded so an
+// isolated unit mount (no app-root command registry) still renders — the Print
+// button keeps working there; only the global shortcut is skipped.
+try {
+  useCommandRegistry().register({
+    id: "message.print",
+    title: "Print message",
+    keywords: ["print"],
+    shortcut: "Mod+P",
+    run: printCurrent,
+    isEnabled: () => detail.value !== null && detail.value.offlineUnavailable !== true,
+  });
+} catch {
+  // No command-registry ancestor: the pane is mounted in isolation (tests).
+}
 
 /**
  * Loads the detail for `id`, ignoring the result if the selection changed
@@ -175,6 +201,7 @@ watch(
       @always-allow-remote="alwaysAllowRemote"
       @toggle-star="toggleStar"
       @rsvp="respond"
+      @print="printCurrent"
       @reply="emit('reply', detail.id)"
       @reply-all="emit('replyAll', detail.id)"
       @forward="emit('forward', detail.id)"

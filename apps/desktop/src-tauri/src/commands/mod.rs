@@ -20,6 +20,7 @@ pub mod identities;
 pub mod invitations;
 pub mod jobs;
 pub mod junk;
+pub mod mbox;
 pub mod messages;
 pub mod meta;
 pub mod oauth;

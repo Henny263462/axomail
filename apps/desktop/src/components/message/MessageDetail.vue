@@ -24,6 +24,7 @@ const emit = defineEmits<{
   (event: "show-remote-once"): void;
   (event: "always-allow-remote", sender: string): void;
   (event: "toggle-star"): void;
+  (event: "print"): void;
   (event: "reply"): void;
   (event: "reply-all"): void;
   (event: "forward"): void;
@@ -169,6 +170,7 @@ function alwaysAllow(): void {
     <MessageActions
       :message-id="detail.id"
       :subject="detail.subject"
+      @print="emit('print')"
     />
 
     <MessageAttachments
