@@ -30,4 +30,8 @@ export type AppDialogMap = {
   addressBook: undefined;
   composer: ComposerPayload;
   moveToFolder: MoveToFolderPayload;
+  /** The Ctrl/Cmd+K command palette. */
+  commandPalette: undefined;
+  /** The keyboard-shortcut help overlay (opened with `?`). */
+  shortcutHelp: undefined;
 };

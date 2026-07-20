@@ -5,6 +5,8 @@ import type { DialogController } from "../../composables/useDialogs";
 import type { FolderPicked } from "../../composables/useMailboxActions";
 import type { AccountSummary } from "../../types/mail";
 import ActivityDialog from "../activity/ActivityDialog.vue";
+import CommandPalette from "../command/CommandPalette.vue";
+import ShortcutHelp from "../command/ShortcutHelp.vue";
 import ComposerDialog from "../compose/ComposerDialog.vue";
 import AddressBookDialog from "../contacts/AddressBookDialog.vue";
 import MoveToFolderDialog from "../message/MoveToFolderDialog.vue";
@@ -91,5 +93,13 @@ function onPicked(payload: FolderPicked): void {
     :mode="moveTarget.mode"
     @close="dialogs.close('moveToFolder')"
     @picked="onPicked"
+  />
+  <CommandPalette
+    v-if="dialogs.isOpen('commandPalette')"
+    @close="dialogs.close('commandPalette')"
+  />
+  <ShortcutHelp
+    v-if="dialogs.isOpen('shortcutHelp')"
+    @close="dialogs.close('shortcutHelp')"
   />
 </template>

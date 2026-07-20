@@ -140,6 +140,30 @@ export function useMessageActions(deps: Deps) {
   }
 
   /**
+   * Toggles a single message's read/unread state optimistically (the `u`
+   * shortcut / command). The list row and the sidebar unread badge flip at
+   * once, then the change is persisted; a backend failure reverts both. Uses
+   * {@link markMessagesRead} (which rejects on failure) so the revert is exact,
+   * mirroring {@link markListRead}; the browser preview resolves with nothing to
+   * persist and the optimistic flip stands.
+   */
+  async function toggleSeen(messageId: number): Promise<void> {
+    const message = findMessage(messageId);
+    if (message === undefined) return;
+    const next = !message.seen;
+    message.seen = next;
+    if (next) decrementUnread(message.mailboxId);
+    else incrementUnread(message.mailboxId);
+    try {
+      await markMessagesRead([messageId], next);
+    } catch {
+      message.seen = !next;
+      if (next) incrementUnread(message.mailboxId);
+      else decrementUnread(message.mailboxId);
+    }
+  }
+
+  /**
    * Marks every unread message in `mailboxId` read, optimistically, reverting
    * the whole batch if the command fails (a `null` result — which
    * {@link markMailboxRead} returns on failure — or a throw).
@@ -220,6 +244,7 @@ export function useMessageActions(deps: Deps) {
     configureAutoRead,
     scheduleAutoRead,
     toggleStar,
+    toggleSeen,
     syncStar,
     markAllRead,
     markListRead,

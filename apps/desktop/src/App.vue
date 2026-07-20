@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from "vue";
+import { computed, nextTick, onMounted, ref } from "vue";
 
 import { cancelAllSyncJobs } from "./api/jobs";
 import { getSettings } from "./api/settings";
@@ -16,6 +16,7 @@ import OutboxListPane from "./components/list/OutboxListPane.vue";
 import MessageViewPane from "./components/message/MessageViewPane.vue";
 import SidebarPane from "./components/sidebar/SidebarPane.vue";
 import type { SidebarView } from "./components/sidebar/view";
+import { useAppCommands } from "./composables/useAppCommands";
 import { provideCommandRegistry } from "./composables/useCommandRegistry";
 import { useComposeWorkflow } from "./composables/useComposeWorkflow";
 import { useDialogs } from "./composables/useDialogs";
@@ -57,12 +58,13 @@ const listLoading = useMessageListLoading({
 const dialogs = useDialogs<AppDialogMap>();
 
 // App-wide command registry + global keyboard dispatcher. Provided here so the
-// command palette (track 4.5) and feature commands (tracks 4.1-4.3, actions)
-// register/read via useCommandRegistry() from any descendant. Track 4.1
-// registers the address-book command here (it owns `dialogs`); track 4.3
-// registers the junk shortcuts below.
-const commands = provideCommandRegistry();
-commands.register({
+// command palette and feature commands register/read via useCommandRegistry()
+// from any descendant. Track 4.1 registers the address-book command here (it
+// owns `dialogs`); track 4.3 registers the junk shortcuts below; the global mail
+// shortcut map (track 4.5) is wired below via useAppCommands(), once the action
+// composables it drives are available.
+const commandRegistry = provideCommandRegistry();
+commandRegistry.register({
   id: "contacts.addressBook",
   title: "Open address book",
   keywords: ["contacts", "addresses", "people"],
@@ -119,7 +121,7 @@ const mailboxActions = useMailboxActions({
 // Junk keyboard shortcuts (track 4.3): "j" files the open message as junk,
 // "Shift+J" restores it. Both act on the reading-pane message and dim when none
 // is open. Registration auto-disposes with the app root.
-commands.registerAll([
+commandRegistry.registerAll([
   {
     id: "message.junk",
     title: "Mark as junk",
@@ -145,6 +147,60 @@ commands.registerAll([
     isEnabled: () => selectedMessageId.value !== null,
   },
 ]);
+
+/** True while a blocking modal is open — the palette is excluded so a command
+ * run from it stays enabled (bare keys are already suppressed by the palette's
+ * focused search input). Gates every global shortcut. */
+function isModalOpen(): boolean {
+  return (
+    dialogs.isOpen("composer") ||
+    dialogs.isOpen("settings") ||
+    dialogs.isOpen("setup") ||
+    dialogs.isOpen("activity") ||
+    dialogs.isOpen("moveToFolder") ||
+    dialogs.isOpen("shortcutHelp")
+  );
+}
+
+/** Reveals the list pane and focuses its search field (the `/` shortcut). */
+function focusSearch(): void {
+  shell.value?.showPane("list");
+  void nextTick(() => {
+    document
+      .querySelector<HTMLInputElement>('input[role="searchbox"]')
+      ?.focus();
+  });
+}
+
+/** Reveals and focuses the folder sidebar (the `g f` chord). */
+function focusSidebar(): void {
+  shell.value?.showPane("sidebar");
+  void nextTick(() => {
+    document
+      .querySelector<HTMLElement>('nav[aria-label="Accounts and folders"] button')
+      ?.focus();
+  });
+}
+
+// Register the global mail shortcut map + go-to chords against the registry.
+useAppCommands(commandRegistry, {
+  isModalOpen,
+  hasAccounts: () => accounts.value.length > 0,
+  getOpenMessageId: () => view.viewedMessageId.value,
+  openCommandPalette: () => dialogs.open("commandPalette"),
+  openShortcutHelp: () => dialogs.open("shortcutHelp"),
+  newMessage: compose.openCompose,
+  reply: (id) => void compose.openReply(id),
+  replyAll: (id) => void compose.openReplyAll(id),
+  forward: (id) => void compose.openForward(id),
+  archive: (id) => void mailboxActions.archive([id]),
+  deleteToTrash: (id) => void mailboxActions.remove([id]),
+  toggleStar: (id) => void messageActions.toggleStar(id),
+  toggleUnread: (id) => void messageActions.toggleSeen(id),
+  focusSearch,
+  goInbox: () => void view.selectUnified(),
+  goFolders: focusSidebar,
+});
 
 const { syncingMailboxIds, isSyncing, runningCount, syncError, dismissError } =
   useSyncStatus(onSyncEvent);

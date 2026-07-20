@@ -243,6 +243,60 @@ describe("useMessageActions mark-list-read (tag view)", () => {
   });
 });
 
+describe("useMessageActions toggleSeen (the `u` shortcut)", () => {
+  it("flips an unread message to read and decrements the badge", async () => {
+    const row = listItem({ id: 1, mailboxId: 10, seen: false });
+    const account = workAccount([1, 0]);
+    const { api, wrapper } = useActions({
+      messages: ref([row]),
+      unifiedItems: ref([]),
+      accounts: ref([account]),
+      selectedMessageId: ref(1),
+    });
+
+    await api.toggleSeen(1);
+    expect(row.seen).toBe(true);
+    expect(markMessagesReadMock).toHaveBeenCalledWith([1], true);
+    expect(account.mailboxes[0]!.unreadCount).toBe(0);
+    wrapper.unmount();
+  });
+
+  it("flips a read message back to unread and increments the badge", async () => {
+    const row = listItem({ id: 1, mailboxId: 10, seen: true });
+    const account = workAccount([0, 0]);
+    const { api, wrapper } = useActions({
+      messages: ref([row]),
+      unifiedItems: ref([]),
+      accounts: ref([account]),
+      selectedMessageId: ref(1),
+    });
+
+    await api.toggleSeen(1);
+    expect(row.seen).toBe(false);
+    expect(markMessagesReadMock).toHaveBeenCalledWith([1], false);
+    expect(account.mailboxes[0]!.unreadCount).toBe(1);
+    wrapper.unmount();
+  });
+
+  it("reverts the flip (row and badge) when the command rejects", async () => {
+    markMessagesReadMock.mockRejectedValueOnce(new Error("offline"));
+    const row = listItem({ id: 1, mailboxId: 10, seen: false });
+    const account = workAccount([1, 0]);
+    const { api, wrapper } = useActions({
+      messages: ref([row]),
+      unifiedItems: ref([]),
+      accounts: ref([account]),
+      selectedMessageId: ref(1),
+    });
+
+    await api.toggleSeen(1);
+    await flushPromises();
+    expect(row.seen).toBe(false);
+    expect(account.mailboxes[0]!.unreadCount).toBe(1);
+    wrapper.unmount();
+  });
+});
+
 describe("MessageViewPane offline placeholder", () => {
   it("renders an honest empty state when the body is unavailable offline", async () => {
     getMessageDetailMock.mockResolvedValue(

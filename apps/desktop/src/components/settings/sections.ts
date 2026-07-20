@@ -11,6 +11,7 @@ import JunkSection from "./JunkSection.vue";
 import NotificationsSection from "./NotificationsSection.vue";
 import Pop3DeleteSection from "./Pop3DeleteSection.vue";
 import PushSection from "./PushSection.vue";
+import ShortcutsSection from "./ShortcutsSection.vue";
 import SyncIntervalSection from "./SyncIntervalSection.vue";
 import TagsSection from "./TagsSection.vue";
 
@@ -58,5 +59,6 @@ export const settingsSections: SettingsSection[] = [
   { id: "contacts", title: "Contacts", component: ContactsSection },
   { id: "filters", title: "Filters", component: FiltersSection },
   { id: "junk", title: "Junk", component: JunkSection },
+  { id: "shortcuts", title: "Keyboard shortcuts", component: ShortcutsSection },
   { id: "accounts", title: "Accounts", component: AccountsSection },
 ];

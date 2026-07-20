@@ -112,6 +112,7 @@ describe("settings section registry", () => {
       "contacts",
       "filters",
       "junk",
+      "shortcuts",
       "accounts",
     ]);
   });
