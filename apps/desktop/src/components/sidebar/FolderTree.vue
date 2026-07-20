@@ -19,6 +19,7 @@ import {
   renameFolder,
   setFolderSubscribed,
 } from "../../api/folders";
+import { useFolderFavorites } from "../../composables/useFolderFavorites";
 import { useFolderImportExport } from "../../composables/useFolderImportExport";
 import type { AccountSummary, MailboxSummary } from "../../types/mail";
 import FolderPropertiesDialog from "../offline/FolderPropertiesDialog.vue";
@@ -42,6 +43,9 @@ const emit = defineEmits<{
 /** Ids the user explicitly collapsed; everything else is expanded. */
 const collapsedIds = reactive(new Set<number>());
 const tree = computed(() => buildFolderTree(props.account.mailboxes));
+
+// Favorite-folder marking (the "Add/Remove Favorites" context-menu action).
+const { isFavorite, toggleFavorite } = useFolderFavorites();
 
 const menu = ref<{ folderId: number; x: number; y: number } | null>(null);
 // The control that opened the menu; focus returns to it on close (role=menu).
@@ -115,6 +119,11 @@ async function menuToggleSubscribe(): Promise<void> {
   closeMenu();
   if (folder === null) return;
   await run(() => setFolderSubscribed(folder.id, folder.subscribed === false));
+}
+function menuToggleFavorite(): void {
+  const folder = menuFolder.value;
+  closeMenu();
+  if (folder !== null) toggleFavorite(folder.id);
 }
 function menuProperties(): void {
   const folder = menuFolder.value;
@@ -268,9 +277,11 @@ async function run(op: () => Promise<unknown>, fromDialog = false): Promise<void
       :folder="menuFolder"
       :x="menu.x"
       :y="menu.y"
+      :is-favorite="isFavorite(menuFolder.id)"
       @create="menuCreate"
       @rename="menuRename"
       @toggle-subscribe="menuToggleSubscribe"
+      @toggle-favorite="menuToggleFavorite"
       @properties="menuProperties"
       @compact="menuCompact"
       @export-folder="menuExport"

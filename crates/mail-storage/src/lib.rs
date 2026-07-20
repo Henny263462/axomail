@@ -42,6 +42,7 @@ mod pgp_keys;
 mod pop3_uidl;
 mod raw_store;
 mod remote_content;
+mod retention;
 mod saved_searches;
 mod search;
 mod settings;
@@ -85,6 +86,7 @@ pub use pgp_keys::{
 pub use pop3_uidl::Pop3UidlRepo;
 pub use raw_store::{raw_message_path, read_raw, remove_raw, write_raw_atomically};
 pub use remote_content::RemoteContentRepo;
+pub use retention::{RetentionAction, RetentionMode, RetentionPolicy, RetentionRepo};
 pub use saved_searches::{
     SavedSearch, SavedSearchId, SavedSearchInput, SavedSearchRepo, SearchCondition, SearchField,
     SearchMatch, SearchQuery, SearchScope, SearchSort, validate_saved_search_input,

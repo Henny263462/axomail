@@ -1,5 +1,14 @@
 <script setup lang="ts">
+import { useI18n } from "vue-i18n";
+
+import { useOptionalCommandRegistry } from "../../composables/useCommandRegistry";
+import { useLayout } from "../../composables/useLayout";
 import { usePaneNavigation, type Pane } from "../../composables/usePaneNavigation";
+import {
+  usePaneSizes,
+  type PaneDimension,
+} from "../../composables/usePaneSizes";
+import PaneSplitter from "./PaneSplitter.vue";
 import StatusBar from "./StatusBar.vue";
 
 withDefaults(
@@ -21,13 +30,30 @@ const emit = defineEmits<{
   cancelSync: [];
 }>();
 
+const { t } = useI18n({ useScope: "global" });
 const { isStacked, activePane, showPane, paneVisible } = usePaneNavigation();
+const { layout, cycleLayout } = useLayout();
+const { sizes, bounds, cssVars, setPaneSize } = usePaneSizes();
 
 const panes: { id: Pane; label: string }[] = [
   { id: "sidebar", label: "Folders" },
   { id: "list", label: "Messages" },
   { id: "message", label: "Reading" },
 ];
+
+function onResize(dimension: PaneDimension, value: number): void {
+  setPaneSize(dimension, value);
+}
+
+// A palette "View" command to rotate the layout; registered only when the app
+// root provides a command registry (a no-op for a standalone unit mount).
+const registry = useOptionalCommandRegistry();
+registry?.register({
+  id: "view.cycleLayout",
+  title: t("layout.cycle"),
+  keywords: ["layout", "view", "panes", "classic", "vertical", "wide"],
+  run: cycleLayout,
+});
 
 defineExpose({ showPane });
 </script>
@@ -53,7 +79,8 @@ defineExpose({ showPane });
     </nav>
     <div
       class="columns"
-      :class="{ stacked: isStacked }"
+      :class="[isStacked ? 'stacked' : layout]"
+      :style="cssVars"
     >
       <div
         v-show="paneVisible('sidebar')"
@@ -73,6 +100,41 @@ defineExpose({ showPane });
       >
         <slot name="message" />
       </div>
+
+      <!-- Splitters: present only on a non-stacked shell (a narrow, one-pane
+           viewport has nothing to resize between). Which ones apply depends on
+           the layout; each drives one persisted dimension. -->
+      <template v-if="!isStacked">
+        <PaneSplitter
+          class="split split-a"
+          orientation="vertical"
+          :value="sizes.sidebarWidth"
+          :min="bounds.sidebarWidth.min"
+          :max="bounds.sidebarWidth.max"
+          :label="t('panes.resizeSidebar')"
+          @resize="onResize('sidebarWidth', $event)"
+        />
+        <PaneSplitter
+          v-if="layout === 'vertical'"
+          class="split split-b"
+          orientation="vertical"
+          :value="sizes.listWidth"
+          :min="bounds.listWidth.min"
+          :max="bounds.listWidth.max"
+          :label="t('panes.resizeList')"
+          @resize="onResize('listWidth', $event)"
+        />
+        <PaneSplitter
+          v-else
+          class="split split-c"
+          orientation="horizontal"
+          :value="sizes.listHeight"
+          :min="bounds.listHeight.min"
+          :max="bounds.listHeight.max"
+          :label="t('panes.resizeList')"
+          @resize="onResize('listHeight', $event)"
+        />
+      </template>
     </div>
     <StatusBar
       :error="statusError"
@@ -121,18 +183,76 @@ defineExpose({ showPane });
 
 .columns {
   display: grid;
-  grid-template-columns: var(--sidebar-width) var(--list-width) 1fr;
   flex: 1;
   min-height: 0;
-}
-
-.columns.stacked {
-  grid-template-columns: 1fr;
+  /* Splitter track thickness. */
+  --split: 6px;
 }
 
 .col {
   min-width: 0;
   min-height: 0;
   overflow: hidden;
+}
+
+/* Vertical: folder pane, list, and reading pane as three side-by-side columns. */
+.columns.vertical {
+  grid-template:
+    "sidebar splitA list splitB message" 1fr
+    / var(--sidebar-width) var(--split) var(--list-width) var(--split) 1fr;
+}
+
+/* Classic: folder pane left (full height); list above the reading pane. */
+.columns.classic {
+  grid-template:
+    "sidebar splitA list" var(--list-height)
+    "sidebar splitA splitC" var(--split)
+    "sidebar splitA message" 1fr
+    / var(--sidebar-width) var(--split) 1fr;
+}
+
+/* Wide: full-width list across the top; folder + reading panes below. */
+.columns.wide {
+  grid-template:
+    "list list list" var(--list-height)
+    "splitC splitC splitC" var(--split)
+    "sidebar splitA message" 1fr
+    / var(--sidebar-width) var(--split) 1fr;
+}
+
+.columns.vertical .col-sidebar,
+.columns.classic .col-sidebar,
+.columns.wide .col-sidebar {
+  grid-area: sidebar;
+}
+
+.columns.vertical .col-list,
+.columns.classic .col-list,
+.columns.wide .col-list {
+  grid-area: list;
+}
+
+.columns.vertical .col-message,
+.columns.classic .col-message,
+.columns.wide .col-message {
+  grid-area: message;
+}
+
+.split-a {
+  grid-area: splitA;
+}
+
+.split-b {
+  grid-area: splitB;
+}
+
+.split-c {
+  grid-area: splitC;
+}
+
+/* Stacked (narrow viewport): one pane at a time; the splitters are absent. */
+.columns.stacked {
+  grid-template-columns: 1fr;
+  grid-template-rows: 1fr;
 }
 </style>

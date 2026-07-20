@@ -5,6 +5,7 @@ import { useAppVersion } from "../../composables/useAppVersion";
 import { usePushStatus } from "../../composables/usePushStatus";
 import { useWorkOffline } from "../../composables/useWorkOffline";
 import { isTauri } from "../../lib/tauri";
+import LayoutSwitcher from "./LayoutSwitcher.vue";
 
 const props = withDefaults(
   defineProps<{
@@ -86,6 +87,7 @@ function syncLabel(): string {
       Browser preview — mail features require the desktop app
     </span>
     <div class="controls">
+      <LayoutSwitcher />
       <span
         v-if="pushConnected && !browserPreview"
         class="push"

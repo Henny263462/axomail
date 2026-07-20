@@ -39,6 +39,7 @@ use crate::outbox::OutboxRepo;
 use crate::pending_ops::PendingOpsRepo;
 use crate::pop3_uidl::Pop3UidlRepo;
 use crate::remote_content::RemoteContentRepo;
+use crate::retention::RetentionRepo;
 use crate::saved_searches::SavedSearchRepo;
 use crate::search::SearchRepo;
 use crate::settings::SettingsRepo;
@@ -201,6 +202,12 @@ impl Store {
     #[must_use]
     pub fn offline(&self) -> OfflinePolicyRepo<'_> {
         OfflinePolicyRepo::new(&self.pool)
+    }
+
+    /// The per-mailbox message-retention policy repository.
+    #[must_use]
+    pub fn retention(&self) -> RetentionRepo<'_> {
+        RetentionRepo::new(&self.pool)
     }
 
     /// The offline operation-queue (write-back) repository.

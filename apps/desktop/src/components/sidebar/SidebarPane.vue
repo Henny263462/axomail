@@ -1,12 +1,18 @@
 <script setup lang="ts">
 import { computed } from "vue";
+import { useI18n } from "vue-i18n";
 
+import { useFolderFavorites } from "../../composables/useFolderFavorites";
+import { useFolderView } from "../../composables/useFolderView";
+import { useRecentFolders } from "../../composables/useRecentFolders";
 import type { AccountSummary } from "../../types/mail";
 import type { SavedSearchDto } from "../../types/search";
 import EmptyState from "../common/EmptyState.vue";
 import FolderTree from "./FolderTree.vue";
+import SidebarFolderList, { type FlatFolder } from "./SidebarFolderList.vue";
 import SidebarSavedSearchesPane from "./SidebarSavedSearchesPane.vue";
 import SidebarTagsPane from "./SidebarTagsPane.vue";
+import SidebarViewSwitcher from "./SidebarViewSwitcher.vue";
 import type { SidebarView } from "./view";
 
 const props = withDefaults(
@@ -51,10 +57,42 @@ const emit = defineEmits<{
   savedSearchesChanged: [];
 }>();
 
+const { t } = useI18n({ useScope: "global" });
+const { mode: folderMode, setMode: setFolderMode } = useFolderView();
+const { favoriteIds } = useFolderFavorites();
+const { recentIds, recordFolder } = useRecentFolders();
+
 const hasAccounts = computed(() => props.accounts.length > 0);
+
+/** Every account's mailboxes, indexed by id, for the flat favorite/recent lists. */
+const folderIndex = computed(() => {
+  const map = new Map<number, FlatFolder>();
+  for (const account of props.accounts) {
+    for (const mailbox of account.mailboxes) {
+      map.set(mailbox.id, { mailbox, accountName: account.displayName });
+    }
+  }
+  return map;
+});
+
+/** Resolves an ordered id list to live folder entries, dropping stale ids. */
+function resolveFolders(ids: number[]): FlatFolder[] {
+  return ids
+    .map((id) => folderIndex.value.get(id))
+    .filter((entry): entry is FlatFolder => entry !== undefined);
+}
+
+const favoriteFolders = computed(() => resolveFolders(favoriteIds.value));
+const recentFolders = computed(() => resolveFolders(recentIds.value));
 
 function isSyncing(accountId: number): boolean {
   return props.syncingAccountIds.includes(accountId);
+}
+
+/** Records the opened folder as recent, then bubbles the selection up. */
+function onSelectMailbox(mailboxId: number): void {
+  recordFolder(mailboxId);
+  emit("selectMailbox", mailboxId);
 }
 </script>
 
@@ -80,7 +118,13 @@ function isSyncing(accountId: number): boolean {
       Compose
     </button>
 
+    <SidebarViewSwitcher
+      :mode="folderMode"
+      @select="setFolderMode"
+    />
+
     <button
+      v-if="folderMode === 'all' || folderMode === 'unified'"
       type="button"
       class="all-inboxes"
       :class="{ selected: activeView === 'unified' }"
@@ -90,53 +134,77 @@ function isSyncing(accountId: number): boolean {
       All inboxes
     </button>
 
-    <EmptyState
-      v-if="!hasAccounts"
-      title="No accounts"
-      detail="Add an account to get started."
-    />
-    <template v-else>
-      <section
-        v-for="account in accounts"
-        :key="account.id"
-        class="account"
-        :aria-label="account.displayName"
-      >
-        <div class="account-header">
-          <h2
-            class="account-name"
-            :title="account.email"
-          >
-            {{ account.displayName }}
-          </h2>
-          <span
-            v-if="isSyncing(account.id)"
-            class="syncing"
-            role="status"
-          >Syncing…</span>
-          <button
-            type="button"
-            class="sync"
-            :aria-label="`Sync ${account.displayName}`"
-            title="Sync this account"
-            @click="emit('syncAccount', account.id)"
-          >
-            ↻
-          </button>
-        </div>
-        <FolderTree
-          :account="account"
-          :selected-mailbox-id="selectedMailboxId"
-          :active-view="activeView"
-          @select-mailbox="emit('selectMailbox', $event)"
-          @changed="emit('foldersChanged')"
-        />
-      </section>
+    <!-- All folders: the full per-account trees (the default view). -->
+    <template v-if="folderMode === 'all'">
+      <EmptyState
+        v-if="!hasAccounts"
+        title="No accounts"
+        detail="Add an account to get started."
+      />
+      <template v-else>
+        <section
+          v-for="account in accounts"
+          :key="account.id"
+          class="account"
+          :aria-label="account.displayName"
+        >
+          <div class="account-header">
+            <h2
+              class="account-name"
+              :title="account.email"
+            >
+              {{ account.displayName }}
+            </h2>
+            <span
+              v-if="isSyncing(account.id)"
+              class="syncing"
+              role="status"
+            >Syncing…</span>
+            <button
+              type="button"
+              class="sync"
+              :aria-label="`Sync ${account.displayName}`"
+              title="Sync this account"
+              @click="emit('syncAccount', account.id)"
+            >
+              ↻
+            </button>
+          </div>
+          <FolderTree
+            :account="account"
+            :selected-mailbox-id="selectedMailboxId"
+            :active-view="activeView"
+            @select-mailbox="onSelectMailbox"
+            @changed="emit('foldersChanged')"
+          />
+        </section>
+      </template>
     </template>
 
-    <!-- Track 2.4 mount point: the Tags filter group. A self-contained child
-         component so it does not collide with the folder-tree rewrite. -->
+    <!-- Favorite folders: the folders the user marked as favorites. -->
+    <SidebarFolderList
+      v-else-if="folderMode === 'favorite'"
+      :folders="favoriteFolders"
+      :selected-mailbox-id="selectedMailboxId"
+      :empty-title="t('folderView.favoritesEmpty')"
+      :empty-detail="t('folderView.favoritesEmptyHint')"
+      @select-mailbox="onSelectMailbox"
+    />
+
+    <!-- Recent folders: recently opened folders, newest first. -->
+    <SidebarFolderList
+      v-else-if="folderMode === 'recent'"
+      :folders="recentFolders"
+      :selected-mailbox-id="selectedMailboxId"
+      :empty-title="t('folderView.recentEmpty')"
+      :empty-detail="t('folderView.recentEmpty')"
+      @select-mailbox="onSelectMailbox"
+    />
+
+    <!-- Track 2.4 mount point: the Tags filter group. Shown in the full "all"
+         view and as its own focused "tags" mode. -->
     <SidebarTagsPane
+      v-if="folderMode === 'all' || folderMode === 'tags'"
       :active-tag-id="activeTagId"
       :refresh-key="tagsRefreshKey"
       @select-tag="(tagId, name) => emit('selectTag', tagId, name)"

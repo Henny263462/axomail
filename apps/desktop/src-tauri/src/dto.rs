@@ -38,6 +38,7 @@ mod offline;
 mod pgp;
 mod push_event;
 mod reply;
+mod retention;
 mod saved_search;
 mod search;
 mod settings;
@@ -83,6 +84,7 @@ pub use offline::OfflinePolicyDto;
 pub use pgp::{PgpComposeStatusDto, PgpKeyDto, PgpMessageStatusDto, PgpRecipientKeyDto};
 pub use push_event::PushStatusDto;
 pub use reply::{ComposerPrefillDto, PrefillSourceDto, ReplyMode, SourceMark};
+pub use retention::{RetentionOutcomeDto, RetentionPolicyDto, RetentionPolicyInput};
 pub use saved_search::{
     SavedSearchDto, SavedSearchInputDto, SearchConditionDto, SearchQueryDto, SearchScopeDto,
     SearchScopeKind,
