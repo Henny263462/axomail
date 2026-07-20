@@ -24,6 +24,7 @@ use sqlx::migrate::Migrator;
 use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions, SqliteSynchronous};
 
 use crate::accounts::AccountRepo;
+use crate::contacts::ContactRepo;
 use crate::drafts::DraftRepo;
 use crate::error_map::{map_migrate, map_sqlx};
 use crate::identities::IdentityRepo;
@@ -226,5 +227,11 @@ impl Store {
     #[must_use]
     pub fn unified(&self) -> UnifiedRepo<'_> {
         UnifiedRepo::new(&self.pool)
+    }
+
+    /// The global address-book (contacts + groups) repository.
+    #[must_use]
+    pub fn contacts(&self) -> ContactRepo<'_> {
+        ContactRepo::new(&self.pool)
     }
 }

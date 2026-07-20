@@ -21,6 +21,7 @@ mod actions;
 mod attachments;
 mod compose;
 mod connection;
+mod contact;
 mod detail;
 mod folder;
 mod identity;
@@ -47,6 +48,10 @@ pub use compose::{
     SendOutcomeDto,
 };
 pub use connection::ConnectionTestResult;
+pub use contact::{
+    ContactDetailDto, ContactDto, ContactEmailDto, ContactEmailInput, ContactGroupDto,
+    ContactInput, RecipientSuggestionDto, VCardImportDto,
+};
 pub use detail::{AttachmentMetaDto, MessageDetailDto, RecipientDto, ScamFlagDto};
 pub use folder::{CreateFolderInput, RenameFolderInput, SetFolderSubscribedInput};
 pub use identity::{IdentityDto, IdentityInput};

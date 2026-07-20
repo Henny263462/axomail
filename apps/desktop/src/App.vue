@@ -57,10 +57,17 @@ const listLoading = useMessageListLoading({
 const dialogs = useDialogs<AppDialogMap>();
 
 // App-wide command registry + global keyboard dispatcher. Provided here so the
-// command palette (track 4.5) and feature commands (tracks 4.1-4.3, actions)
-// register/read via useCommandRegistry() from any descendant. No commands are
-// registered yet — this only installs the consumable foundation.
-provideCommandRegistry();
+// command palette (track 4.5) and feature commands register/read via
+// useCommandRegistry() from any descendant. Track 4.1 registers the first global
+// command (open the address book); it owns `dialogs`, so it wires here.
+const commands = provideCommandRegistry();
+commands.register({
+  id: "contacts.addressBook",
+  title: "Open address book",
+  keywords: ["contacts", "addresses", "people"],
+  shortcut: "Mod+Shift+B",
+  run: () => dialogs.open("addressBook"),
+});
 
 // Optimistic star / auto-read / mark-all-read, operating on the shared lists.
 const messageActions = useMessageActions({

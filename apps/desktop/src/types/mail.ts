@@ -21,6 +21,7 @@ import type { AuthMechanism } from "./account";
 export * from "./account";
 export * from "./identity";
 export * from "./compose";
+export * from "./contacts";
 
 export interface MailboxSummary {
   id: number;

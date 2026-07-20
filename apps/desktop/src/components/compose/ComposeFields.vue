@@ -3,18 +3,21 @@
  * The recipient and subject fields of the composer (To / Cc / Bcc / Subject).
  *
  * Each field is a two-way `v-model` binding so the shell keeps owning the
- * values; this component only renders the inputs and their labels. It exposes
- * {@link focus} so the shell can place the initial focus on the To field when
- * the dialog opens (the focus trap lives in the shell).
+ * values; this component only renders the inputs and their labels. To/Cc/Bcc use
+ * {@link RecipientInput}, which adds address-book autocomplete over each field's
+ * last token. It exposes {@link focus} so the shell can place the initial focus
+ * on the To field when the dialog opens (the focus trap lives in the shell).
  */
 import { ref } from "vue";
+
+import RecipientInput from "./RecipientInput.vue";
 
 const to = defineModel<string>("to", { default: "" });
 const cc = defineModel<string>("cc", { default: "" });
 const bcc = defineModel<string>("bcc", { default: "" });
 const subject = defineModel<string>("subject", { default: "" });
 
-const firstField = ref<HTMLInputElement | null>(null);
+const firstField = ref<InstanceType<typeof RecipientInput> | null>(null);
 
 defineExpose({
   /** Focuses the To field (the composer's initial focus target). */
@@ -23,35 +26,22 @@ defineExpose({
 </script>
 
 <template>
-  <div class="field">
-    <label for="compose-to">To</label>
-    <input
-      id="compose-to"
-      ref="firstField"
-      v-model="to"
-      type="text"
-      autocomplete="off"
-      placeholder="Comma-separated addresses"
-    >
-  </div>
-  <div class="field">
-    <label for="compose-cc">Cc</label>
-    <input
-      id="compose-cc"
-      v-model="cc"
-      type="text"
-      autocomplete="off"
-    >
-  </div>
-  <div class="field">
-    <label for="compose-bcc">Bcc</label>
-    <input
-      id="compose-bcc"
-      v-model="bcc"
-      type="text"
-      autocomplete="off"
-    >
-  </div>
+  <RecipientInput
+    ref="firstField"
+    v-model="to"
+    field-id="compose-to"
+    label="To"
+  />
+  <RecipientInput
+    v-model="cc"
+    field-id="compose-cc"
+    label="Cc"
+  />
+  <RecipientInput
+    v-model="bcc"
+    field-id="compose-bcc"
+    label="Bcc"
+  />
   <div class="field">
     <label for="compose-subject">Subject</label>
     <input

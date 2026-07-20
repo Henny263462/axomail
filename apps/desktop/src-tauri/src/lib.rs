@@ -171,6 +171,20 @@ pub fn run() {
             commands::offline::set_mailbox_offline_policy,
             commands::offline::download_mailbox_now,
             commands::offline::cleanup_offline_cache,
+            commands::contacts::list_contacts,
+            commands::contacts::get_contact,
+            commands::contacts::create_contact,
+            commands::contacts::update_contact,
+            commands::contacts::delete_contact,
+            commands::contacts::search_recipients,
+            commands::contacts::list_contact_groups,
+            commands::contacts::create_contact_group,
+            commands::contacts::delete_contact_group,
+            commands::contacts::set_contact_groups,
+            commands::contacts::import_contacts_vcard,
+            commands::contacts::export_contacts_vcard,
+            commands::contacts::get_collect_addresses,
+            commands::contacts::set_collect_addresses,
         ])
         .build(tauri::generate_context!());
 

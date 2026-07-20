@@ -6,6 +6,7 @@ import type { FolderPicked } from "../../composables/useMailboxActions";
 import type { AccountSummary } from "../../types/mail";
 import ActivityDialog from "../activity/ActivityDialog.vue";
 import ComposerDialog from "../compose/ComposerDialog.vue";
+import AddressBookDialog from "../contacts/AddressBookDialog.vue";
 import MoveToFolderDialog from "../message/MoveToFolderDialog.vue";
 import SettingsDialog from "../settings/SettingsDialog.vue";
 import AccountSetupDialog from "../setup/AccountSetupDialog.vue";
@@ -78,6 +79,10 @@ function onPicked(payload: FolderPicked): void {
   <ActivityDialog
     v-if="dialogs.isOpen('activity')"
     @close="dialogs.close('activity')"
+  />
+  <AddressBookDialog
+    v-if="dialogs.isOpen('addressBook')"
+    @close="dialogs.close('addressBook')"
   />
   <MoveToFolderDialog
     v-if="dialogs.isOpen('moveToFolder')"

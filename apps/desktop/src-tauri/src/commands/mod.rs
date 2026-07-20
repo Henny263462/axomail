@@ -11,6 +11,7 @@ pub mod actions;
 pub mod attachments;
 pub mod compose;
 pub mod connection;
+pub mod contacts;
 pub mod detail;
 pub mod drafts;
 pub mod folders;

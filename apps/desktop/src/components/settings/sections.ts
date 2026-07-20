@@ -3,6 +3,7 @@ import type { Component } from "vue";
 import AccountsSection from "./AccountsSection.vue";
 import AppearanceSection from "./AppearanceSection.vue";
 import AutoReadSection from "./AutoReadSection.vue";
+import ContactsSection from "./ContactsSection.vue";
 import EmptyTrashSection from "./EmptyTrashSection.vue";
 import IdentitiesSection from "./IdentitiesSection.vue";
 import NotificationsSection from "./NotificationsSection.vue";
@@ -50,5 +51,6 @@ export const settingsSections: SettingsSection[] = [
   },
   { id: "identities", title: "Identities", component: IdentitiesSection },
   { id: "tags", title: "Tags", component: TagsSection },
+  { id: "contacts", title: "Contacts", component: ContactsSection },
   { id: "accounts", title: "Accounts", component: AccountsSection },
 ];

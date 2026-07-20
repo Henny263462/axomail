@@ -54,6 +54,16 @@ pub async fn send_message_impl(
 
     let account = load_account(store, input.account_id).await?;
     let identity = resolve_identity(store, &account, input.identity_id).await?;
+
+    // Capture the recipient addresses before the input is consumed, so a
+    // successful immediate send can auto-collect them into the address book.
+    let recipients: Vec<String> = input
+        .to
+        .iter()
+        .chain(&input.cc)
+        .chain(&input.bcc)
+        .cloned()
+        .collect();
     // A schedule strictly in the future defers the send; a past/now instant is
     // treated as "send now".
     let scheduled = input.scheduled_at_unix.filter(|&at| at > now_unix());
@@ -127,7 +137,13 @@ pub async fn send_message_impl(
             Some("the message could not be queued for sending".to_owned()),
         )?));
     }
-    submit_record(store, secrets, extra_roots, &account, &record, extras).await
+    let submission = submit_record(store, secrets, extra_roots, &account, &record, extras).await?;
+    // Auto-collect recipients into the address book once the message is
+    // actually delivered (best-effort; never affects the send outcome).
+    if submission.outcome.sent {
+        crate::commands::contacts::collect_sent_recipients(store, &recipients).await;
+    }
+    Ok(submission)
 }
 
 /// Decodes the composer's inline base64 attachments (a forwarded message
