@@ -58,9 +58,9 @@ const dialogs = useDialogs<AppDialogMap>();
 
 // App-wide command registry + global keyboard dispatcher. Provided here so the
 // command palette (track 4.5) and feature commands (tracks 4.1-4.3, actions)
-// register/read via useCommandRegistry() from any descendant. No commands are
-// registered yet — this only installs the consumable foundation.
-provideCommandRegistry();
+// register/read via useCommandRegistry() from any descendant. Track 4.3
+// registers the junk shortcuts below.
+const commands = provideCommandRegistry();
 
 // Optimistic star / auto-read / mark-all-read, operating on the shared lists.
 const messageActions = useMessageActions({
@@ -97,7 +97,7 @@ const compose = useComposeWorkflow({
 });
 const { drafts, outbox, selectedDraftId } = compose;
 
-// Move / copy / archive / delete-to-Trash with optimistic list splicing + undo.
+// Move / copy / archive / delete-to-Trash / junk with optimistic splicing.
 const mailboxActions = useMailboxActions({
   messages,
   unifiedItems,
@@ -107,6 +107,36 @@ const mailboxActions = useMailboxActions({
   reload: view.reloadCurrentList,
   clearSelection: () => (selectionResetKey.value += 1),
 });
+
+// Junk keyboard shortcuts (track 4.3): "j" files the open message as junk,
+// "Shift+J" restores it. Both act on the reading-pane message and dim when none
+// is open. Registration auto-disposes with the app root.
+commands.registerAll([
+  {
+    id: "message.junk",
+    title: "Mark as junk",
+    keywords: ["spam", "junk"],
+    shortcut: "j",
+    run: () => {
+      if (selectedMessageId.value !== null) {
+        void mailboxActions.junk([selectedMessageId.value]);
+      }
+    },
+    isEnabled: () => selectedMessageId.value !== null,
+  },
+  {
+    id: "message.notJunk",
+    title: "Mark as not junk",
+    keywords: ["ham", "not spam"],
+    shortcut: "Shift+J",
+    run: () => {
+      if (selectedMessageId.value !== null) {
+        void mailboxActions.notJunk([selectedMessageId.value]);
+      }
+    },
+    isEnabled: () => selectedMessageId.value !== null,
+  },
+]);
 
 const { syncingMailboxIds, isSyncing, runningCount, syncError, dismissError } =
   useSyncStatus(onSyncEvent);
@@ -263,6 +293,7 @@ function onSyncEvent(event: SyncEventDto): void {
         @move="mailboxActions.requestMove([$event])"
         @copy="mailboxActions.requestCopy([$event])"
         @archive="mailboxActions.archive([$event])"
+        @junk="mailboxActions.junk([$event])"
         @delete-message="mailboxActions.remove([$event])"
       />
       <EmptyState

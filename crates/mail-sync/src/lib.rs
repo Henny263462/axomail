@@ -35,6 +35,7 @@ mod engine;
 mod event;
 mod factory;
 mod job;
+mod junk;
 mod op_payload;
 mod scheduler;
 mod shared;
@@ -45,6 +46,8 @@ pub use engine::{EngineOptions, SyncEngine};
 pub use event::{SyncErrorClass, SyncEvent, SyncJobSummary};
 pub use factory::ProviderFactory;
 pub use job::{SyncMailbox, WorkRequest};
+// Junk disposition (mark-junk / not-junk) shared by the worker and commands.
+pub use junk::{route_from_junk, route_to_junk};
 // Write-back op-payload builders, used by the command layer to enqueue ops.
 pub use op_payload::{answered_op, copy_op, delete_op, flagged_op, keyword_op, move_op, seen_op};
 pub use scheduler::{BackgroundScheduler, SchedulerConfig, SchedulerStatus};

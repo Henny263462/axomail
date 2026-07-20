@@ -5,6 +5,7 @@ import AppearanceSection from "./AppearanceSection.vue";
 import AutoReadSection from "./AutoReadSection.vue";
 import EmptyTrashSection from "./EmptyTrashSection.vue";
 import IdentitiesSection from "./IdentitiesSection.vue";
+import JunkSection from "./JunkSection.vue";
 import NotificationsSection from "./NotificationsSection.vue";
 import Pop3DeleteSection from "./Pop3DeleteSection.vue";
 import SyncIntervalSection from "./SyncIntervalSection.vue";
@@ -50,5 +51,6 @@ export const settingsSections: SettingsSection[] = [
   },
   { id: "identities", title: "Identities", component: IdentitiesSection },
   { id: "tags", title: "Tags", component: TagsSection },
+  { id: "junk", title: "Junk", component: JunkSection },
   { id: "accounts", title: "Accounts", component: AccountsSection },
 ];

@@ -214,6 +214,10 @@ where
         let outcome = guarded(token, net, provider.sync(request)).await?;
         let ingest = shared.store.ingest().apply(mailbox_id, &outcome).await?;
         summary.absorb(&ingest);
+        // Auto-file mail the ingest classifier scored as junk (best-effort).
+        if !ingest.auto_junk_candidates.is_empty() {
+            super::junk_route::autoroute(shared, &ingest.auto_junk_candidates).await;
+        }
         shared.emit(SyncEvent::BatchIngested {
             job_id,
             mailbox_id,

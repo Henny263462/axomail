@@ -297,6 +297,18 @@ export interface SettingsDto {
   pop3DeletePolicies: Pop3DeletePolicyDto[];
 }
 
+/**
+ * Junk (spam) controls. `threshold` is a probability in `0..1`; a message
+ * scoring at or above it is auto-filed as junk. Mirrors the Rust
+ * `JunkSettingsDto` (camelCase).
+ */
+export interface JunkSettings {
+  enabled: boolean;
+  threshold: number;
+  trustServerHeaders: boolean;
+  whitelistContacts: boolean;
+}
+
 /** Lifecycle events emitted per sync job on the `axomail://sync` channel. */
 export type SyncEventKind =
   | "jobQueued"

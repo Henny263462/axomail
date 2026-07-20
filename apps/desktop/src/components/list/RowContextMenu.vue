@@ -29,6 +29,8 @@ const items: { action: BulkAction; label: string; danger?: boolean }[] = [
   { action: "move", label: "Move to…" },
   { action: "copy", label: "Copy to…" },
   { action: "markRead", label: "Mark read" },
+  { action: "junk", label: "Mark as junk" },
+  { action: "notJunk", label: "Not junk" },
   { action: "delete", label: "Delete", danger: true },
 ];
 

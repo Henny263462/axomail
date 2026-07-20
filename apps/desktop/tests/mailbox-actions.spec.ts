@@ -340,7 +340,15 @@ describe("RowContextMenu", () => {
     const wrapper = mount(RowContextMenu, { props: { x: 5, y: 6 } });
     const items = [...document.body.querySelectorAll('[role="menuitem"]')];
     const labels = items.map((i) => i.textContent?.trim());
-    expect(labels).toEqual(["Archive", "Move to…", "Copy to…", "Mark read", "Delete"]);
+    expect(labels).toEqual([
+      "Archive",
+      "Move to…",
+      "Copy to…",
+      "Mark read",
+      "Mark as junk",
+      "Not junk",
+      "Delete",
+    ]);
 
     const del = items.find((i) => i.textContent?.trim() === "Delete");
     (del as HTMLElement).click();

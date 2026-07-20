@@ -10,6 +10,7 @@
 //! [`discover`]); `OpReplay` drains the write-back queue (in [`op_replay`]).
 
 mod discover;
+mod junk_route;
 mod mailbox_sync;
 mod offline_download;
 mod op_replay;
