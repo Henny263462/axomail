@@ -122,6 +122,10 @@ pub(crate) fn collect_recipients(message: &OutgoingMessage) -> Vec<String> {
 ///   use `7bit`/`8bit`/`binary`, never `base64` (mail-builder's default for a
 ///   non-text binary). We force `7bit`/`8bit` there, which also writes the
 ///   embedded message verbatim.
+///
+/// The `mime_type` is written verbatim as the Content-Type, so a type that
+/// carries parameters (e.g. an iMIP `text/calendar; method=REPLY; charset=utf-8`)
+/// renders those parameters unchanged.
 fn attachment_part(attachment: &OutgoingAttachment) -> MimePart<'_> {
     let part = MimePart::new(
         ContentType::new(attachment.mime_type.as_str()),

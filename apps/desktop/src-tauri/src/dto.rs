@@ -26,6 +26,7 @@ mod detail;
 mod filter;
 mod folder;
 mod identity;
+mod invitation;
 mod jobs;
 mod junk;
 mod message;
@@ -61,6 +62,7 @@ pub use filter::{
 };
 pub use folder::{CreateFolderInput, RenameFolderInput, SetFolderSubscribedInput};
 pub use identity::{IdentityDto, IdentityInput};
+pub use invitation::{InvitationDto, InvitationResponseDto, RsvpChoice};
 pub use jobs::SyncJobDto;
 pub use junk::JunkSettingsDto;
 pub use message::{MessageListItemDto, MessageListPageDto};

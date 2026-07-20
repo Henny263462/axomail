@@ -128,7 +128,17 @@ where
     }
 
     let policy = resolve_remote_policy(store, &parsed, allow_remote).await?;
-    MessageDetailDto::from_parsed(message_id, &parsed, policy, envelope.flags.flagged)
+    // Enrich with the iMIP invitation card when the message carries one; a
+    // CANCEL retires any stored RSVP for its event as a side effect.
+    let invitation =
+        crate::commands::invitations::detail_invitation(store, message_id, &parsed).await?;
+    MessageDetailDto::from_parsed(
+        message_id,
+        &parsed,
+        policy,
+        envelope.flags.flagged,
+        invitation,
+    )
 }
 
 /// Decides the remote-content policy for this render: an explicit

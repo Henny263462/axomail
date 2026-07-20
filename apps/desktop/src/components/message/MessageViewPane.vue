@@ -1,12 +1,13 @@
 <script setup lang="ts">
 import { ref, watch } from "vue";
 
+import { respondInvitation } from "../../api/invitations";
 import {
   getMessageDetail,
   setMessageFlagged,
   setRemoteContentAllowed,
 } from "../../api/messages";
-import type { MessageDetailDto } from "../../types/mail";
+import type { MessageDetailDto, RsvpChoice } from "../../types/mail";
 import EmptyState from "../common/EmptyState.vue";
 import MessageDetail from "./MessageDetail.vue";
 
@@ -34,6 +35,9 @@ type LoadState = "idle" | "loading" | "loaded" | "error";
 
 const state = ref<LoadState>("idle");
 const detail = ref<MessageDetailDto | null>(null);
+// RSVP request state for the invitation card, reset per selection.
+const rsvpBusy = ref(false);
+const rsvpError = ref<string | null>(null);
 
 /**
  * Loads the detail for `id`, ignoring the result if the selection changed
@@ -72,6 +76,35 @@ async function alwaysAllowRemote(sender: string): Promise<void> {
 }
 
 /**
+ * Records an RSVP for the open invitation and sends the iMIP reply, then
+ * reloads the detail so the stored response is reflected. A backend rejection
+ * (offline, not a live request) or a failed send is surfaced on the card.
+ */
+async function respond(choice: RsvpChoice): Promise<void> {
+  const id = props.messageId;
+  if (id === null || rsvpBusy.value) return;
+  rsvpBusy.value = true;
+  rsvpError.value = null;
+  try {
+    const result = await respondInvitation(id, choice);
+    if (props.messageId !== id) return;
+    if (result === null) return; // browser preview: no bridge
+    if (result.sent) {
+      await load(id, null); // refresh so myStatus shows the response
+    } else {
+      rsvpError.value = result.error ?? "The response could not be sent.";
+    }
+  } catch (error) {
+    if (props.messageId === id) {
+      rsvpError.value =
+        typeof error === "string" ? error : "The response could not be sent.";
+    }
+  } finally {
+    if (props.messageId === id) rsvpBusy.value = false;
+  }
+}
+
+/**
  * Optimistically toggles the open message's star and persists it, reverting
  * on a backend error. Notifies the host so the list row stays in step.
  */
@@ -91,6 +124,9 @@ async function toggleStar(): Promise<void> {
 watch(
   () => props.messageId,
   (id) => {
+    // A new selection clears any in-flight RSVP feedback.
+    rsvpBusy.value = false;
+    rsvpError.value = null;
     if (id === null) {
       state.value = "idle";
       detail.value = null;
@@ -133,9 +169,12 @@ watch(
     <MessageDetail
       v-else
       :detail="detail"
+      :rsvp-busy="rsvpBusy"
+      :rsvp-error="rsvpError"
       @show-remote-once="showRemoteOnce"
       @always-allow-remote="alwaysAllowRemote"
       @toggle-star="toggleStar"
+      @rsvp="respond"
       @reply="emit('reply', detail.id)"
       @reply-all="emit('replyAll', detail.id)"
       @forward="emit('forward', detail.id)"

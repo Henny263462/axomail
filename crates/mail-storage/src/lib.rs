@@ -21,6 +21,7 @@
 
 mod accounts;
 mod address_json;
+mod calendar_invites;
 mod contacts;
 mod drafts;
 mod error_map;
@@ -51,6 +52,7 @@ mod unified;
 mod vcard;
 
 pub use accounts::{AccountRepo, AccountUpdate, NewAccount};
+pub use calendar_invites::{CalendarInvite, CalendarInviteRepo, InviteId, NewInvite, RsvpStatus};
 pub use contacts::{
     Contact, ContactEmail, ContactGroup, ContactGroupId, ContactId, ContactMatch, ContactRepo,
     ContactUpdate, NewContact, NewContactEmail,
