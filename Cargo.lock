@@ -416,7 +416,7 @@ dependencies = [
  "axomail-storage",
  "axomail-sync",
  "axomail-test-support",
- "base64 0.22.1",
+ "base64 0.23.0",
  "reqwest",
  "ring",
  "rustls",
@@ -439,7 +439,7 @@ version = "0.2.0"
 dependencies = [
  "async-imap",
  "axomail-core",
- "base64 0.22.1",
+ "base64 0.23.0",
  "futures",
  "rcgen",
  "rustls",
@@ -466,7 +466,7 @@ version = "0.2.0"
 dependencies = [
  "axomail-core",
  "axomail-test-support",
- "base64 0.22.1",
+ "base64 0.23.0",
  "futures",
  "rcgen",
  "rustls",
@@ -482,7 +482,7 @@ version = "0.2.0"
 dependencies = [
  "ammonia",
  "axomail-core",
- "base64 0.22.1",
+ "base64 0.23.0",
  "keyring",
  "pgp",
  "rand 0.8.7",
@@ -567,6 +567,12 @@ name = "base64"
 version = "0.22.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "72b3254f16251a8381aa12e40e3c4d2f0199f8c6508fbecb9d91f575e0fbb8c6"
+
+[[package]]
+name = "base64"
+version = "0.23.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b25655df2c3cdd83c5e5b293b88acd880332b2ddadd7c30ac43144fdc0033da9"
 
 [[package]]
 name = "base64ct"
@@ -3935,7 +3941,7 @@ dependencies = [
  "aes-gcm",
  "aes-kw",
  "argon2",
- "base64 0.22.1",
+ "base64 0.21.7",
  "bitfields",
  "block-padding",
  "blowfish",
