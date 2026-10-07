@@ -2,6 +2,9 @@
 import { computed, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 
+import AppIcon from "../common/AppIcon.vue";
+import { framedHtml, readZoom, writeZoom, ZOOM_MAX, ZOOM_MIN, ZOOM_STEP } from "./htmlFrame";
+
 const { t } = useI18n({ useScope: "global" });
 
 const props = defineProps<{
@@ -13,19 +16,22 @@ type BodyTab = "text" | "html";
 
 const hasHtml = computed(() => props.sanitizedHtml !== null);
 
-// Default to HTML when present, otherwise the always-available text view.
 const activeTab = ref<BodyTab>(hasHtml.value ? "html" : "text");
 
-// Re-pick the default whenever the message changes (html present/absent).
 watch(hasHtml, (present) => {
   activeTab.value = present ? "html" : "text";
 });
 
-// Cheap substring check (ADR-0007): the sandbox already makes links inert;
-// this only decides whether to show the explanatory note.
-const hasLinks = computed(
-  () => props.sanitizedHtml?.includes("<a ") ?? false,
-);
+const hasLinks = computed(() => props.sanitizedHtml?.includes("<a ") ?? false);
+
+const zoom = ref(readZoom());
+const zoomLabel = computed(() => `${Math.round(zoom.value * 100)}%`);
+const srcdoc = computed(() => framedHtml(props.sanitizedHtml ?? "", zoom.value));
+
+function setZoom(next: number): void {
+  zoom.value = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, Math.round(next * 100) / 100));
+  writeZoom(zoom.value);
+}
 </script>
 
 <template>
@@ -33,32 +39,75 @@ const hasLinks = computed(
     class="body"
     :aria-label="t('message.body.ariaLabel')"
   >
-    <div
-      class="tabs"
-      role="tablist"
-      :aria-label="t('message.body.displayMode')"
-    >
-      <button
-        type="button"
-        role="tab"
-        class="tab"
-        :class="{ active: activeTab === 'text' }"
-        :aria-selected="activeTab === 'text'"
-        @click="activeTab = 'text'"
+    <div class="viewer-bar">
+      <div
+        class="tabs"
+        role="tablist"
+        :aria-label="t('message.body.displayMode')"
       >
-        {{ t("message.body.plainText") }}
-      </button>
-      <button
-        v-if="hasHtml"
-        type="button"
-        role="tab"
-        class="tab"
-        :class="{ active: activeTab === 'html' }"
-        :aria-selected="activeTab === 'html'"
-        @click="activeTab = 'html'"
+        <button
+          v-if="hasHtml"
+          type="button"
+          role="tab"
+          class="tab"
+          :class="{ active: activeTab === 'html' }"
+          :aria-selected="activeTab === 'html'"
+          @click="activeTab = 'html'"
+        >
+          {{ t("message.body.sanitizedHtml") }}
+        </button>
+        <button
+          type="button"
+          role="tab"
+          class="tab"
+          :class="{ active: activeTab === 'text' }"
+          :aria-selected="activeTab === 'text'"
+          @click="activeTab = 'text'"
+        >
+          {{ t("message.body.plainText") }}
+        </button>
+      </div>
+      <div
+        v-if="activeTab === 'html'"
+        class="zoom"
+        role="group"
+        :aria-label="t('message.body.zoom')"
       >
-        {{ t("message.body.sanitizedHtml") }}
-      </button>
+        <button
+          type="button"
+          class="zoom-button"
+          :disabled="zoom <= ZOOM_MIN"
+          :aria-label="t('message.body.zoomOut')"
+          :title="t('message.body.zoomOut')"
+          @click="setZoom(zoom - ZOOM_STEP)"
+        >
+          <AppIcon
+            name="zoomOut"
+            :size="15"
+          />
+        </button>
+        <button
+          type="button"
+          class="zoom-value"
+          :title="t('message.body.zoomReset')"
+          @click="setZoom(1)"
+        >
+          {{ zoomLabel }}
+        </button>
+        <button
+          type="button"
+          class="zoom-button"
+          :disabled="zoom >= ZOOM_MAX"
+          :aria-label="t('message.body.zoomIn')"
+          :title="t('message.body.zoomIn')"
+          @click="setZoom(zoom + ZOOM_STEP)"
+        >
+          <AppIcon
+            name="zoomIn"
+            :size="15"
+          />
+        </button>
+      </div>
     </div>
 
     <div
@@ -89,17 +138,12 @@ const hasLinks = computed(
       >
         {{ t("message.body.linksDisabled") }}
       </p>
-      <!--
-        Sanitized in Rust (axomail-security) then rendered in a null-origin,
-        script-less sandbox: no allow-scripts, no allow-same-origin. Height
-        is a fixed conservative minimum — no scripts are injected to measure
-        (ADR-0007).
-      -->
+      <!-- Sanitized in Rust, rendered in a null-origin, script-less sandbox (ADR-0007). -->
       <iframe
         class="html-frame"
         :title="t('message.body.htmlPreviewTitle')"
         sandbox=""
-        :srcdoc="sanitizedHtml ?? ''"
+        :srcdoc="srcdoc"
       />
     </div>
   </section>
@@ -107,22 +151,34 @@ const hasLinks = computed(
 
 <style scoped>
 .body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 440px;
   margin-top: var(--space-4);
 }
 
-.tabs {
+.viewer-bar {
   display: flex;
-  gap: var(--space-1);
-  border-bottom: 1px solid var(--color-border);
-  margin-bottom: var(--space-3);
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  margin-bottom: var(--space-2);
+}
+
+.tabs {
+  display: inline-flex;
+  gap: 2px;
+  padding: 2px;
+  border-radius: var(--radius-md);
+  background: var(--color-bg-sunken);
 }
 
 .tab {
-  padding: var(--space-1) var(--space-3);
-  font-size: var(--text-sm);
+  padding: 3px var(--space-3);
+  border-radius: var(--radius-sm);
+  font-size: var(--text-xs);
   color: var(--color-text-secondary);
-  border-bottom: 2px solid transparent;
-  transition: color var(--transition-fast);
 }
 
 .tab:hover {
@@ -130,18 +186,68 @@ const hasLinks = computed(
 }
 
 .tab.active {
+  background: var(--color-bg-elevated);
   color: var(--color-text);
   font-weight: var(--weight-medium);
-  border-bottom-color: var(--color-accent);
+  box-shadow: var(--shadow-sm);
+}
+
+.zoom {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.zoom-button,
+.zoom-value {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 26px;
+  min-width: 26px;
+  padding: 0 4px;
+  border-radius: var(--radius-sm);
+  font-size: var(--text-xs);
+  font-variant-numeric: tabular-nums;
+  color: var(--color-text-secondary);
+}
+
+.zoom-value {
+  min-width: 46px;
+}
+
+.zoom-button:hover:not(:disabled),
+.zoom-value:hover {
+  background: var(--color-bg-hover);
+  color: var(--color-text);
+}
+
+.zoom-button:disabled {
+  color: var(--color-text-tertiary);
+  cursor: default;
+}
+
+.text-view,
+.html-view {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
 }
 
 .text {
+  flex: 1;
+  margin: 0;
+  padding: var(--space-4);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
   font-family: var(--font-mono);
   font-size: var(--text-sm);
+  line-height: 1.6;
   color: var(--color-text);
   white-space: pre-wrap;
   overflow-wrap: anywhere;
-  margin: 0;
+  overflow: auto;
 }
 
 .empty-note {
@@ -156,12 +262,12 @@ const hasLinks = computed(
 }
 
 .html-frame {
+  flex: 1;
   display: block;
   width: 100%;
-  min-height: 480px;
+  min-height: 400px;
   border: 1px solid var(--color-border);
-  border-radius: var(--radius-sm);
-  /* Message HTML assumes a light canvas; pin one regardless of app theme. */
+  border-radius: var(--radius-md);
   background: #ffffff;
 }
 </style>

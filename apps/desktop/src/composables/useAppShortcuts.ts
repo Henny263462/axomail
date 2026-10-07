@@ -16,6 +16,8 @@ import { buildContextCommands, useAppCommands } from "./useAppCommands";
 import { provideCommandRegistry } from "./useCommandRegistry";
 import { i18n } from "../i18n";
 import type { Pane } from "./usePaneNavigation";
+import { useToolbarCommands } from "./useToolbarCommands";
+import type { ForwardStyle } from "../types/compose";
 import type { DialogController } from "./useDialogs";
 import type { AppDialogMap } from "../components/layout/dialogs";
 import type { AccountSummary } from "../types/mail";
@@ -25,7 +27,7 @@ interface ComposeEntry {
   openCompose: () => void;
   openReply: (id: number) => void | Promise<void>;
   openReplyAll: (id: number) => void | Promise<void>;
-  openForward: (id: number) => void | Promise<void>;
+  openForward: (id: number, style?: ForwardStyle) => void | Promise<void>;
 }
 
 /** Bulk message actions (id lists), used single-target here. */
@@ -34,6 +36,8 @@ interface MailboxActionSet {
   remove: (ids: number[]) => void | Promise<void>;
   junk: (ids: number[]) => void | Promise<void>;
   notJunk: (ids: number[]) => void | Promise<void>;
+  requestMove: (ids: number[]) => void;
+  requestCopy: (ids: number[]) => void;
 }
 
 /** Optimistic per-message toggles. */
@@ -152,6 +156,21 @@ export function useAppShortcuts(deps: AppShortcutsDeps): AppShortcuts {
     keywords: ["template", "templates", "boilerplate", "canned"],
     run: () => dialogs.open("templates"),
     isEnabled: () => !isModalOpen(),
+  });
+
+  useToolbarCommands(registry, {
+    isModalOpen,
+    accounts,
+    openMessageId: view.viewedMessageId,
+    openSettings: () => dialogs.open("settings"),
+    reply: (id) => void compose.openReply(id),
+    replyAll: (id) => void compose.openReplyAll(id),
+    forward: (id, style) => void compose.openForward(id, style),
+    archive: (id) => void mailboxActions.archive([id]),
+    move: (id) => mailboxActions.requestMove([id]),
+    copy: (id) => mailboxActions.requestCopy([id]),
+    junk: (id) => void mailboxActions.junk([id]),
+    remove: (id) => void mailboxActions.remove([id]),
   });
 
   // The global mail shortcut map + go-to chords.

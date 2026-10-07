@@ -21,6 +21,10 @@ pub enum ReplyMode {
     ReplyAll,
     /// Forward to new recipients.
     Forward,
+    /// Forward with the original quoted inline, overriding the identity.
+    ForwardInline,
+    /// Forward with the original attached as `.eml`, overriding the identity.
+    ForwardAttachment,
 }
 
 /// How a source message is marked once its reply/forward is sent.

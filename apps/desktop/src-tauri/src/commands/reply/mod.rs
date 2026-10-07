@@ -27,7 +27,7 @@ use axomail_core::{
     MessageId,
 };
 use axomail_parser::parse_message;
-use axomail_storage::{NewPendingOp, Store, raw_message_path, read_raw};
+use axomail_storage::{ForwardMode, NewPendingOp, Store, raw_message_path, read_raw};
 use axomail_sync::{ProviderFactory, SyncEngine, WorkRequest, answered_op, keyword_op};
 
 use self::build::{build_prefill, guess_identity, self_email_set};
@@ -46,8 +46,8 @@ pub(crate) enum Mode {
     Reply,
     /// Reply to the sender and every other recipient.
     ReplyAll,
-    /// Forward to new recipients.
-    Forward,
+    /// Forward to new recipients; `Some` overrides the identity's forward mode.
+    Forward(Option<ForwardMode>),
 }
 
 impl From<ReplyMode> for Mode {
@@ -55,7 +55,9 @@ impl From<ReplyMode> for Mode {
         match mode {
             ReplyMode::Reply => Self::Reply,
             ReplyMode::ReplyAll => Self::ReplyAll,
-            ReplyMode::Forward => Self::Forward,
+            ReplyMode::Forward => Self::Forward(None),
+            ReplyMode::ForwardInline => Self::Forward(Some(ForwardMode::Inline)),
+            ReplyMode::ForwardAttachment => Self::Forward(Some(ForwardMode::Attachment)),
         }
     }
 }

@@ -13,7 +13,6 @@ import FolderTree from "./FolderTree.vue";
 import SidebarFolderList, { type FlatFolder } from "./SidebarFolderList.vue";
 import SidebarSavedSearchesPane from "./SidebarSavedSearchesPane.vue";
 import SidebarTagsPane from "./SidebarTagsPane.vue";
-import SidebarViewSwitcher from "./SidebarViewSwitcher.vue";
 import type { SidebarView } from "./view";
 
 const props = withDefaults(
@@ -59,7 +58,7 @@ const emit = defineEmits<{
 }>();
 
 const { t } = useI18n({ useScope: "global" });
-const { mode: folderMode, setMode: setFolderMode } = useFolderView();
+const { mode: folderMode } = useFolderView();
 const { favoriteIds } = useFolderFavorites();
 const { recentIds, recordFolder } = useRecentFolders();
 
@@ -110,21 +109,6 @@ function onSelectMailbox(mailboxId: number): void {
       <AppIcon name="userPlus" />
       {{ t("sidebar.addAccount") }}
     </button>
-    <button
-      type="button"
-      class="compose"
-      :disabled="!hasAccounts"
-      :title="hasAccounts ? undefined : t('sidebar.composeDisabledHint')"
-      @click="emit('compose')"
-    >
-      <AppIcon name="compose" />
-      {{ t("sidebar.compose") }}
-    </button>
-
-    <SidebarViewSwitcher
-      :mode="folderMode"
-      @select="setFolderMode"
-    />
 
     <button
       v-if="folderMode === 'all' || folderMode === 'unified'"
@@ -265,51 +249,24 @@ function onSelectMailbox(mailboxId: number): void {
   flex-direction: column;
 }
 
-.add-account,
-.compose {
+.add-account {
   display: flex;
   align-items: center;
   justify-content: center;
   gap: var(--space-2);
   width: 100%;
-  padding: var(--space-2);
-  margin-bottom: var(--space-2);
-  border: 1px solid var(--color-border-strong);
+  padding: 6px var(--space-2);
+  margin-bottom: var(--space-3);
+  border: 1px dashed var(--color-border-strong);
   border-radius: var(--radius-md);
   font-size: var(--text-sm);
-  font-weight: var(--weight-medium);
-  color: var(--color-text);
-  background: var(--color-bg-elevated);
-}
-
-.compose {
-  order: -1;
-  margin-bottom: var(--space-2);
-  border-color: transparent;
-  background: var(--color-accent);
-  color: var(--color-text-inverse);
-  box-shadow: var(--shadow-sm);
-}
-
-.add-account {
-  margin-bottom: var(--space-3);
   color: var(--color-text-secondary);
 }
 
 .add-account:hover {
+  border-style: solid;
   background: var(--color-bg-hover);
   color: var(--color-text);
-}
-
-.compose:hover:not(:disabled) {
-  background: var(--color-accent-hover);
-  box-shadow: var(--shadow-md);
-  transform: translateY(-1px);
-}
-
-.compose:disabled {
-  opacity: 0.6;
-  cursor: default;
 }
 
 .account-header {

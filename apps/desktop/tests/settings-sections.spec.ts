@@ -7,7 +7,7 @@ import AccountsSection from "../src/components/settings/AccountsSection.vue";
 import type { SettingsSectionContext } from "../src/components/settings/context";
 import NotificationsSection from "../src/components/settings/NotificationsSection.vue";
 import Pop3DeleteSection from "../src/components/settings/Pop3DeleteSection.vue";
-import { settingsSections } from "../src/components/settings/sections";
+import { settingsGroups, settingsSections } from "../src/components/settings/sections";
 import SettingsDialog from "../src/components/settings/SettingsDialog.vue";
 import SyncIntervalSection from "../src/components/settings/SyncIntervalSection.vue";
 import type { AccountSummary, SettingsDto } from "../src/types/mail";
@@ -108,20 +108,24 @@ describe("settings section registry", () => {
       "sync-interval",
       "push",
       "auto-read",
-      "receipts",
-      "appearance",
       "language",
+      "appearance",
+      "view",
+      "accounts",
+      "identities",
       "pop3-delete",
       "empty-trash-on-exit",
-      "identities",
+      "receipts",
       "tags",
-      "contacts",
       "filters",
       "junk",
+      "contacts",
       "pgp",
       "shortcuts",
-      "accounts",
     ]);
+    for (const section of settingsSections) {
+      expect(settingsGroups.some((group) => group.id === section.group)).toBe(true);
+    }
   });
 
   // Finding 6: section titles resolve from the catalogue, reactive to locale.
@@ -263,5 +267,28 @@ describe("SettingsDialog registry integration", () => {
     (section.props("context") as SettingsSectionContext).notifyAccountsChanged();
 
     expect(wrapper.emitted("accountsChanged")).toHaveLength(1);
+  });
+});
+
+describe("SettingsDialog side tabs", () => {
+  it("shows only the active group's sections and switches on tab click", async () => {
+    vi.mocked(getSettings).mockResolvedValue({
+      notificationsEnabled: true,
+      syncIntervalMinutes: 5,
+      theme: "system",
+      autoMarkReadEnabled: true,
+      autoMarkReadDelayMs: 0,
+      pop3DeletePolicies: [],
+    });
+    const wrapper = mount(SettingsDialog, { props: { accounts: [] } });
+    await flushPromises();
+    const tabs = wrapper.findAll('[role="tab"]');
+    expect(tabs).toHaveLength(settingsGroups.length);
+    expect(tabs[0]?.attributes("aria-selected")).toBe("true");
+    const hidden = wrapper.findAll("[data-inactive]");
+    expect(hidden.length).toBeGreaterThan(0);
+    await tabs[1]?.trigger("click");
+    expect(tabs[1]?.attributes("aria-selected")).toBe("true");
+    expect(wrapper.find('[data-inactive] .legend').exists()).toBe(true);
   });
 });

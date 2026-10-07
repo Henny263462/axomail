@@ -12,7 +12,8 @@ import type {
   ThemePreference,
 } from "../../types/mail";
 import { messageFrom, type SettingsSectionContext } from "./context";
-import { settingsSections } from "./sections";
+import AppIcon from "../common/AppIcon.vue";
+import { settingsGroups, settingsSections, type SettingsGroupId } from "./sections";
 
 const props = defineProps<{
   /** Accounts, used to label each POP3 delete-policy toggle. */
@@ -37,6 +38,7 @@ const saving = ref(false);
 const errorMessage = ref("");
 const statusMessage = ref("");
 const root = ref<HTMLElement | null>(null);
+const activeGroup = ref<SettingsGroupId>("general");
 
 // Live theme control: `applyTheme` previews a selection immediately; the
 // preference is still batch-saved with the rest of the settings, and an
@@ -147,7 +149,7 @@ function focusables(): HTMLElement[] {
     root.value.querySelectorAll<HTMLElement>(
       "button:not([disabled]), input:not([disabled])",
     ),
-  );
+  ).filter((element) => element.closest("[data-inactive]") === null);
 }
 
 function onKeydown(event: KeyboardEvent): void {
@@ -219,167 +221,110 @@ async function onSave(): Promise<void> {
       aria-modal="true"
       aria-labelledby="settings-title"
     >
-      <h2
-        id="settings-title"
-        class="title"
-      >
-        {{ t("settings.dialog.title") }}
-      </h2>
-
-      <p
-        v-if="state === 'loading'"
-        class="note"
-        role="status"
-      >
-        {{ t("settings.dialog.loading") }}
-      </p>
-      <p
-        v-else-if="state === 'unavailable'"
-        class="note"
-        role="status"
-      >
-        {{ t("settings.dialog.unavailable") }}
-      </p>
-
-      <form
-        v-else
-        class="form"
-        @submit.prevent="onSave"
-      >
-        <component
-          :is="section.component"
-          v-for="section in settingsSections"
-          :key="section.id"
-          :context="context"
-        />
-
-        <p
-          class="error"
-          role="alert"
-          aria-live="assertive"
+      <aside class="nav">
+        <h2
+          id="settings-title"
+          class="title"
         >
-          {{ errorMessage }}
-        </p>
-        <p
-          class="status"
-          role="status"
-          aria-live="polite"
+          {{ t("settings.dialog.title") }}
+        </h2>
+        <div
+          class="tabs"
+          role="tablist"
+          aria-orientation="vertical"
+          :aria-label="t('settings.dialog.title')"
         >
-          {{ statusMessage }}
-        </p>
-
-        <div class="actions">
           <button
+            v-for="group in settingsGroups"
+            :key="group.id"
             type="button"
-            class="button"
-            @click="close"
+            role="tab"
+            class="tab"
+            :class="{ active: activeGroup === group.id }"
+            :aria-selected="activeGroup === group.id"
+            @click="activeGroup = group.id"
           >
-            {{ t("common.cancel") }}
-          </button>
-          <button
-            type="submit"
-            class="button primary"
-            :disabled="saving"
-          >
-            {{ saving ? t("common.saving") : t("common.save") }}
+            <AppIcon :name="group.icon" />
+            {{ group.title }}
           </button>
         </div>
-      </form>
+      </aside>
+
+      <section class="main">
+        <p
+          v-if="state === 'loading'"
+          class="note"
+          role="status"
+        >
+          {{ t("settings.dialog.loading") }}
+        </p>
+        <p
+          v-else-if="state === 'unavailable'"
+          class="note"
+          role="status"
+        >
+          {{ t("settings.dialog.unavailable") }}
+        </p>
+
+        <form
+          v-else
+          class="form"
+          @submit.prevent="onSave"
+        >
+          <div
+            :key="activeGroup"
+            class="content"
+            role="tabpanel"
+          >
+            <div
+              v-for="section in settingsSections"
+              v-show="section.group === activeGroup"
+              :key="section.id"
+              :data-inactive="section.group === activeGroup ? undefined : 'true'"
+            >
+              <component
+                :is="section.component"
+                :context="context"
+              />
+            </div>
+          </div>
+
+          <footer class="footer">
+            <p
+              class="error"
+              role="alert"
+              aria-live="assertive"
+            >
+              {{ errorMessage }}
+            </p>
+            <p
+              class="status"
+              role="status"
+              aria-live="polite"
+            >
+              {{ statusMessage }}
+            </p>
+            <div class="actions">
+              <button
+                type="button"
+                class="button"
+                @click="close"
+              >
+                {{ t("common.cancel") }}
+              </button>
+              <button
+                type="submit"
+                class="button primary"
+                :disabled="saving"
+              >
+                {{ saving ? t("common.saving") : t("common.save") }}
+              </button>
+            </div>
+          </footer>
+        </form>
+      </section>
     </div>
   </div>
 </template>
 
-<style scoped>
-.overlay {
-  position: fixed;
-  inset: 0;
-  z-index: 100;
-  display: flex;
-  align-items: flex-start;
-  justify-content: center;
-  padding: var(--space-6) var(--space-4);
-  overflow-y: auto;
-  background: rgb(0 0 0 / 40%);
-}
-
-.dialog {
-  width: 100%;
-  max-width: 460px;
-  background: var(--color-bg);
-  border: 1px solid var(--color-border-strong);
-  border-radius: var(--radius-lg);
-  padding: var(--space-5);
-}
-
-.title {
-  font-size: var(--text-lg);
-  font-weight: var(--weight-semibold);
-  letter-spacing: -0.01em;
-  margin-bottom: var(--space-4);
-}
-
-.note {
-  font-size: var(--text-sm);
-  color: var(--color-text-secondary);
-}
-
-.form {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-4);
-}
-
-.error {
-  font-size: var(--text-sm);
-  color: var(--color-danger);
-}
-
-.error:empty {
-  display: none;
-}
-
-.status {
-  font-size: var(--text-sm);
-  color: var(--color-text-secondary);
-}
-
-.status:empty {
-  display: none;
-}
-
-.actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: var(--space-2);
-}
-
-.button {
-  font-size: var(--text-sm);
-  font-weight: var(--weight-medium);
-  padding: var(--space-2) var(--space-4);
-  border-radius: var(--radius-md);
-  border: 1px solid var(--color-border-strong);
-  color: var(--color-text);
-  background: var(--color-bg);
-  transition: background var(--transition-fast);
-}
-
-.button:hover {
-  background: var(--color-bg-hover);
-}
-
-.button:disabled {
-  opacity: 0.6;
-  cursor: default;
-}
-
-.button.primary {
-  color: var(--color-text-inverse);
-  background: var(--color-accent);
-  border-color: var(--color-accent);
-}
-
-.button.primary:hover {
-  background: var(--color-accent-hover);
-}
-</style>
+<style scoped src="./SettingsDialog.css"></style>

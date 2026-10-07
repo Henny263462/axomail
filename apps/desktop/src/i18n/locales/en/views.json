@@ -6,5 +6,72 @@
     "movePane": "Move pane: {pane}",
     "movePaneHint": "Drag to swap panes, or use the arrow keys",
     "dropHere": "Swap with {pane}"
+  },
+  "toolbar": {
+    "label": "Main toolbar",
+    "getMail": "Get mail",
+    "compose": "Write",
+    "composeMore": "More ways to write",
+    "newMessage": "New message",
+    "fromTemplate": "New from template",
+    "reply": "Reply",
+    "replyAll": "Reply all",
+    "forward": "Forward",
+    "forwardMore": "Forward options",
+    "forwardInline": "Forward inline",
+    "forwardAttachment": "Forward as attachment",
+    "archive": "Archive",
+    "move": "Move",
+    "junk": "Junk",
+    "delete": "Delete",
+    "more": "More",
+    "toggleRead": "Mark read / unread",
+    "toggleStar": "Star / unstar",
+    "copy": "Copy to folder",
+    "openWindow": "Open in new window",
+    "print": "Print",
+    "notJunk": "Not junk",
+    "addressBook": "Contacts",
+    "settings": "Settings",
+    "windowTitle": "axomail message"
+  },
+  "settings": {
+    "groups": {
+      "general": "General",
+      "appearance": "Appearance",
+      "accounts": "Accounts",
+      "mail": "Mail handling",
+      "contacts": "Contacts",
+      "security": "Security",
+      "shortcuts": "Shortcuts"
+    },
+    "sections": {
+      "view": "View"
+    },
+    "view": {
+      "title": "View",
+      "layout": "Window layout",
+      "layoutHint": "Where the folders, list and reading pane sit",
+      "paneOrder": "Pane order",
+      "paneOrderHint": "Drag the grip at the top of a pane to swap it with another",
+      "folders": "Folder pane shows",
+      "foldersHint": "Choose which folders appear in the left pane"
+    }
+  },
+  "message": {
+    "body": {
+      "zoom": "Zoom",
+      "zoomIn": "Zoom in",
+      "zoomOut": "Zoom out",
+      "zoomReset": "Reset zoom"
+    }
+  },
+  "messageWindow": {
+    "title": "Message"
+  },
+  "list": {
+    "row": {
+      "openHint": "Double-click to open in a new window"
+    }
   }
 }

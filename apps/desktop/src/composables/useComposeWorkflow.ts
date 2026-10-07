@@ -18,6 +18,7 @@ import type {
   OutboxItemDto,
 } from "../types/mail";
 import type { DialogController } from "./useDialogs";
+import type { ForwardStyle } from "../types/compose";
 
 /**
  * The App-level state the compose workflow reads and drives. All are the
@@ -114,8 +115,8 @@ export function useComposeWorkflow(deps: Deps) {
     openPrefill(await prepareReplyAll(messageId));
   }
 
-  async function openForward(messageId: number): Promise<void> {
-    openPrefill(await prepareForward(messageId));
+  async function openForward(messageId: number, style?: ForwardStyle): Promise<void> {
+    openPrefill(await prepareForward(messageId, style));
   }
 
   async function onComposerSent(payload: {

@@ -41,7 +41,7 @@ pub(crate) fn derive_recipients(
             cc: Vec::new(),
         },
         Mode::ReplyAll => reply_all(parsed, self_emails),
-        Mode::Forward => DerivedRecipients {
+        Mode::Forward(_) => DerivedRecipients {
             to: Vec::new(),
             cc: Vec::new(),
         },
@@ -219,7 +219,7 @@ mod tests {
             vec![],
             None,
         );
-        let out = derive_recipients(&msg, Mode::Forward, &self_set(&["me@x.org"]));
+        let out = derive_recipients(&msg, Mode::Forward(None), &self_set(&["me@x.org"]));
         assert!(out.to.is_empty());
         assert!(out.cc.is_empty());
     }

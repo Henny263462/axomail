@@ -380,13 +380,13 @@ watch(
 
 .selection-count {
   font-size: var(--text-xs);
-  font-weight: var(--weight-medium);
+  font-weight: var(--weight-medium); white-space: nowrap;
   color: var(--color-text-secondary);
 }
 
 .mark-read {
   font-size: var(--text-xs);
-  font-weight: var(--weight-medium);
+  font-weight: var(--weight-medium); white-space: nowrap;
   color: var(--color-accent);
   padding: var(--space-1) var(--space-2);
   border-radius: var(--radius-sm);

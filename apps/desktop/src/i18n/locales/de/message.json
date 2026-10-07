@@ -38,7 +38,7 @@
       "ariaLabel": "Nachrichtentext",
       "displayMode": "Anzeigemodus des Nachrichtentexts",
       "plainText": "Nur Text",
-      "sanitizedHtml": "Bereinigtes HTML",
+      "sanitizedHtml": "Formatiert",
       "noPlainText": "Diese Nachricht enthält keinen Nur-Text-Teil.",
       "linksDisabled": "Links sind in dieser Vorschau deaktiviert.",
       "htmlPreviewTitle": "HTML-Vorschau der Nachricht"

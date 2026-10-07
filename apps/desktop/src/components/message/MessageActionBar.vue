@@ -1,26 +1,37 @@
 <script setup lang="ts">
-/**
- * The reading-pane action toolbar: Reply / Reply all / Forward, then the
- * relocation + Junk + Delete actions. Split out of {@link MessageDetail} to keep
- * that file under the size gate. Pure presentation — each control emits and the
- * host (MessageDetail → MessageViewPane) performs the action.
- */
+import { computed } from "vue";
 import { useI18n } from "vue-i18n";
 
+import type { ForwardStyle } from "../../types/compose";
 import AppIcon from "../common/AppIcon.vue";
+import DropdownMenu from "../common/DropdownMenu.vue";
+import type { MenuItem } from "../common/menu";
+
+withDefaults(defineProps<{ standalone?: boolean }>(), { standalone: false });
 
 const { t } = useI18n({ useScope: "global" });
 
 const emit = defineEmits<{
   (event: "reply"): void;
   (event: "reply-all"): void;
-  (event: "forward"): void;
+  (event: "forward", style?: ForwardStyle): void;
   (event: "archive"): void;
   (event: "move"): void;
   (event: "copy"): void;
   (event: "junk"): void;
   (event: "delete"): void;
+  (event: "open-window"): void;
 }>();
+
+const forwardItems = computed<MenuItem[]>(() => [
+  { id: "default", label: t("message.actionBar.forward"), icon: "forward" },
+  { id: "inline", label: t("toolbar.forwardInline"), icon: "text" },
+  { id: "attachment", label: t("toolbar.forwardAttachment"), icon: "copy" },
+]);
+
+function onForward(id: string): void {
+  emit("forward", id === "inline" || id === "attachment" ? id : undefined);
+}
 </script>
 
 <template>
@@ -31,7 +42,7 @@ const emit = defineEmits<{
   >
     <button
       type="button"
-      class="action"
+      class="action primary"
       @click="emit('reply')"
     >
       <AppIcon name="reply" />
@@ -45,14 +56,27 @@ const emit = defineEmits<{
       <AppIcon name="replyAll" />
       {{ t("message.actionBar.replyAll") }}
     </button>
-    <button
-      type="button"
-      class="action"
-      @click="emit('forward')"
-    >
-      <AppIcon name="forward" />
-      {{ t("message.actionBar.forward") }}
-    </button>
+    <div class="split">
+      <button
+        type="button"
+        class="action"
+        @click="emit('forward')"
+      >
+        <AppIcon name="forward" />
+        {{ t("message.actionBar.forward") }}
+      </button>
+      <DropdownMenu
+        class="split-more"
+        :items="forwardItems"
+        :label="t('toolbar.forwardMore')"
+        @select="onForward"
+      >
+        <AppIcon
+          name="chevronDown"
+          :size="12"
+        />
+      </DropdownMenu>
+    </div>
     <span
       class="action-sep"
       aria-hidden="true"
@@ -97,6 +121,16 @@ const emit = defineEmits<{
       <AppIcon name="trash" />
       {{ t("common.delete") }}
     </button>
+    <button
+      v-if="!standalone"
+      type="button"
+      class="action icon-only"
+      :aria-label="t('toolbar.openWindow')"
+      :title="t('toolbar.openWindow')"
+      @click="emit('open-window')"
+    >
+      <AppIcon name="externalWindow" />
+    </button>
   </div>
 </template>
 
@@ -104,7 +138,8 @@ const emit = defineEmits<{
 .action-bar {
   display: flex;
   flex-wrap: wrap;
-  gap: var(--space-2);
+  align-items: center;
+  gap: 6px;
   margin-bottom: var(--space-4);
 }
 
@@ -116,7 +151,6 @@ const emit = defineEmits<{
   border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
   background: var(--color-bg-elevated);
-  box-shadow: var(--shadow-sm);
   font-size: var(--text-sm);
   color: var(--color-text);
   cursor: pointer;
@@ -127,28 +161,48 @@ const emit = defineEmits<{
   border-color: var(--color-border-strong);
 }
 
-.action:first-child {
+.action.primary {
   background: var(--color-accent);
   border-color: transparent;
   color: var(--color-text-inverse);
 }
 
-.action:first-child:hover {
+.action.primary:hover {
   background: var(--color-accent-hover);
 }
 
-.action:focus-visible {
-  outline: 2px solid var(--color-accent);
-  outline-offset: 2px;
-}
-
-.action.danger {
+.action.danger:hover {
+  border-color: var(--color-danger);
   color: var(--color-danger);
 }
 
-.action.danger:hover {
-  background: var(--color-danger-subtle);
-  border-color: var(--color-danger);
+.action.icon-only {
+  margin-left: auto;
+  padding: 5px 7px;
+}
+
+.split {
+  display: inline-flex;
+}
+
+.split > .action {
+  border-radius: var(--radius-md) 0 0 var(--radius-md);
+}
+
+.split-more :deep(.trigger) {
+  height: 100%;
+  padding: 0 6px;
+  border: 1px solid var(--color-border);
+  border-left: none;
+  border-radius: 0 var(--radius-md) var(--radius-md) 0;
+  background: var(--color-bg-elevated);
+  color: var(--color-text-secondary);
+}
+
+.split-more :deep(.trigger:hover),
+.split-more :deep(.trigger.open) {
+  background: var(--color-bg-hover);
+  color: var(--color-text);
 }
 
 .action-sep {
