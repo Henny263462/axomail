@@ -1,12 +1,26 @@
 <script setup lang="ts">
+import AppIcon from "./AppIcon.vue";
+import type { IconName } from "./icons";
+
 defineProps<{
   title: string;
   detail?: string;
+  icon?: IconName;
 }>();
 </script>
 
 <template>
   <div class="empty">
+    <span
+      v-if="icon"
+      class="empty-icon"
+    >
+      <AppIcon
+        :name="icon"
+        :size="26"
+        :stroke-width="1.5"
+      />
+    </span>
     <p class="empty-title">
       {{ title }}
     </p>
@@ -29,6 +43,18 @@ defineProps<{
   height: 100%;
   padding: var(--space-6);
   text-align: center;
+  animation: ax-rise-in var(--duration-slow) var(--ease-out);
+}
+
+.empty-icon {
+  display: grid;
+  place-items: center;
+  width: 56px;
+  height: 56px;
+  margin-bottom: var(--space-2);
+  border-radius: var(--radius-xl);
+  background: var(--color-accent-subtle);
+  color: var(--color-accent);
 }
 
 .empty-title {

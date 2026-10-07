@@ -15,6 +15,7 @@ import {
   pickSaveFilePath,
   saveMessageEml,
 } from "../../api/attachments";
+import AppIcon from "../common/AppIcon.vue";
 import MessageSourceDialog from "./MessageSourceDialog.vue";
 
 const { t } = useI18n({ useScope: "global" });
@@ -96,6 +97,10 @@ async function onToggleHeaders(): Promise<void> {
         class="action"
         @click="onSaveEml"
       >
+        <AppIcon
+          name="download"
+          :size="13"
+        />
         {{ t("message.actions.saveEml") }}
       </button>
       <button
@@ -103,6 +108,10 @@ async function onToggleHeaders(): Promise<void> {
         class="action"
         @click="onViewSource"
       >
+        <AppIcon
+          name="code"
+          :size="13"
+        />
         {{ t("message.actions.viewSource") }}
       </button>
       <button
@@ -111,6 +120,10 @@ async function onToggleHeaders(): Promise<void> {
         :aria-pressed="headersOpen"
         @click="onToggleHeaders"
       >
+        <AppIcon
+          name="headers"
+          :size="13"
+        />
         {{ headersOpen ? t("message.actions.hideHeaders") : t("message.actions.allHeaders") }}
       </button>
       <button
@@ -118,6 +131,10 @@ async function onToggleHeaders(): Promise<void> {
         class="action"
         @click="emit('print')"
       >
+        <AppIcon
+          name="printer"
+          :size="13"
+        />
         {{ t("message.actions.print") }}
       </button>
     </div>
@@ -158,10 +175,13 @@ async function onToggleHeaders(): Promise<void> {
 }
 
 .action {
-  padding: var(--space-1) var(--space-3);
-  border: 1px solid var(--color-border-strong);
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px var(--space-2);
+  border: 1px solid transparent;
   border-radius: var(--radius-sm);
-  background: var(--color-bg);
+  background: transparent;
   font-size: var(--text-xs);
   color: var(--color-text-secondary);
   cursor: pointer;
@@ -170,14 +190,16 @@ async function onToggleHeaders(): Promise<void> {
 
 .action:hover {
   background: var(--color-bg-hover);
+  color: var(--color-text);
 }
 
 .action[aria-pressed="true"] {
   color: var(--color-accent);
-  border-color: var(--color-accent);
+  background: var(--color-accent-subtle);
 }
 
 .headers {
+  animation: ax-rise-in var(--duration-base) var(--ease-out);
   margin: var(--space-2) 0 0;
   padding: var(--space-2) var(--space-3);
   border: 1px solid var(--color-border);

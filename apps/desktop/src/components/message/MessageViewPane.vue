@@ -227,6 +227,7 @@ watch(
   >
     <EmptyState
       v-if="state === 'idle'"
+      icon="mail"
       :title="t('message.view.noSelectionTitle')"
       :detail="t('message.view.noSelectionDetail')"
     />
@@ -244,6 +245,7 @@ watch(
     />
     <EmptyState
       v-else-if="detail.offlineUnavailable"
+      icon="wifiOff"
       :title="t('message.view.offlineTitle')"
       :detail="t('message.view.offlineDetail')"
     />
@@ -277,6 +279,10 @@ watch(
   height: 100%;
   overflow-y: auto;
   background: var(--color-bg);
+}
+
+.view > * {
+  animation: ax-rise-in var(--duration-base) var(--ease-out);
 }
 
 .status {

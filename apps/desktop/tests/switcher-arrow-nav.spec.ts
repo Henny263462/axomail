@@ -42,9 +42,8 @@ describe("LayoutSwitcher arrow-key navigation", () => {
     await wrapper
       .findAll('[role="radio"]')[0]!
       .trigger("keydown", { key: "ArrowLeft" });
-    // Wrapped to the last layout, "wide" (index 2).
     expect(
-      wrapper.findAll('[role="radio"]')[2]!.attributes("aria-checked"),
+      wrapper.findAll('[role="radio"]')[3]!.attributes("aria-checked"),
     ).toBe("true");
     wrapper.unmount();
   });

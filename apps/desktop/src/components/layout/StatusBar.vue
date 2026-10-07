@@ -6,6 +6,7 @@ import { useAppVersion } from "../../composables/useAppVersion";
 import { usePushStatus } from "../../composables/usePushStatus";
 import { useWorkOffline } from "../../composables/useWorkOffline";
 import { isTauri } from "../../lib/tauri";
+import AppIcon from "../common/AppIcon.vue";
 import LayoutSwitcher from "./LayoutSwitcher.vue";
 
 const props = withDefaults(
@@ -63,6 +64,11 @@ function syncLabel(): string {
     :aria-label="t('layout.statusBar.status')"
   >
     <span class="app">
+      <span
+        class="dot"
+        :class="{ live: pushConnected && !browserPreview, busy: syncing }"
+        aria-hidden="true"
+      />
       axomail<template v-if="version !== null"> {{ version }}</template>
     </span>
     <span
@@ -77,7 +83,10 @@ function syncLabel(): string {
         :aria-label="t('layout.statusBar.dismissError')"
         @click="emit('dismissError')"
       >
-        ✕
+        <AppIcon
+          name="close"
+          :size="12"
+        />
       </button>
     </span>
     <span
@@ -94,6 +103,10 @@ function syncLabel(): string {
         :title="t('layout.statusBar.pushTitle')"
         :aria-label="t('layout.statusBar.pushConnectedAria')"
       >
+        <AppIcon
+          name="zap"
+          :size="12"
+        />
         {{ t("layout.statusBar.push") }}
       </span>
       <button
@@ -110,6 +123,10 @@ function syncLabel(): string {
         :title="offline ? t('layout.statusBar.offlineTitle') : t('layout.statusBar.workOfflineTitle')"
         @click="onToggleOffline"
       >
+        <AppIcon
+          :name="offline ? 'wifiOff' : 'wifi'"
+          :size="13"
+        />
         {{ offline ? t("layout.statusBar.offline") : t("layout.statusBar.online") }}
       </button>
       <span
@@ -122,6 +139,11 @@ function syncLabel(): string {
           :aria-label="syncLabel()"
           @click="emit('openActivity')"
         >
+          <AppIcon
+            name="refresh"
+            class="ax-spin"
+            :size="12"
+          />
           {{ t("layout.statusBar.syncing", { count: syncCount }) }}
         </button>
         <button
@@ -131,7 +153,10 @@ function syncLabel(): string {
           :title="t('activity.cancelAllSyncAria')"
           @click="emit('cancelSync')"
         >
-          ✕
+          <AppIcon
+            name="close"
+            :size="12"
+          />
         </button>
       </span>
       <button
@@ -141,7 +166,10 @@ function syncLabel(): string {
         :title="t('activity.title')"
         @click="emit('openActivity')"
       >
-        ⟳
+        <AppIcon
+          name="activity"
+          :size="15"
+        />
       </button>
       <button
         type="button"
@@ -150,7 +178,10 @@ function syncLabel(): string {
         :title="t('layout.statusBar.settings')"
         @click="emit('openSettings')"
       >
-        ⚙
+        <AppIcon
+          name="settings"
+          :size="15"
+        />
       </button>
     </div>
   </footer>
@@ -162,11 +193,36 @@ function syncLabel(): string {
   align-items: center;
   gap: var(--space-3);
   padding: 0 var(--space-3);
-  height: 28px;
+  height: 32px;
   border-top: 1px solid var(--color-border);
   background: var(--color-bg-subtle);
   font-size: var(--text-xs);
   color: var(--color-text-tertiary);
+}
+
+.app {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-weight: var(--weight-medium);
+}
+
+.dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--color-text-tertiary);
+  transition: background var(--duration-base) ease;
+}
+
+.dot.live {
+  background: var(--color-success);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-success) 20%, transparent);
+}
+
+.dot.busy {
+  background: var(--color-accent);
+  animation: ax-pulse 1.4s ease-in-out infinite;
 }
 
 .mode {
@@ -181,6 +237,9 @@ function syncLabel(): string {
 }
 
 .offline-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
   font-size: var(--text-xs);
   line-height: 1;
   color: var(--color-text-secondary);
@@ -202,6 +261,9 @@ function syncLabel(): string {
 }
 
 .push {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
   font-size: var(--text-xs);
   line-height: 1;
   color: var(--color-accent);
@@ -218,6 +280,9 @@ function syncLabel(): string {
 }
 
 .sync-open {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
   font-size: var(--text-xs);
   color: var(--color-accent);
   padding: 2px var(--space-1);
@@ -229,6 +294,9 @@ function syncLabel(): string {
 }
 
 .cancel {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
   font-size: var(--text-xs);
   line-height: 1;
   color: var(--color-text-secondary);
@@ -243,19 +311,28 @@ function syncLabel(): string {
 
 .activity,
 .settings {
+  display: inline-flex;
+  align-items: center;
   flex-shrink: 0;
   font-size: var(--text-sm);
   line-height: 1;
   color: var(--color-text-secondary);
-  padding: 2px var(--space-1);
+  padding: 3px;
   border-radius: var(--radius-sm);
-  transition: background var(--transition-fast);
 }
 
 .activity:hover,
 .settings:hover {
   background: var(--color-bg-hover);
   color: var(--color-text);
+}
+
+.settings:hover :deep(.icon) {
+  rotate: 90deg;
+}
+
+.settings :deep(.icon) {
+  transition: rotate var(--duration-slow) var(--ease-out);
 }
 
 .error {
@@ -269,6 +346,9 @@ function syncLabel(): string {
 }
 
 .dismiss {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
   flex-shrink: 0;
   font-size: var(--text-xs);
   line-height: 1;

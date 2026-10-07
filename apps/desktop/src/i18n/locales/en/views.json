@@ -1,0 +1,10 @@
+{
+  "views": {
+    "focus": "Focus",
+    "toggleFolders": "Show or hide folder pane",
+    "resetOrder": "Reset pane order",
+    "movePane": "Move pane: {pane}",
+    "movePaneHint": "Drag to swap panes, or use the arrow keys",
+    "dropHere": "Swap with {pane}"
+  }
+}

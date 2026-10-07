@@ -1,0 +1,10 @@
+{
+  "views": {
+    "focus": "Fokus",
+    "toggleFolders": "Ordnerbereich ein- oder ausblenden",
+    "resetOrder": "Bereichsreihenfolge zurücksetzen",
+    "movePane": "Bereich verschieben: {pane}",
+    "movePaneHint": "Ziehen, um Bereiche zu tauschen, oder Pfeiltasten verwenden",
+    "dropHere": "Mit {pane} tauschen"
+  }
+}

@@ -7,6 +7,7 @@ import { useFolderView } from "../../composables/useFolderView";
 import { useRecentFolders } from "../../composables/useRecentFolders";
 import type { AccountSummary } from "../../types/mail";
 import type { SavedSearchDto } from "../../types/search";
+import AppIcon from "../common/AppIcon.vue";
 import EmptyState from "../common/EmptyState.vue";
 import FolderTree from "./FolderTree.vue";
 import SidebarFolderList, { type FlatFolder } from "./SidebarFolderList.vue";
@@ -106,6 +107,7 @@ function onSelectMailbox(mailboxId: number): void {
       class="add-account"
       @click="emit('addAccount')"
     >
+      <AppIcon name="userPlus" />
       {{ t("sidebar.addAccount") }}
     </button>
     <button
@@ -115,6 +117,7 @@ function onSelectMailbox(mailboxId: number): void {
       :title="hasAccounts ? undefined : t('sidebar.composeDisabledHint')"
       @click="emit('compose')"
     >
+      <AppIcon name="compose" />
       {{ t("sidebar.compose") }}
     </button>
 
@@ -131,7 +134,8 @@ function onSelectMailbox(mailboxId: number): void {
       :aria-current="activeView === 'unified' ? 'true' : undefined"
       @click="emit('selectUnified')"
     >
-      {{ t("sidebar.allInboxes") }}
+      <AppIcon name="layers" />
+      <span class="label">{{ t("sidebar.allInboxes") }}</span>
     </button>
 
     <!-- All folders: the full per-account trees (the default view). -->
@@ -167,7 +171,11 @@ function onSelectMailbox(mailboxId: number): void {
               :title="t('sidebar.syncThisAccount')"
               @click="emit('syncAccount', account.id)"
             >
-              ↻
+              <AppIcon
+                name="refresh"
+                :size="13"
+                :class="{ 'ax-spin': isSyncing(account.id) }"
+              />
             </button>
           </div>
           <FolderTree
@@ -229,7 +237,8 @@ function onSelectMailbox(mailboxId: number): void {
         :aria-current="activeView === 'drafts' ? 'true' : undefined"
         @click="emit('selectDrafts')"
       >
-        {{ t("sidebar.drafts") }}
+        <AppIcon name="draft" />
+        <span class="label">{{ t("sidebar.drafts") }}</span>
       </button>
       <button
         type="button"
@@ -238,7 +247,8 @@ function onSelectMailbox(mailboxId: number): void {
         :aria-current="activeView === 'outbox' ? 'true' : undefined"
         @click="emit('selectOutbox')"
       >
-        {{ t("sidebar.outbox") }}
+        <AppIcon name="outbox" />
+        <span class="label">{{ t("sidebar.outbox") }}</span>
       </button>
     </div>
   </nav>
@@ -257,7 +267,10 @@ function onSelectMailbox(mailboxId: number): void {
 
 .add-account,
 .compose {
-  display: block;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
   width: 100%;
   padding: var(--space-2);
   margin-bottom: var(--space-2);
@@ -266,17 +279,32 @@ function onSelectMailbox(mailboxId: number): void {
   font-size: var(--text-sm);
   font-weight: var(--weight-medium);
   color: var(--color-text);
-  background: var(--color-bg);
-  transition: background var(--transition-fast);
+  background: var(--color-bg-elevated);
 }
 
 .compose {
-  margin-bottom: var(--space-3);
+  order: -1;
+  margin-bottom: var(--space-2);
+  border-color: transparent;
+  background: var(--color-accent);
+  color: var(--color-text-inverse);
+  box-shadow: var(--shadow-sm);
 }
 
-.add-account:hover,
-.compose:hover:not(:disabled) {
+.add-account {
+  margin-bottom: var(--space-3);
+  color: var(--color-text-secondary);
+}
+
+.add-account:hover {
   background: var(--color-bg-hover);
+  color: var(--color-text);
+}
+
+.compose:hover:not(:disabled) {
+  background: var(--color-accent-hover);
+  box-shadow: var(--shadow-md);
+  transform: translateY(-1px);
 }
 
 .compose:disabled {
@@ -310,6 +338,8 @@ function onSelectMailbox(mailboxId: number): void {
 }
 
 .sync {
+  display: inline-flex;
+  align-items: center;
   flex-shrink: 0;
   font-size: var(--text-sm);
   line-height: 1;
@@ -328,9 +358,9 @@ function onSelectMailbox(mailboxId: number): void {
 .all-inboxes {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  gap: var(--space-2);
   width: 100%;
-  padding: var(--space-1) var(--space-2);
+  padding: 6px var(--space-2);
   border-radius: var(--radius-md);
   font-size: var(--text-sm);
   color: var(--color-text-secondary);
@@ -343,15 +373,22 @@ function onSelectMailbox(mailboxId: number): void {
   color: var(--color-text);
 }
 
+.label {
+  flex: 1;
+  min-width: 0;
+  text-align: left;
+}
+
 .mailbox:hover,
 .all-inboxes:hover {
   background: var(--color-bg-hover);
+  color: var(--color-text);
 }
 
 .mailbox.selected,
 .all-inboxes.selected {
-  background: var(--color-bg-selected);
-  color: var(--color-text);
+  background: var(--color-accent-subtle);
+  color: var(--color-accent);
   font-weight: var(--weight-medium);
 }
 
