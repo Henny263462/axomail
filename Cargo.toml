@@ -127,7 +127,7 @@ pgp = { version = "0.20.0", default-features = false }
 # `rand_core` 0.6 `CryptoRng` bound), so this pins to the version already in the
 # resolved graph and introduces no new transitive tree. MIT OR Apache-2.0,
 # verified against crates.io on 2026-07-20. Only `mail-security` uses it.
-rand = "0.8"
+rand = "0.10"
 
 # Internal crates. Directory names follow the architecture layout; package
 # names carry the `axomail-` prefix to avoid clashes with public crates
