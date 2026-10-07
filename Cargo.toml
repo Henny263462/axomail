@@ -89,7 +89,7 @@ rcgen = "0.14.8"
 # the `application/x-www-form-urlencoded` token-exchange request bodies.
 reqwest = { version = "0.13.4", default-features = false, features = ["rustls-no-provider", "json", "form"] }
 # XOAUTH2 SASL string construction for IMAP/SMTP and the PKCE base64 lines (Track 1.2).
-base64 = "0.22.1"
+base64 = "0.23.0"
 # ring supplies the CSPRNG (PKCE verifier + CSRF state) and SHA-256 (the PKCE
 # S256 challenge). It is already the rustls crypto provider in the tree, so
 # this adds no new graph dependency. Version pinned to the resolved one.
