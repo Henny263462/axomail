@@ -5,6 +5,8 @@ import { initLayout } from "./composables/useLayout";
 import { initPaneSizes } from "./composables/usePaneSizes";
 import { initTheme } from "./composables/useTheme";
 import { i18n, initLanguage } from "./i18n";
+import { messageWindowId } from "./lib/messageWindow";
+import MessageWindowApp from "./MessageWindowApp.vue";
 import "./styles/base.css";
 
 // Paint the cached theme before the first frame to avoid a light/dark flash;
@@ -19,4 +21,10 @@ initLanguage();
 initLayout();
 initPaneSizes();
 
-createApp(App).use(i18n).mount("#app");
+const standaloneMessage = messageWindowId();
+
+if (standaloneMessage === null) {
+  createApp(App).use(i18n).mount("#app");
+} else {
+  createApp(MessageWindowApp, { messageId: standaloneMessage }).use(i18n).mount("#app");
+}

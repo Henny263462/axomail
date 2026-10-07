@@ -2,7 +2,9 @@
 import { computed } from "vue";
 import { useI18n } from "vue-i18n";
 
+import type { ForwardStyle } from "../../types/compose";
 import type { MessageDetailDto, RsvpChoice } from "../../types/mail";
+import AppIcon from "../common/AppIcon.vue";
 import { formatDateTime, formatRecipients } from "./format";
 import InvitationCard from "./InvitationCard.vue";
 import MessageActionBar from "./MessageActionBar.vue";
@@ -26,12 +28,14 @@ const props = withDefaults(
     rsvpSendFailed?: boolean;
     /** The RSVP bridge is unavailable (browser preview). */
     rsvpUnavailable?: boolean;
+    standalone?: boolean;
   }>(),
   {
     rsvpBusy: false,
     rsvpError: null,
     rsvpSendFailed: false,
     rsvpUnavailable: false,
+    standalone: false,
   },
 );
 
@@ -42,7 +46,8 @@ const emit = defineEmits<{
   (event: "print"): void;
   (event: "reply"): void;
   (event: "reply-all"): void;
-  (event: "forward"): void;
+  (event: "forward", style?: ForwardStyle): void;
+  (event: "open-window"): void;
   (event: "move"): void;
   (event: "copy"): void;
   (event: "archive"): void;
@@ -72,9 +77,11 @@ function alwaysAllow(): void {
 <template>
   <article class="detail">
     <MessageActionBar
+      :standalone="standalone"
       @reply="emit('reply')"
       @reply-all="emit('reply-all')"
-      @forward="emit('forward')"
+      @forward="(style) => emit('forward', style)"
+      @open-window="emit('open-window')"
       @archive="emit('archive')"
       @move="emit('move')"
       @copy="emit('copy')"
@@ -95,7 +102,10 @@ function alwaysAllow(): void {
           :aria-label="detail.flagged ? t('message.detail.removeStar') : t('message.detail.addStar')"
           @click="emit('toggle-star')"
         >
-          <span aria-hidden="true">{{ detail.flagged ? "★" : "☆" }}</span>
+          <AppIcon
+            :name="detail.flagged ? 'starFilled' : 'star'"
+            :size="18"
+          />
         </button>
       </div>
       <p class="from">
@@ -211,7 +221,10 @@ function alwaysAllow(): void {
 
 <style scoped>
 .detail {
-  padding: var(--space-5);
+  flex: 1 0 auto;
+  display: flex;
+  flex-direction: column;
+  padding: var(--space-4) var(--space-5) var(--space-5);
 }
 
 .header {

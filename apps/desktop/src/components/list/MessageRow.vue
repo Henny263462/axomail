@@ -12,6 +12,7 @@ import { computed } from "vue";
 import { useI18n } from "vue-i18n";
 
 import type { MessageListItem } from "../../types/mail";
+import { openMessageWindow } from "../../lib/messageWindow";
 import AppIcon from "../common/AppIcon.vue";
 import TagChips from "../message/TagChips.vue";
 
@@ -59,6 +60,10 @@ function formatDate(unix: number | null): string {
 }
 
 const date = computed(() => formatDate(props.message.dateUnix));
+
+function openWindow(): void {
+  void openMessageWindow(props.message.id, props.message.subject ?? t("list.noSubject"));
+}
 </script>
 
 <template>
@@ -101,7 +106,9 @@ const date = computed(() => formatDate(props.message.dateUnix));
       class="item"
       tabindex="-1"
       :class="{ selected: current, unseen: !message.seen }"
+      :title="t('list.row.openHint')"
       @click="onItemClick"
+      @dblclick="openWindow"
     >
       <span class="line">
         <span
@@ -110,6 +117,12 @@ const date = computed(() => formatDate(props.message.dateUnix));
           aria-hidden="true"
         />
         <span class="from">{{ message.fromName || message.fromAddress }}</span>
+        <TagChips
+          v-if="message.tags.length > 0"
+          class="tags"
+          :tags="message.tags"
+          :label="t('list.row.tagsOn', { subject: message.subject ?? t('list.row.thisMessage') })"
+        />
         <span
           v-if="accountName"
           class="account"
@@ -121,12 +134,6 @@ const date = computed(() => formatDate(props.message.dateUnix));
         v-if="message.preview"
         class="preview"
       >{{ message.preview }}</span>
-      <TagChips
-        v-if="message.tags.length > 0"
-        class="tags"
-        :tags="message.tags"
-        :label="t('list.row.tagsOn', { subject: message.subject ?? t('list.row.thisMessage') })"
-      />
     </button>
   </div>
 </template>
@@ -301,6 +308,8 @@ const date = computed(() => formatDate(props.message.dateUnix));
 }
 
 .tags {
-  margin-top: 2px;
+  flex-shrink: 1;
+  min-width: 0;
+  overflow: hidden;
 }
 </style>

@@ -7,6 +7,7 @@
  * `null` in the browser preview where the IPC bridge is absent (ADR-0005).
  */
 import { safeInvoke } from "../lib/tauri";
+import type { ForwardStyle } from "../types/compose";
 import type { ComposerPrefillDto, ReplyMode, SourceMark } from "../types/mail";
 
 /** Builds the composer prefill for a source message in the requested mode. */
@@ -34,7 +35,10 @@ export function prepareReplyAll(
 /** Prefill for a forward to new recipients. */
 export function prepareForward(
   messageId: number,
+  style?: ForwardStyle,
 ): Promise<ComposerPrefillDto | null> {
+  if (style === "inline") return prepare(messageId, "forwardInline");
+  if (style === "attachment") return prepare(messageId, "forwardAttachment");
   return prepare(messageId, "forward");
 }
 

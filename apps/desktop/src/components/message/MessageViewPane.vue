@@ -10,6 +10,8 @@ import {
 } from "../../api/messages";
 import { useCommandRegistry } from "../../composables/useCommandRegistry";
 import { printMessageDocument } from "../../lib/printDocument";
+import { openMessageWindow } from "../../lib/messageWindow";
+import type { ForwardStyle } from "../../types/compose";
 import type { MessageDetailDto, RsvpChoice } from "../../types/mail";
 import EmptyState from "../common/EmptyState.vue";
 import MessageDetail from "./MessageDetail.vue";
@@ -25,6 +27,7 @@ const props = defineProps<{
    * predicate.
    */
   isModalOpen?: () => boolean;
+  standalone?: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -33,7 +36,7 @@ const emit = defineEmits<{
   /** Reply / reply-all / forward requested for the given message. */
   reply: [messageId: number];
   replyAll: [messageId: number];
-  forward: [messageId: number];
+  forward: [messageId: number, style?: ForwardStyle];
   /** Move / copy / archive / delete-to-Trash requested for the given message. */
   move: [messageId: number];
   copy: [messageId: number];
@@ -58,6 +61,18 @@ const rsvpSendFailed = ref(false);
 const rsvpUnavailable = ref(false);
 // The last choice the user picked, so "retry send" re-sends it without asking.
 const rsvpChoice = ref<RsvpChoice | null>(null);
+
+function onForward(style?: ForwardStyle): void {
+  if (detail.value === null) return;
+  if (style === undefined) emit("forward", detail.value.id);
+  else emit("forward", detail.value.id, style);
+}
+
+function openWindow(): void {
+  if (detail.value !== null) {
+    void openMessageWindow(detail.value.id, detail.value.subject ?? t("message.row.noSubject"));
+  }
+}
 
 /** Prints the open message as a sanitized, chrome-free document (ADR-0007). */
 function printCurrent(): void {
@@ -252,6 +267,7 @@ watch(
     <MessageDetail
       v-else
       :detail="detail"
+      :standalone="standalone"
       :rsvp-busy="rsvpBusy"
       :rsvp-error="rsvpError"
       :rsvp-send-failed="rsvpSendFailed"
@@ -264,7 +280,8 @@ watch(
       @print="printCurrent"
       @reply="emit('reply', detail.id)"
       @reply-all="emit('replyAll', detail.id)"
-      @forward="emit('forward', detail.id)"
+      @forward="onForward"
+      @open-window="openWindow"
       @move="emit('move', detail.id)"
       @copy="emit('copy', detail.id)"
       @archive="emit('archive', detail.id)"
@@ -278,6 +295,8 @@ watch(
 .view {
   height: 100%;
   overflow-y: auto;
+  display: flex;
+  flex-direction: column;
   background: var(--color-bg);
 }
 

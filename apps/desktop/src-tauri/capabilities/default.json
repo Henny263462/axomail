@@ -1,14 +1,24 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Minimal capability set for the main window. Grants core Tauri primitives, notification:default (one aggregate 'N new messages' OS notification after a background/manual sync; counts only, never subjects or senders), a single scoped opener permission (opener:allow-open-url restricted to `https://*`, used to launch the OAuth2 consent screen in the system browser, RFC 8252 external agent), and the attachment file-dialog permissions dialog:allow-open + dialog:allow-save (native open/save-file pickers for attachments and save-as). File contents are read/written by Rust std::fs commands against the dialog-chosen path (ADR-0010): tauri-plugin-fs is registered but granted NO scope here, so the webview has no standing filesystem access. No path opening (open_path), no reveal-in-dir, no mailto/tel/http scheme, no message/ask/confirm dialogs, and no shell or arbitrary-network permissions.",
-  "windows": ["main"],
+  "description": "Minimal capability set for the main window and the standalone message windows (labels message-<id>), which load the same bundled app. Grants core Tauri primitives plus creating, focusing and closing app windows (core:webview:allow-create-webview-window, core:window:allow-set-focus, core:window:allow-close) so a message can open in its own window; notification:default (one aggregate 'N new messages' OS notification after a background/manual sync; counts only, never subjects or senders), a single scoped opener permission (opener:allow-open-url restricted to `https://*`, used to launch the OAuth2 consent screen in the system browser, RFC 8252 external agent), and the attachment file-dialog permissions dialog:allow-open + dialog:allow-save (native open/save-file pickers for attachments and save-as). File contents are read/written by Rust std::fs commands against the dialog-chosen path (ADR-0010): tauri-plugin-fs is registered but granted NO scope here, so the webview has no standing filesystem access. No path opening (open_path), no reveal-in-dir, no mailto/tel/http scheme, no message/ask/confirm dialogs, and no shell or arbitrary-network permissions.",
+  "windows": [
+    "main",
+    "message-*"
+  ],
   "permissions": [
     "core:default",
+    "core:webview:allow-create-webview-window",
+    "core:window:allow-set-focus",
+    "core:window:allow-close",
     "notification:default",
     {
       "identifier": "opener:allow-open-url",
-      "allow": [{ "url": "https://*" }]
+      "allow": [
+        {
+          "url": "https://*"
+        }
+      ]
     },
     "dialog:allow-open",
     "dialog:allow-save"

@@ -18,6 +18,43 @@ import ReceiptsSection from "./ReceiptsSection.vue";
 import ShortcutsSection from "./ShortcutsSection.vue";
 import SyncIntervalSection from "./SyncIntervalSection.vue";
 import TagsSection from "./TagsSection.vue";
+import ViewSection from "./ViewSection.vue";
+import type { IconName } from "../common/icons";
+
+export type SettingsGroupId =
+  | "general"
+  | "appearance"
+  | "accounts"
+  | "mail"
+  | "contacts"
+  | "security"
+  | "shortcuts";
+
+export interface SettingsGroup {
+  id: SettingsGroupId;
+  icon: IconName;
+  readonly title: string;
+}
+
+function group(id: SettingsGroupId, icon: IconName): SettingsGroup {
+  return {
+    id,
+    icon,
+    get title() {
+      return i18n.global.t(`settings.groups.${id}`);
+    },
+  };
+}
+
+export const settingsGroups: SettingsGroup[] = [
+  group("general", "settings"),
+  group("appearance", "palette"),
+  group("accounts", "user"),
+  group("mail", "filter"),
+  group("contacts", "book"),
+  group("security", "shield"),
+  group("shortcuts", "keyboard"),
+];
 
 /**
  * One registered settings section. `component` renders inside the dialog's
@@ -35,6 +72,7 @@ export interface SettingsSection {
   readonly title: string;
   /** The section body component (props: `{ context }`). */
   component: Component;
+  group: SettingsGroupId;
 }
 
 /**
@@ -42,9 +80,15 @@ export interface SettingsSection {
  * access (via `settings.sections.<key>`), keeping it reactive to a locale
  * switch while still satisfying `title: string`.
  */
-function section(id: string, key: string, component: Component): SettingsSection {
+function section(
+  id: string,
+  key: string,
+  component: Component,
+  groupId: SettingsGroupId,
+): SettingsSection {
   return {
     id,
+    group: groupId,
     get title() {
       return i18n.global.t(`settings.sections.${key}`);
     },
@@ -58,21 +102,22 @@ function section(id: string, key: string, component: Component): SettingsSection
  * register by creating a `context`-driven SFC and appending one entry here.
  */
 export const settingsSections: SettingsSection[] = [
-  section("notifications", "notifications", NotificationsSection),
-  section("sync-interval", "syncInterval", SyncIntervalSection),
-  section("push", "push", PushSection),
-  section("auto-read", "autoRead", AutoReadSection),
-  section("receipts", "receipts", ReceiptsSection),
-  section("appearance", "appearance", AppearanceSection),
-  section("language", "language", LanguageSection),
-  section("pop3-delete", "pop3Delete", Pop3DeleteSection),
-  section("empty-trash-on-exit", "emptyTrash", EmptyTrashSection),
-  section("identities", "identities", IdentitiesSection),
-  section("tags", "tags", TagsSection),
-  section("contacts", "contacts", ContactsSection),
-  section("filters", "filters", FiltersSection),
-  section("junk", "junk", JunkSection),
-  section("pgp", "pgp", PgpKeysSection),
-  section("shortcuts", "shortcuts", ShortcutsSection),
-  section("accounts", "accounts", AccountsSection),
+  section("notifications", "notifications", NotificationsSection, "general"),
+  section("sync-interval", "syncInterval", SyncIntervalSection, "general"),
+  section("push", "push", PushSection, "general"),
+  section("auto-read", "autoRead", AutoReadSection, "general"),
+  section("language", "language", LanguageSection, "general"),
+  section("appearance", "appearance", AppearanceSection, "appearance"),
+  section("view", "view", ViewSection, "appearance"),
+  section("accounts", "accounts", AccountsSection, "accounts"),
+  section("identities", "identities", IdentitiesSection, "accounts"),
+  section("pop3-delete", "pop3Delete", Pop3DeleteSection, "accounts"),
+  section("empty-trash-on-exit", "emptyTrash", EmptyTrashSection, "accounts"),
+  section("receipts", "receipts", ReceiptsSection, "mail"),
+  section("tags", "tags", TagsSection, "mail"),
+  section("filters", "filters", FiltersSection, "mail"),
+  section("junk", "junk", JunkSection, "mail"),
+  section("contacts", "contacts", ContactsSection, "contacts"),
+  section("pgp", "pgp", PgpKeysSection, "security"),
+  section("shortcuts", "shortcuts", ShortcutsSection, "shortcuts"),
 ];

@@ -90,8 +90,8 @@ pub(super) fn build_prefill(
                 Prefix::Reply,
             )
         }
-        Mode::Forward => {
-            let (block, attachments) = match prefs.forward_mode {
+        Mode::Forward(choice) => {
+            let (block, attachments) = match choice.unwrap_or(prefs.forward_mode) {
                 ForwardMode::Inline => (forward_block(parsed), Vec::new()),
                 ForwardMode::Attachment => {
                     (String::new(), vec![forwarded_attachment(parsed, raw_bytes)])
@@ -284,7 +284,15 @@ mod tests {
 
     #[test]
     fn forward_inline_prefill_reproduces_the_original_and_marks_forwarded() {
-        let out = build_prefill(&source(), b"raw", Mode::Forward, 7, 42, None, &self_set());
+        let out = build_prefill(
+            &source(),
+            b"raw",
+            Mode::Forward(None),
+            7,
+            42,
+            None,
+            &self_set(),
+        );
         assert!(out.to.is_empty());
         assert_eq!(out.subject, "Fwd: Weekly sync");
         assert!(out.in_reply_to.is_none());
@@ -295,6 +303,22 @@ mod tests {
             out.attachments.is_empty(),
             "inline forward has no attachment"
         );
+        assert_eq!(out.source.mark, SourceMark::Forwarded);
+    }
+
+    #[test]
+    fn explicit_attachment_forward_overrides_the_inline_default() {
+        let out = build_prefill(
+            &source(),
+            b"raw",
+            Mode::Forward(Some(ForwardMode::Attachment)),
+            7,
+            42,
+            None,
+            &self_set(),
+        );
+        assert_eq!(out.attachments.len(), 1);
+        assert!(!out.body.contains("-------- Forwarded Message --------"));
         assert_eq!(out.source.mark, SourceMark::Forwarded);
     }
 

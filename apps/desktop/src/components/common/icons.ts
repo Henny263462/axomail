@@ -81,6 +81,19 @@ export const ICONS = {
   alert: [{ d: "M12 3.5l9.5 16.5h-19z" }, { d: "M12 10v4.5" }, { cx: 12, cy: 17.3, r: 0.6, fill: true }],
   check: [{ d: "M5 12.5l4.5 4.5L19 7.5" }],
   sidebar: [{ d: frame }, { d: "M9 4.5v15" }],
+  book: [{ d: "M5 4.5A1.5 1.5 0 0 1 6.5 3H19v15H6.5A1.5 1.5 0 0 0 5 19.5z" }, { d: "M5 19.5A1.5 1.5 0 0 0 6.5 21H19v-3" }, { d: "M9 8h6" }],
+  externalWindow: [{ d: "M13.5 4.5h6v6" }, { d: "M19.5 4.5L11 13" }, { d: "M17.5 14v5.5h-13v-13H10" }],
+  mailOpen: [{ d: "M3.5 10l8.5-6 8.5 6v9.5h-17z" }, { d: "M3.5 10l8.5 6 8.5-6" }],
+  zoomIn: [{ cx: 11, cy: 11, r: 6.5 }, { d: "M20 20l-4.3-4.3" }, { d: "M11 8.5v5M8.5 11h5" }],
+  zoomOut: [{ cx: 11, cy: 11, r: 6.5 }, { d: "M20 20l-4.3-4.3" }, { d: "M8.5 11h5" }],
+  text: [{ d: "M5 6.5V5h14v1.5" }, { d: "M12 5v14" }, { d: "M9.5 19h5" }],
+  user: [{ cx: 12, cy: 8, r: 3.5 }, { d: "M5 20c0-3.6 3.1-6 7-6s7 2.4 7 6" }],
+  shield: [{ d: "M12 3l7.5 3v5.5c0 4.5-3.2 8-7.5 9.5-4.3-1.5-7.5-5-7.5-9.5V6z" }],
+  keyboard: [{ d: "M3 6.5h18v11H3z" }, { d: "M6.5 10h.01M10 10h.01M14 10h.01M17.5 10h.01M8 14h8" }],
+  palette: [{ d: "M12 3.5a8.5 8.5 0 1 0 0 17c1.2 0 1.7-.8 1.7-1.6 0-1.3-1-1.6-1-2.6 0-.9.7-1.5 1.6-1.5h2a3.7 3.7 0 0 0 3.7-3.7C20 6.9 16.4 3.5 12 3.5z" }, { cx: 8, cy: 11, r: 1, fill: true }, { cx: 11, cy: 7.5, r: 1, fill: true }, { cx: 15.5, cy: 8.5, r: 1, fill: true }],
+  bell: [{ d: "M6 16.5V11a6 6 0 0 1 12 0v5.5l1.5 2h-15z" }, { d: "M10 20.5a2 2 0 0 0 4 0" }],
+  filter: [{ d: "M4 5h16l-6 7.5V19l-4 1.5v-8z" }],
+  minus: [{ d: "M5 12h14" }],
 } satisfies Record<string, IconShape[]>;
 
 export type IconName = keyof typeof ICONS;

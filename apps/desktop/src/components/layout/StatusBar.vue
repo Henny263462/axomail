@@ -7,7 +7,6 @@ import { usePushStatus } from "../../composables/usePushStatus";
 import { useWorkOffline } from "../../composables/useWorkOffline";
 import { isTauri } from "../../lib/tauri";
 import AppIcon from "../common/AppIcon.vue";
-import LayoutSwitcher from "./LayoutSwitcher.vue";
 
 const props = withDefaults(
   defineProps<{
@@ -96,7 +95,6 @@ function syncLabel(): string {
       {{ t("layout.statusBar.browserPreview") }}
     </span>
     <div class="controls">
-      <LayoutSwitcher />
       <span
         v-if="pushConnected && !browserPreview"
         class="push"

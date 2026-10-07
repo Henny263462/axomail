@@ -6,5 +6,72 @@
     "movePane": "Bereich verschieben: {pane}",
     "movePaneHint": "Ziehen, um Bereiche zu tauschen, oder Pfeiltasten verwenden",
     "dropHere": "Mit {pane} tauschen"
+  },
+  "toolbar": {
+    "label": "Hauptwerkzeugleiste",
+    "getMail": "Abrufen",
+    "compose": "Verfassen",
+    "composeMore": "Weitere Arten zu verfassen",
+    "newMessage": "Neue E-Mail",
+    "fromTemplate": "Neu aus Vorlage",
+    "reply": "Antworten",
+    "replyAll": "Allen antworten",
+    "forward": "Weiterleiten",
+    "forwardMore": "Weiterleitungsoptionen",
+    "forwardInline": "Im Text weiterleiten",
+    "forwardAttachment": "Als Anhang weiterleiten",
+    "archive": "Archivieren",
+    "move": "Verschieben",
+    "junk": "Junk",
+    "delete": "Löschen",
+    "more": "Mehr",
+    "toggleRead": "Gelesen / ungelesen",
+    "toggleStar": "Stern setzen / entfernen",
+    "copy": "In Ordner kopieren",
+    "openWindow": "In neuem Fenster öffnen",
+    "print": "Drucken",
+    "notJunk": "Kein Junk",
+    "addressBook": "Kontakte",
+    "settings": "Einstellungen",
+    "windowTitle": "axomail-Nachricht"
+  },
+  "settings": {
+    "groups": {
+      "general": "Allgemein",
+      "appearance": "Darstellung",
+      "accounts": "Konten",
+      "mail": "E-Mail-Verwaltung",
+      "contacts": "Kontakte",
+      "security": "Sicherheit",
+      "shortcuts": "Tastenkürzel"
+    },
+    "sections": {
+      "view": "Ansicht"
+    },
+    "view": {
+      "title": "Ansicht",
+      "layout": "Fensterlayout",
+      "layoutHint": "Wo Ordner, Liste und Lesebereich angeordnet sind",
+      "paneOrder": "Reihenfolge der Bereiche",
+      "paneOrderHint": "Am Griff oben in einem Bereich ziehen, um ihn mit einem anderen zu tauschen",
+      "folders": "Ordnerbereich zeigt",
+      "foldersHint": "Welche Ordner links angezeigt werden"
+    }
+  },
+  "message": {
+    "body": {
+      "zoom": "Zoom",
+      "zoomIn": "Vergrößern",
+      "zoomOut": "Verkleinern",
+      "zoomReset": "Zoom zurücksetzen"
+    }
+  },
+  "messageWindow": {
+    "title": "Nachricht"
+  },
+  "list": {
+    "row": {
+      "openHint": "Doppelklick öffnet in neuem Fenster"
+    }
   }
 }

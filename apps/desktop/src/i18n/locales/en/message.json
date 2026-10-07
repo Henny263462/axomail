@@ -38,7 +38,7 @@
       "ariaLabel": "Message body",
       "displayMode": "Body display mode",
       "plainText": "Plain Text",
-      "sanitizedHtml": "Sanitized HTML",
+      "sanitizedHtml": "Formatted",
       "noPlainText": "This message has no plain-text part.",
       "linksDisabled": "Links are disabled in this preview.",
       "htmlPreviewTitle": "Message HTML preview"

@@ -77,7 +77,14 @@ export interface ComposeAttachmentDto {
 }
 
 /** Which reply operation a composer prefill is prepared for. */
-export type ReplyMode = "reply" | "replyAll" | "forward";
+export type ReplyMode =
+  | "reply"
+  | "replyAll"
+  | "forward"
+  | "forwardInline"
+  | "forwardAttachment";
+
+export type ForwardStyle = "inline" | "attachment";
 
 /** Field seed for a fresh composition (used by "New message from template"). */
 export interface ComposeInitial {

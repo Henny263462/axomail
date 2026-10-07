@@ -13,6 +13,8 @@ body,
   height: 100%;
   margin: 0;
   padding: 0;
+  overflow: hidden;
+  overscroll-behavior: none;
 }
 
 body {
@@ -56,7 +58,8 @@ button {
 }
 
 button:not(:disabled):active {
-  transform: scale(0.97);
+  transform: scale(0.94);
+  transition-duration: 60ms;
 }
 
 :focus-visible {

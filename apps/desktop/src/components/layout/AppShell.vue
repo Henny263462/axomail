@@ -9,6 +9,7 @@ import { usePaneNavigation, type Pane } from "../../composables/usePaneNavigatio
 import { usePaneSizes, type PaneDimension } from "../../composables/usePaneSizes";
 import AppIcon from "../common/AppIcon.vue";
 import type { IconName } from "../common/icons";
+import MainToolbar from "./MainToolbar.vue";
 import PaneSplitter from "./PaneSplitter.vue";
 import { shellGrid } from "./shellGrid";
 import StatusBar from "./StatusBar.vue";
@@ -99,6 +100,7 @@ defineExpose({ showPane });
     class="shell"
     :class="{ 'is-dragging': drag.dragging.value !== null }"
   >
+    <MainToolbar />
     <nav
       v-if="isStacked"
       class="stack-nav"

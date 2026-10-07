@@ -18,6 +18,7 @@ import type {
   MessageListItem,
   UnifiedItemDto,
 } from "../../types/mail";
+import AppIcon from "../common/AppIcon.vue";
 import FolderPropertiesDialog from "../offline/FolderPropertiesDialog.vue";
 import MessageListPane from "./MessageListPane.vue";
 import SearchBox from "./SearchBox.vue";
@@ -106,6 +107,10 @@ const selectedMailboxName = computed(() => {
         :title="t('search.advancedButtonTitle')"
         @click="emit('advancedSearch')"
       >
+        <AppIcon
+          name="filter"
+          :size="14"
+        />
         {{ t("search.advancedButton") }}
       </button>
       <button
@@ -116,7 +121,10 @@ const selectedMailboxName = computed(() => {
         :title="t('list.region.offlineAvailability')"
         @click="showFolderProps = true"
       >
-        {{ t("list.region.offlineButton") }}
+        <AppIcon
+          name="download"
+          :size="14"
+        />
       </button>
     </div>
     <SearchResultsPane
@@ -197,6 +205,10 @@ const selectedMailboxName = computed(() => {
 .advanced,
 .folder-props {
   flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
   font-size: var(--text-xs);
   color: var(--color-text-secondary);
   padding: var(--space-1) var(--space-2);

@@ -105,7 +105,7 @@ describe("MessageViewPane detail", () => {
 
     const tabLabels = wrapper.findAll("button.tab").map((tab) => tab.text());
     expect(tabLabels).toContain("Plain Text");
-    expect(tabLabels).not.toContain("Sanitized HTML");
+    expect(tabLabels).not.toContain("Formatted");
     expect(wrapper.get("pre.text").text()).toContain("Plain text version");
   });
 
