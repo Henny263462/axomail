@@ -64,11 +64,10 @@ jobs:
             keyboard shortcuts, mbox import/export, printing, and full
             English + German localization.
 
-            New in this release: a refreshed interface with icons, subtle
-            animations and a polished dark mode, a fourth "Focus" layout
-            without the folder pane, and panes that can be rearranged by
-            dragging. It also updates ammonia and rustls to fix published
-            security advisories.
+            New in this release: a simpler, classic black-and-white
+            interface with a main toolbar, settings in a tabbed window,
+            messages in their own window, a better HTML viewer with zoom,
+            and forwarding inline or as an attachment.
 
             **These bundles are unsigned.** Windows SmartScreen and macOS
             Gatekeeper will warn on first launch; on macOS use
