@@ -28,8 +28,9 @@ const props = withDefaults(
     label: string;
     /** Keyboard step in pixels; Shift multiplies it. */
     step?: number;
+    reverse?: boolean;
   }>(),
-  { step: 16 },
+  { step: 16, reverse: false },
 );
 
 const emit = defineEmits<{
@@ -59,7 +60,7 @@ function onPointerdown(event: PointerEvent): void {
 function onPointermove(event: PointerEvent): void {
   if (!dragging.value) return;
   const delta = axisCoord(event) - startCoord;
-  emit("resize", startValue + delta);
+  emit("resize", startValue + (props.reverse ? -delta : delta));
 }
 
 function endDrag(event: PointerEvent): void {
@@ -73,8 +74,10 @@ function endDrag(event: PointerEvent): void {
 
 function onKeydown(event: KeyboardEvent): void {
   const step = event.shiftKey ? props.step * 4 : props.step;
-  const decrease = props.orientation === "vertical" ? "ArrowLeft" : "ArrowUp";
-  const increase = props.orientation === "vertical" ? "ArrowRight" : "ArrowDown";
+  const before = props.orientation === "vertical" ? "ArrowLeft" : "ArrowUp";
+  const after = props.orientation === "vertical" ? "ArrowRight" : "ArrowDown";
+  const decrease = props.reverse ? after : before;
+  const increase = props.reverse ? before : after;
   let next: number | null = null;
   if (event.key === decrease) next = props.value - step;
   else if (event.key === increase) next = props.value + step;
@@ -117,9 +120,24 @@ function onKeydown(event: KeyboardEvent): void {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: var(--color-border);
+  background: transparent;
   touch-action: none;
-  transition: background var(--transition-fast);
+  transition: background var(--duration-base) ease;
+}
+
+.splitter::before {
+  content: "";
+  position: absolute;
+  background: var(--color-border);
+  transition: background var(--duration-base) ease;
+}
+
+.splitter.vertical::before {
+  inset: 0 calc(50% - 0.5px);
+}
+
+.splitter.horizontal::before {
+  inset: calc(50% - 0.5px) 0;
 }
 
 .splitter.vertical {
@@ -132,6 +150,11 @@ function onKeydown(event: KeyboardEvent): void {
 
 .splitter:hover,
 .splitter.dragging {
+  background: var(--color-accent-soft);
+}
+
+.splitter:hover::before,
+.splitter.dragging::before {
   background: var(--color-accent);
 }
 
@@ -142,8 +165,17 @@ function onKeydown(event: KeyboardEvent): void {
 
 /* A faint centered grip so the thin bar is discoverable. */
 .grip {
+  position: relative;
   background: var(--color-border-strong);
   border-radius: 2px;
+  opacity: 0;
+  transition: opacity var(--duration-base) ease;
+}
+
+.splitter:hover .grip,
+.splitter.dragging .grip,
+.splitter:focus-visible .grip {
+  opacity: 1;
 }
 
 .splitter.vertical .grip {
@@ -158,7 +190,7 @@ function onKeydown(event: KeyboardEvent): void {
 
 .splitter:hover .grip,
 .splitter.dragging .grip {
-  background: var(--color-text-inverse);
+  background: var(--color-accent);
 }
 
 @media (prefers-reduced-motion: reduce) {

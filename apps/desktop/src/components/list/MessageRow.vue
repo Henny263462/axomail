@@ -12,6 +12,7 @@ import { computed } from "vue";
 import { useI18n } from "vue-i18n";
 
 import type { MessageListItem } from "../../types/mail";
+import AppIcon from "../common/AppIcon.vue";
 import TagChips from "../message/TagChips.vue";
 
 const props = withDefaults(
@@ -88,7 +89,12 @@ const date = computed(() => formatDate(props.message.dateUnix));
       :aria-label="message.flagged ? t('list.row.removeStar') : t('list.row.addStar')"
       @click.stop="emit('toggleFlag', message.id)"
     >
-      <span aria-hidden="true">{{ message.flagged ? "★" : "☆" }}</span>
+      <AppIcon
+        :key="message.flagged ? 'on' : 'off'"
+        :name="message.flagged ? 'starFilled' : 'star'"
+        class="star-icon"
+        :size="15"
+      />
     </button>
     <button
       type="button"
@@ -98,6 +104,11 @@ const date = computed(() => formatDate(props.message.dateUnix));
       @click="onItemClick"
     >
       <span class="line">
+        <span
+          v-if="!message.seen"
+          class="unseen-dot"
+          aria-hidden="true"
+        />
         <span class="from">{{ message.fromName || message.fromAddress }}</span>
         <span
           v-if="accountName"
@@ -130,12 +141,30 @@ const date = computed(() => formatDate(props.message.dateUnix));
   overflow: hidden;
 }
 
-.wrap.checked {
-  background: var(--color-accent-subtle);
+.wrap {
+  position: relative;
 }
 
-.wrap.active {
-  box-shadow: inset 2px 0 0 var(--color-accent);
+.wrap::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 8px;
+  bottom: 8px;
+  width: 3px;
+  border-radius: 0 3px 3px 0;
+  background: var(--color-accent);
+  transform: scaleY(0);
+  transition: transform var(--duration-base) var(--ease-out);
+}
+
+.wrap.active::before,
+.wrap:has(.item.selected)::before {
+  transform: scaleY(1);
+}
+
+.wrap.checked {
+  background: var(--color-accent-subtle);
 }
 
 .wrap.child .item {
@@ -150,6 +179,7 @@ const date = computed(() => formatDate(props.message.dateUnix));
 }
 
 .star {
+  opacity: 0.35;
   flex-shrink: 0;
   display: flex;
   align-items: center;
@@ -159,12 +189,22 @@ const date = computed(() => formatDate(props.message.dateUnix));
   transition: color var(--transition-fast);
 }
 
+.wrap:hover .star,
+.star:focus-visible {
+  opacity: 1;
+}
+
 .star:hover {
   color: var(--color-text-secondary);
 }
 
 .star.on {
-  color: var(--color-accent);
+  opacity: 1;
+  color: var(--color-star);
+}
+
+.star.on .star-icon {
+  animation: ax-pop var(--duration-slow) var(--ease-spring);
 }
 
 .star:focus-visible {
@@ -188,12 +228,25 @@ const date = computed(() => formatDate(props.message.dateUnix));
 }
 
 .item.selected {
-  background: var(--color-bg-selected);
+  background: var(--color-accent-subtle);
+}
+
+.item:not(:disabled):active {
+  transform: none;
+}
+
+.unseen-dot {
+  align-self: center;
+  flex-shrink: 0;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--color-accent);
+  animation: ax-pop var(--duration-slow) var(--ease-spring);
 }
 
 .line {
   display: flex;
-  justify-content: space-between;
   align-items: baseline;
   gap: var(--space-2);
 }

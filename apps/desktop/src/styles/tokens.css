@@ -1,40 +1,36 @@
-/*
- * Design tokens — single source of truth for color, spacing, radius,
- * typography, and motion (Vercel/Geist-like white mode).
- *
- * The dark set below mirrors every color token and is intentionally
- * unpolished: it exists so components never hardcode light-mode values.
- * Visual dark-mode design happens after the white-mode MVP.
- */
 :root {
-  /* Surfaces */
   --color-bg: #ffffff;
-  --color-bg-subtle: #fafafa;
-  --color-bg-hover: #f2f2f2;
-  --color-bg-selected: #f0f0f0;
+  --color-bg-subtle: #f7f7f9;
+  --color-bg-hover: #f0f0f4;
+  --color-bg-selected: #e9e9f2;
+  --color-bg-elevated: #ffffff;
+  --color-bg-sunken: #f2f2f6;
 
-  /* Text */
-  --color-text: #171717;
-  --color-text-secondary: #525252;
-  --color-text-tertiary: #8f8f8f;
+  --color-text: #17171c;
+  --color-text-secondary: #55555f;
+  --color-text-tertiary: #8b8b96;
   --color-text-inverse: #ffffff;
 
-  /* Borders */
-  --color-border: #eaeaea;
-  --color-border-strong: #e5e5e5;
+  --color-border: #e8e8ee;
+  --color-border-strong: #dcdce4;
 
-  /* Accent — exactly one, used sparingly */
-  --color-accent: #0068d6;
-  --color-accent-hover: #0057b8;
-  --color-accent-subtle: #e8f1fb;
+  --color-accent: #5145cd;
+  --color-accent-hover: #4338b8;
+  --color-accent-subtle: #eeedfc;
+  --color-accent-soft: rgb(81 69 205 / 14%);
 
-  /* Feedback */
-  --color-danger: #b3261e;
+  --color-danger: #c8312a;
+  --color-danger-subtle: #fdeeed;
+  --color-warning: #b45309;
+  --color-success: #15803d;
+  --color-star: #d99a06;
 
-  /* Focus */
   --focus-ring: 0 0 0 2px var(--color-bg), 0 0 0 4px var(--color-accent);
 
-  /* Spacing scale */
+  --shadow-sm: 0 1px 2px rgb(23 23 28 / 6%);
+  --shadow-md: 0 4px 14px rgb(23 23 28 / 10%), 0 1px 3px rgb(23 23 28 / 6%);
+  --shadow-lg: 0 18px 48px rgb(23 23 28 / 18%), 0 4px 12px rgb(23 23 28 / 8%);
+
   --space-1: 0.25rem;
   --space-2: 0.5rem;
   --space-3: 0.75rem;
@@ -42,55 +38,69 @@
   --space-5: 1.5rem;
   --space-6: 2rem;
 
-  /* Radii — small, no pills */
-  --radius-sm: 4px;
-  --radius-md: 6px;
-  --radius-lg: 8px;
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
 
-  /* Typography */
   --font-sans:
-    -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Inter, sans-serif;
+    "Inter Variable", Inter, -apple-system, BlinkMacSystemFont, "Segoe UI Variable", "Segoe UI", Roboto, sans-serif;
   --font-mono: ui-monospace, "Cascadia Mono", "Segoe UI Mono", Menlo, monospace;
   --text-xs: 0.75rem;
   --text-sm: 0.8125rem;
+  --text-md: 0.875rem;
   --text-base: 0.9375rem;
   --text-lg: 1.125rem;
   --weight-regular: 400;
   --weight-medium: 500;
   --weight-semibold: 600;
 
-  /* Motion — hover/focus only, max 150ms */
-  --transition-fast: 120ms ease;
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --duration-fast: 120ms;
+  --duration-base: 200ms;
+  --duration-slow: 320ms;
+  --transition-fast: var(--duration-fast) ease;
 
-  /* Layout */
   --sidebar-width: 240px;
   --list-width: 340px;
 
   color-scheme: light;
 }
 
-/* Prepared dark token set (structure only; values unrefined). */
 [data-theme="dark"] {
-  --color-bg: #0a0a0a;
-  --color-bg-subtle: #111111;
-  --color-bg-hover: #1a1a1a;
-  --color-bg-selected: #1f1f1f;
-  --color-text: #ededed;
-  --color-text-secondary: #a1a1a1;
-  --color-text-tertiary: #6e6e6e;
-  --color-text-inverse: #0a0a0a;
-  --color-border: #262626;
-  --color-border-strong: #333333;
-  --color-accent: #52a8ff;
-  --color-accent-hover: #74b8ff;
-  --color-accent-subtle: #0d2440;
-  --color-danger: #ff6369;
+  --color-bg: #121216;
+  --color-bg-subtle: #18181d;
+  --color-bg-hover: #212128;
+  --color-bg-selected: #282833;
+  --color-bg-elevated: #1d1d23;
+  --color-bg-sunken: #0e0e11;
+  --color-text: #ececf1;
+  --color-text-secondary: #a8a8b3;
+  --color-text-tertiary: #71717c;
+  --color-text-inverse: #121216;
+  --color-border: #26262e;
+  --color-border-strong: #32323c;
+  --color-accent: #8f87f1;
+  --color-accent-hover: #a59ef5;
+  --color-accent-subtle: #25233f;
+  --color-accent-soft: rgb(143 135 241 / 18%);
+  --color-danger: #f0716b;
+  --color-danger-subtle: #3a1d1c;
+  --color-warning: #f0a63a;
+  --color-success: #4ade80;
+  --color-star: #f5c542;
+  --shadow-sm: 0 1px 2px rgb(0 0 0 / 40%);
+  --shadow-md: 0 6px 18px rgb(0 0 0 / 45%), 0 1px 3px rgb(0 0 0 / 40%);
+  --shadow-lg: 0 22px 56px rgb(0 0 0 / 60%), 0 4px 12px rgb(0 0 0 / 40%);
 
   color-scheme: dark;
 }
 
 @media (prefers-reduced-motion: reduce) {
   :root {
-    --transition-fast: 0ms;
+    --duration-fast: 0ms;
+    --duration-base: 0ms;
+    --duration-slow: 0ms;
   }
 }

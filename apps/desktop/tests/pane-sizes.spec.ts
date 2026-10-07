@@ -4,10 +4,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import AppShell from "../src/components/layout/AppShell.vue";
 import LayoutSwitcher from "../src/components/layout/LayoutSwitcher.vue";
 import PaneSplitter from "../src/components/layout/PaneSplitter.vue";
+import { shellGrid } from "../src/components/layout/shellGrid";
 import {
   cycleLayout,
   initLayout,
+  movePaneBy,
+  resetPaneOrder,
   setLayout,
+  swapPanes,
   useLayout,
 } from "../src/composables/useLayout";
 import {
@@ -125,7 +129,7 @@ describe("PaneSplitter", () => {
 });
 
 describe("useLayout", () => {
-  it("persists a chosen layout and cycles through the three", () => {
+  it("persists a chosen layout and cycles through all four", () => {
     const { layout } = useLayout();
     setLayout("classic");
     expect(layout.value).toBe("classic");
@@ -135,7 +139,68 @@ describe("useLayout", () => {
     cycleLayout();
     expect(layout.value).toBe("wide");
     cycleLayout();
+    expect(layout.value).toBe("focus");
+    cycleLayout();
     expect(layout.value).toBe("classic");
+  });
+
+  it("swaps, moves, persists and resets the pane order", () => {
+    const { paneOrder, isDefaultOrder } = useLayout();
+    swapPanes("sidebar", "message");
+    expect(paneOrder.value).toEqual(["message", "list", "sidebar"]);
+    expect(isDefaultOrder.value).toBe(false);
+    expect(JSON.parse(localStorage.getItem("axomail.paneOrder") ?? "[]")).toEqual([
+      "message",
+      "list",
+      "sidebar",
+    ]);
+    movePaneBy("message", 1);
+    expect(paneOrder.value).toEqual(["list", "message", "sidebar"]);
+    movePaneBy("list", -1);
+    expect(paneOrder.value).toEqual(["list", "message", "sidebar"]);
+    initLayout();
+    expect(paneOrder.value).toEqual(["list", "message", "sidebar"]);
+    resetPaneOrder();
+    expect(isDefaultOrder.value).toBe(true);
+  });
+
+  it("ignores a corrupt stored pane order", () => {
+    localStorage.setItem("axomail.paneOrder", JSON.stringify(["list", "list", "x"]));
+    initLayout();
+    expect(useLayout().paneOrder.value).toEqual(["sidebar", "list", "message"]);
+  });
+});
+
+describe("shellGrid", () => {
+  it("places panes by order and keeps one flexible column", () => {
+    const grid = shellGrid("vertical", ["message", "sidebar", "list"]);
+    expect(grid.template).toContain('"message splitA sidebar splitB list"');
+    expect(grid.template.match(/1fr\)/g)).toHaveLength(1);
+    expect(grid.splitters).toEqual([
+      { area: "splitA", orientation: "vertical", dimension: "sidebarWidth", reverse: true },
+      { area: "splitB", orientation: "vertical", dimension: "listWidth", reverse: true },
+    ]);
+  });
+
+  it("keeps the default vertical behaviour", () => {
+    const grid = shellGrid("vertical", ["sidebar", "list", "message"]);
+    expect(grid.splitters.map((split) => [split.dimension, split.reverse])).toEqual([
+      ["sidebarWidth", false],
+      ["listWidth", false],
+    ]);
+  });
+
+  it("drops the folder pane in the focus layout", () => {
+    const grid = shellGrid("focus", ["list", "sidebar", "message"]);
+    expect(grid.template).toContain('"list splitB message"');
+    expect(grid.template).not.toContain("sidebar");
+    expect(grid.splitters).toHaveLength(1);
+  });
+
+  it("puts the middle pane on top in the wide layout", () => {
+    const grid = shellGrid("wide", ["sidebar", "message", "list"]);
+    expect(grid.template).toContain('"message message message"');
+    expect(grid.template).toContain('"sidebar splitA list"');
   });
 });
 
@@ -144,8 +209,8 @@ describe("LayoutSwitcher", () => {
     setLayout("vertical");
     const wrapper = mount(LayoutSwitcher);
     const buttons = wrapper.findAll('[role="radio"]');
-    expect(buttons).toHaveLength(3);
-    const wide = buttons.find((b) => b.text() === "Wide");
+    expect(buttons).toHaveLength(4);
+    const wide = buttons.find((b) => b.attributes("aria-label") === "Wide");
     if (wide === undefined) throw new Error("Wide button missing");
     await wide.trigger("click");
     expect(wide.attributes("aria-checked")).toBe("true");
@@ -184,6 +249,39 @@ describe("AppShell layout + splitters", () => {
       .map((s) => s.attributes("aria-orientation"))
       .sort();
     expect(orientations).toEqual(["horizontal", "vertical"]);
+  });
+
+  it("shows a single splitter and hides the folder pane in focus", () => {
+    stubMatchMedia(false);
+    setLayout("focus");
+    const wrapper = mount(AppShell, { slots });
+    expect(wrapper.findAll('[role="separator"]')).toHaveLength(1);
+    expect(wrapper.get(".col-sidebar").attributes("style")).toContain("display: none");
+  });
+
+  it("swaps panes when a grip is dragged onto another pane", async () => {
+    stubMatchMedia(false);
+    setLayout("vertical");
+    const wrapper = mount(AppShell, { slots, attachTo: document.body });
+    const target = wrapper.get(".col-message").element;
+    document.elementFromPoint = () => target;
+    await wrapper
+      .get(".col-sidebar .pane-grip")
+      .trigger("pointerdown", { button: 0, clientX: 10, clientY: 10 });
+    window.dispatchEvent(new MouseEvent("pointermove", { clientX: 400, clientY: 200 }));
+    await wrapper.vm.$nextTick();
+    expect(wrapper.find(".col-message .drop-hint").exists()).toBe(true);
+    window.dispatchEvent(new MouseEvent("pointerup", { clientX: 400, clientY: 200 }));
+    expect(useLayout().paneOrder.value).toEqual(["message", "list", "sidebar"]);
+    wrapper.unmount();
+  });
+
+  it("moves a pane with the arrow keys on its grip", async () => {
+    stubMatchMedia(false);
+    setLayout("vertical");
+    const wrapper = mount(AppShell, { slots });
+    await wrapper.get(".col-list .pane-grip").trigger("keydown", { key: "ArrowLeft" });
+    expect(useLayout().paneOrder.value).toEqual(["list", "sidebar", "message"]);
   });
 
   it("hides the splitters on a narrow, stacked viewport", () => {

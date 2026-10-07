@@ -237,61 +237,66 @@ function onSyncEvent(event: SyncEventDto): void {
       />
     </template>
     <template #list>
-      <DraftListPane
-        v-if="activeView === 'drafts'"
-        :drafts="drafts"
-        :selected-draft-id="selectedDraftId"
-        @select="compose.openDraft"
-      />
-      <OutboxListPane
-        v-else-if="activeView === 'outbox'"
-        :items="outbox"
-        @retry="compose.onRetryOutbox"
-        @send-now="compose.onSendOutboxNow"
-        @cancel-schedule="compose.onCancelSchedule"
-      />
-      <MessageListPane
-        v-else-if="activeView === 'tag'"
-        :messages="messages"
-        :selected-message-id="selectedMessageId"
-        :threaded="listLoading.threaded.value"
-        :selection-reset-key="selectionResetKey"
-        @select="view.onSelectMessage"
-        @toggle-flag="messageActions.toggleStar"
-        @mark-all-read="messageActions.markListRead"
-        @selection-change="listLoading.onSelectionChange"
-        @bulk-action="mailboxActions.dispatch"
-        @update:threaded="listLoading.onToggleThreaded"
-      />
-      <AdvancedSearchResultsPane
-        v-else-if="activeView === 'search'"
-        :title="savedSearch.resultsTitle.value"
-        :results="savedSearch.results.value"
-        :searching="savedSearch.running.value"
-        :selected-message-id="selectedMessageId"
-        @select="view.onSelectMessage"
-      />
-      <MailListRegion
-        v-else
-        :view="activeView === 'unified' ? 'unified' : 'mailbox'"
-        :messages="messages"
-        :unified-items="unifiedItems"
-        :accounts="accounts"
-        :selected-message-id="selectedMessageId"
-        :selected-mailbox-id="selectedMailboxId"
-        :threaded="listLoading.threaded.value"
-        :has-more="listLoading.hasMore.value"
-        :loading-more="listLoading.loadingMore.value"
-        :selection-reset-key="selectionResetKey"
-        @select="view.onSelectMessage"
-        @toggle-flag="messageActions.toggleStar"
-        @mark-all-read="onMarkAllRead"
-        @load-more="listLoading.onLoadMore"
-        @selection-change="listLoading.onSelectionChange"
-        @bulk-action="mailboxActions.dispatch"
-        @update:threaded="listLoading.onToggleThreaded"
-        @advanced-search="savedSearch.openDialog()"
-      />
+      <Transition
+        name="pane-fade"
+        mode="out-in"
+      >
+        <DraftListPane
+          v-if="activeView === 'drafts'"
+          :drafts="drafts"
+          :selected-draft-id="selectedDraftId"
+          @select="compose.openDraft"
+        />
+        <OutboxListPane
+          v-else-if="activeView === 'outbox'"
+          :items="outbox"
+          @retry="compose.onRetryOutbox"
+          @send-now="compose.onSendOutboxNow"
+          @cancel-schedule="compose.onCancelSchedule"
+        />
+        <MessageListPane
+          v-else-if="activeView === 'tag'"
+          :messages="messages"
+          :selected-message-id="selectedMessageId"
+          :threaded="listLoading.threaded.value"
+          :selection-reset-key="selectionResetKey"
+          @select="view.onSelectMessage"
+          @toggle-flag="messageActions.toggleStar"
+          @mark-all-read="messageActions.markListRead"
+          @selection-change="listLoading.onSelectionChange"
+          @bulk-action="mailboxActions.dispatch"
+          @update:threaded="listLoading.onToggleThreaded"
+        />
+        <AdvancedSearchResultsPane
+          v-else-if="activeView === 'search'"
+          :title="savedSearch.resultsTitle.value"
+          :results="savedSearch.results.value"
+          :searching="savedSearch.running.value"
+          :selected-message-id="selectedMessageId"
+          @select="view.onSelectMessage"
+        />
+        <MailListRegion
+          v-else
+          :view="activeView === 'unified' ? 'unified' : 'mailbox'"
+          :messages="messages"
+          :unified-items="unifiedItems"
+          :accounts="accounts"
+          :selected-message-id="selectedMessageId"
+          :selected-mailbox-id="selectedMailboxId"
+          :threaded="listLoading.threaded.value"
+          :has-more="listLoading.hasMore.value"
+          :loading-more="listLoading.loadingMore.value"
+          :selection-reset-key="selectionResetKey"
+          @select="view.onSelectMessage"
+          @toggle-flag="messageActions.toggleStar"
+          @mark-all-read="onMarkAllRead"
+          @load-more="listLoading.onLoadMore"
+          @selection-change="listLoading.onSelectionChange"
+          @bulk-action="mailboxActions.dispatch"
+          @update:threaded="listLoading.onToggleThreaded"
+          @advanced-search="savedSearch.openDialog()"
+        />
+      </Transition>
     </template>
     <template #message>
       <MessageViewPane
@@ -310,11 +315,13 @@ function onSyncEvent(event: SyncEventDto): void {
       />
       <EmptyState
         v-else-if="activeView === 'drafts'"
+        icon="draft"
         :title="t('app.emptyState.draftsTitle')"
         :detail="t('app.emptyState.draftsDetail')"
       />
       <EmptyState
         v-else
+        icon="outbox"
         :title="t('app.emptyState.outboxTitle')"
         :detail="t('app.emptyState.outboxDetail')"
       />

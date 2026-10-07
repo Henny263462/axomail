@@ -7,6 +7,8 @@
  */
 import { useI18n } from "vue-i18n";
 
+import AppIcon from "../common/AppIcon.vue";
+
 const { t } = useI18n({ useScope: "global" });
 
 const emit = defineEmits<{
@@ -32,6 +34,7 @@ const emit = defineEmits<{
       class="action"
       @click="emit('reply')"
     >
+      <AppIcon name="reply" />
       {{ t("message.actionBar.reply") }}
     </button>
     <button
@@ -39,6 +42,7 @@ const emit = defineEmits<{
       class="action"
       @click="emit('reply-all')"
     >
+      <AppIcon name="replyAll" />
       {{ t("message.actionBar.replyAll") }}
     </button>
     <button
@@ -46,6 +50,7 @@ const emit = defineEmits<{
       class="action"
       @click="emit('forward')"
     >
+      <AppIcon name="forward" />
       {{ t("message.actionBar.forward") }}
     </button>
     <span
@@ -57,6 +62,7 @@ const emit = defineEmits<{
       class="action"
       @click="emit('archive')"
     >
+      <AppIcon name="archive" />
       {{ t("message.actionBar.archive") }}
     </button>
     <button
@@ -64,6 +70,7 @@ const emit = defineEmits<{
       class="action"
       @click="emit('move')"
     >
+      <AppIcon name="folderMove" />
       {{ t("message.actionBar.moveTo") }}
     </button>
     <button
@@ -71,6 +78,7 @@ const emit = defineEmits<{
       class="action"
       @click="emit('copy')"
     >
+      <AppIcon name="copy" />
       {{ t("message.actionBar.copyTo") }}
     </button>
     <button
@@ -78,6 +86,7 @@ const emit = defineEmits<{
       class="action"
       @click="emit('junk')"
     >
+      <AppIcon name="junk" />
       {{ t("message.actionBar.junk") }}
     </button>
     <button
@@ -85,6 +94,7 @@ const emit = defineEmits<{
       class="action danger"
       @click="emit('delete')"
     >
+      <AppIcon name="trash" />
       {{ t("common.delete") }}
     </button>
   </div>
@@ -99,10 +109,14 @@ const emit = defineEmits<{
 }
 
 .action {
-  padding: var(--space-1) var(--space-3);
-  border: 1px solid var(--color-border-strong);
-  border-radius: var(--radius-sm);
-  background: var(--color-bg);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-bg-elevated);
+  box-shadow: var(--shadow-sm);
   font-size: var(--text-sm);
   color: var(--color-text);
   cursor: pointer;
@@ -110,6 +124,17 @@ const emit = defineEmits<{
 
 .action:hover {
   background: var(--color-bg-hover);
+  border-color: var(--color-border-strong);
+}
+
+.action:first-child {
+  background: var(--color-accent);
+  border-color: transparent;
+  color: var(--color-text-inverse);
+}
+
+.action:first-child:hover {
+  background: var(--color-accent-hover);
 }
 
 .action:focus-visible {
@@ -119,12 +144,11 @@ const emit = defineEmits<{
 
 .action.danger {
   color: var(--color-danger);
-  border-color: var(--color-danger);
 }
 
 .action.danger:hover {
-  background: var(--color-danger);
-  color: var(--color-text-inverse);
+  background: var(--color-danger-subtle);
+  border-color: var(--color-danger);
 }
 
 .action-sep {

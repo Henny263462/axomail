@@ -9,6 +9,8 @@ import { useI18n } from "vue-i18n";
 
 import type { MailboxSummary } from "../../types/mail";
 import EmptyState from "../common/EmptyState.vue";
+import AppIcon from "../common/AppIcon.vue";
+import { folderIcon } from "../common/icons";
 import { leafName } from "./folderTree";
 
 /** One flattened folder entry: the mailbox plus its owning account's name. */
@@ -51,6 +53,10 @@ const { t } = useI18n({ useScope: "global" });
           :aria-current="entry.mailbox.id === selectedMailboxId ? 'true' : undefined"
           @click="emit('selectMailbox', entry.mailbox.id)"
         >
+          <AppIcon
+            :name="folderIcon(entry.mailbox.role)"
+            class="folder-icon"
+          />
           <span class="text">
             <span class="leaf">{{ leafName(entry.mailbox) }}</span>
             <span class="account">{{ entry.accountName }}</span>
@@ -81,7 +87,6 @@ const { t } = useI18n({ useScope: "global" });
 .row {
   display: flex;
   align-items: center;
-  justify-content: space-between;
   gap: var(--space-2);
   width: 100%;
   padding: var(--space-1) var(--space-2);
@@ -96,12 +101,21 @@ const { t } = useI18n({ useScope: "global" });
 }
 
 .row.selected {
-  background: var(--color-bg-selected);
-  color: var(--color-text);
+  background: var(--color-accent-subtle);
+  color: var(--color-accent);
   font-weight: var(--weight-medium);
 }
 
+.folder-icon {
+  color: var(--color-text-tertiary);
+}
+
+.row.selected .folder-icon {
+  color: var(--color-accent);
+}
+
 .text {
+  flex: 1;
   display: flex;
   flex-direction: column;
   min-width: 0;

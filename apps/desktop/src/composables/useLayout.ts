@@ -1,89 +1,139 @@
-/**
- * Window-layout control: the three-pane arrangement of the mail shell,
- * mirroring Thunderbird's Classic / Vertical / Wide layouts.
- *
- * - **vertical** — folder pane, message list, and reading pane as three
- *   side-by-side columns (the default and the app's original arrangement).
- * - **classic** — folder pane on the left (full height); the message list sits
- *   above the reading pane on the right.
- * - **wide** — the message list spans the full width across the top; the folder
- *   pane and reading pane sit below it.
- *
- * A single module-level source of truth (there is only ever one layout for the
- * window) is persisted in `localStorage`, so {@link initLayout} can restore the
- * choice before the first frame (called from `main.ts`). The value is a pure UI
- * preference — no backend round-trip — so there is no reconcile step.
- *
- * The module has no import-time side effects: nothing touches storage until
- * {@link initLayout} or a setter runs, keeping it inert for unit tests that only
- * import the setters.
- */
 import { computed, ref, type ComputedRef } from "vue";
 
-/** The three-pane arrangement of the shell. */
-export type PaneLayout = "classic" | "vertical" | "wide";
+import type { Pane } from "./usePaneNavigation";
 
-/** The layouts in cycle order (for a "next layout" command). */
-export const PANE_LAYOUTS: readonly PaneLayout[] = ["classic", "vertical", "wide"];
+export type PaneLayout = "classic" | "vertical" | "wide" | "focus";
 
-/** localStorage key holding the persisted layout. */
+export const PANE_LAYOUTS: readonly PaneLayout[] = ["classic", "vertical", "wide", "focus"];
+
+export const DEFAULT_PANE_ORDER: readonly Pane[] = ["sidebar", "list", "message"];
+
 const STORAGE_KEY = "axomail.layout";
+const ORDER_KEY = "axomail.paneOrder";
 
-/** The active layout; `vertical` preserves the app's original three columns. */
 const layout = ref<PaneLayout>("vertical");
+const paneOrder = ref<Pane[]>([...DEFAULT_PANE_ORDER]);
 
-/** Whether `value` names a known layout. */
 function isLayout(value: string | null): value is PaneLayout {
-  return value === "classic" || value === "vertical" || value === "wide";
+  return value !== null && (PANE_LAYOUTS as readonly string[]).includes(value);
 }
 
-/** Reads the persisted layout, treating anything unexpected as `vertical`. */
+function isPaneOrder(value: unknown): value is Pane[] {
+  return (
+    Array.isArray(value) &&
+    value.length === DEFAULT_PANE_ORDER.length &&
+    DEFAULT_PANE_ORDER.every((pane) => value.includes(pane))
+  );
+}
+
 function readStored(): PaneLayout {
   try {
     const raw = globalThis.localStorage?.getItem(STORAGE_KEY) ?? null;
     if (isLayout(raw)) return raw;
   } catch {
-    // localStorage can throw when disabled (private mode, sandbox); ignore.
+    return "vertical";
   }
   return "vertical";
 }
 
-/** Persists the layout; a failed write is non-fatal. */
-function writeStored(value: PaneLayout): void {
+function readStoredOrder(): Pane[] {
   try {
-    globalThis.localStorage?.setItem(STORAGE_KEY, value);
+    const raw = globalThis.localStorage?.getItem(ORDER_KEY);
+    const parsed: unknown = raw ? JSON.parse(raw) : null;
+    if (isPaneOrder(parsed)) return [...parsed];
   } catch {
-    // A failed cache write only costs the restored layout on the next launch.
+    return [...DEFAULT_PANE_ORDER];
+  }
+  return [...DEFAULT_PANE_ORDER];
+}
+
+function write(key: string, value: string): void {
+  try {
+    globalThis.localStorage?.setItem(key, value);
+  } catch {
+    return;
   }
 }
 
-/** Restores the persisted layout. Call once, as early as possible. */
+type TransitionDocument = Document & {
+  startViewTransition?: (update: () => void) => unknown;
+};
+
+export function withViewTransition(update: () => void): void {
+  const doc = globalThis.document as TransitionDocument | undefined;
+  const reduced = globalThis.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false;
+  if (doc && typeof doc.startViewTransition === "function" && !reduced) {
+    doc.startViewTransition(update);
+  } else {
+    update();
+  }
+}
+
 export function initLayout(): void {
   layout.value = readStored();
+  paneOrder.value = readStoredOrder();
 }
 
-/** Commits and persists a layout in response to a user action. */
 export function setLayout(next: PaneLayout): void {
   layout.value = next;
-  writeStored(next);
+  write(STORAGE_KEY, next);
 }
 
-/** Advances to the next layout in {@link PANE_LAYOUTS} (the View command). */
 export function cycleLayout(): void {
   const index = PANE_LAYOUTS.indexOf(layout.value);
-  const next = PANE_LAYOUTS[(index + 1) % PANE_LAYOUTS.length];
-  setLayout(next ?? "vertical");
+  setLayout(PANE_LAYOUTS[(index + 1) % PANE_LAYOUTS.length] ?? "vertical");
 }
 
-/** Reactive layout state plus the commit helpers. */
+function commitOrder(next: Pane[]): void {
+  paneOrder.value = next;
+  write(ORDER_KEY, JSON.stringify(next));
+}
+
+export function swapPanes(a: Pane, b: Pane): void {
+  if (a === b) return;
+  commitOrder(paneOrder.value.map((pane) => (pane === a ? b : pane === b ? a : pane)));
+}
+
+export function movePaneBy(pane: Pane, delta: number): void {
+  const visible = visibleOrder(layout.value, paneOrder.value);
+  const target = visible[visible.indexOf(pane) + delta];
+  if (target !== undefined) swapPanes(pane, target);
+}
+
+export function resetPaneOrder(): void {
+  commitOrder([...DEFAULT_PANE_ORDER]);
+}
+
+export function toggleFocusLayout(): void {
+  setLayout(layout.value === "focus" ? "vertical" : "focus");
+}
+
+export function visibleOrder(current: PaneLayout, order: readonly Pane[]): Pane[] {
+  return current === "focus" ? order.filter((pane) => pane !== "sidebar") : [...order];
+}
+
 export function useLayout(): {
   layout: ComputedRef<PaneLayout>;
+  paneOrder: ComputedRef<Pane[]>;
+  isDefaultOrder: ComputedRef<boolean>;
   setLayout: (next: PaneLayout) => void;
   cycleLayout: () => void;
+  swapPanes: (a: Pane, b: Pane) => void;
+  movePaneBy: (pane: Pane, delta: number) => void;
+  resetPaneOrder: () => void;
+  toggleFocusLayout: () => void;
 } {
   return {
     layout: computed(() => layout.value),
+    paneOrder: computed(() => paneOrder.value),
+    isDefaultOrder: computed(() =>
+      paneOrder.value.every((pane, index) => pane === DEFAULT_PANE_ORDER[index]),
+    ),
     setLayout,
     cycleLayout,
+    swapPanes,
+    movePaneBy,
+    resetPaneOrder,
+    toggleFocusLayout,
   };
 }

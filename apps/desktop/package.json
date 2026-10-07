@@ -1,7 +1,7 @@
 {
   "name": "axomail-desktop",
   "private": true,
-  "version": "0.2.0",
+  "version": "0.3.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -15,7 +15,7 @@
   },
   "dependencies": {
     "@tauri-apps/api": "^2.11.1",
-    "vue": "^3.5.40",
+    "vue": "^3.5.43",
     "vue-i18n": "11.4.6"
   },
   "devDependencies": {

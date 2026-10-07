@@ -2,6 +2,8 @@
 import { computed } from "vue";
 import { useI18n } from "vue-i18n";
 
+import AppIcon from "../common/AppIcon.vue";
+import { folderIcon } from "../common/icons";
 import type { FolderTreeNode } from "./folderTree";
 import type { SidebarView } from "./view";
 
@@ -62,7 +64,12 @@ function openMenuAt(x: number, y: number): void {
         :aria-expanded="isExpanded"
         @click.stop="emit('toggle', mailbox.id)"
       >
-        {{ isExpanded ? "▾" : "▸" }}
+        <AppIcon
+          name="chevronRight"
+          class="chevron"
+          :class="{ open: isExpanded }"
+          :size="12"
+        />
       </button>
       <span
         v-else
@@ -77,12 +84,19 @@ function openMenuAt(x: number, y: number): void {
         :title="subscribed ? undefined : t('sidebar.folderNode.notSubscribed', { name: node.leaf })"
         @click="emit('select', mailbox.id)"
       >
+        <AppIcon
+          :name="folderIcon(mailbox.role)"
+          class="folder-icon"
+        />
         <span class="folder-name">{{ node.leaf }}</span>
         <span
           v-if="orphaned"
           class="orphan"
           :title="t('sidebar.folderNode.orphanHint')"
-        >⚠</span>
+        ><AppIcon
+          name="alert"
+          :size="13"
+        /></span>
         <span
           v-if="unread > 0"
           class="unread"
@@ -101,7 +115,7 @@ function openMenuAt(x: number, y: number): void {
           )
         "
       >
-        ⋯
+        <AppIcon name="more" />
       </button>
     </div>
     <ul
@@ -141,7 +155,7 @@ function openMenuAt(x: number, y: number): void {
 }
 
 .folder-row.selected {
-  background: var(--color-bg-selected);
+  background: var(--color-accent-subtle);
 }
 
 .folder-row.unsubscribed .folder-name {
@@ -151,6 +165,9 @@ function openMenuAt(x: number, y: number): void {
 
 .twisty,
 .twisty-spacer {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   flex-shrink: 0;
   width: 16px;
   font-size: var(--text-xs);
@@ -162,21 +179,43 @@ function openMenuAt(x: number, y: number): void {
   color: var(--color-text);
 }
 
+.chevron {
+  transition: rotate var(--duration-base) var(--ease-out);
+}
+
+.chevron.open {
+  rotate: 90deg;
+}
+
+.folder-icon {
+  color: var(--color-text-tertiary);
+  transition: color var(--duration-fast) ease;
+}
+
 .folder-button {
   display: flex;
   align-items: center;
   gap: var(--space-2);
   flex: 1;
   min-width: 0;
-  padding: var(--space-1) 0;
+  padding: 5px 0;
   font-size: var(--text-sm);
   color: var(--color-text-secondary);
   text-align: left;
 }
 
-.folder-button.selected {
-  color: var(--color-text);
+.folder-button:hover .folder-icon {
+  color: var(--color-text-secondary);
+}
+
+.folder-button.selected,
+.folder-button.selected .folder-icon {
+  color: var(--color-accent);
   font-weight: var(--weight-medium);
+}
+
+.folder-button:not(:disabled):active {
+  transform: none;
 }
 
 .folder-name {
@@ -188,6 +227,7 @@ function openMenuAt(x: number, y: number): void {
 }
 
 .orphan {
+  display: inline-flex;
   flex-shrink: 0;
   color: var(--color-warning, #b45309);
   font-size: var(--text-xs);
@@ -195,15 +235,25 @@ function openMenuAt(x: number, y: number): void {
 
 .unread {
   flex-shrink: 0;
-  font-size: var(--text-xs);
+  min-width: 20px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: var(--color-accent-soft);
+  font-size: 0.6875rem;
+  line-height: 18px;
+  text-align: center;
   font-weight: var(--weight-semibold);
+  font-variant-numeric: tabular-nums;
   color: var(--color-accent);
+  animation: ax-pop var(--duration-slow) var(--ease-spring);
 }
 
 .folder-menu {
+  display: inline-flex;
+  align-items: center;
   flex-shrink: 0;
   visibility: hidden;
-  padding: 0 var(--space-1);
+  padding: 2px;
   font-size: var(--text-sm);
   line-height: 1;
   color: var(--color-text-secondary);

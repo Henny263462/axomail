@@ -76,12 +76,13 @@ const { t } = useI18n({ useScope: "global" });
 }
 
 .toast {
+  animation: ax-dialog-in var(--duration-slow) var(--ease-spring);
   pointer-events: auto;
   display: flex;
   align-items: center;
   gap: var(--space-3);
   padding: var(--space-2) var(--space-4);
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-lg);
   border: 1px solid var(--color-border-strong);
   background: var(--color-bg-elevated, var(--color-bg));
   box-shadow: var(--shadow-md, 0 4px 12px rgb(0 0 0 / 20%));

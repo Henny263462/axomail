@@ -1,0 +1,99 @@
+@keyframes ax-fade-in {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes ax-rise-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}
+
+@keyframes ax-dialog-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.98);
+  }
+}
+
+@keyframes ax-pop {
+  0% {
+    transform: scale(1);
+  }
+
+  45% {
+    transform: scale(1.3);
+  }
+
+  100% {
+    transform: scale(1);
+  }
+}
+
+@keyframes ax-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes ax-pulse {
+  50% {
+    opacity: 0.45;
+  }
+}
+
+.overlay:has(> [role="dialog"]),
+.backdrop:has(> [role="dialog"]) {
+  animation: ax-fade-in var(--duration-base) ease both;
+  backdrop-filter: blur(2px);
+}
+
+[role="dialog"][aria-modal="true"] {
+  animation: ax-dialog-in var(--duration-slow) var(--ease-out) both;
+  box-shadow: var(--shadow-lg);
+  border-radius: var(--radius-lg);
+}
+
+.ax-spin {
+  animation: ax-spin 0.9s linear infinite;
+}
+
+.ax-pulse {
+  animation: ax-pulse 1.6s ease-in-out infinite;
+}
+
+.pane-fade-enter-active {
+  transition:
+    opacity var(--duration-base) ease,
+    transform var(--duration-base) var(--ease-out);
+}
+
+.pane-fade-leave-active {
+  transition: opacity var(--duration-fast) ease;
+}
+
+.pane-fade-enter-from {
+  opacity: 0;
+  transform: translateY(4px);
+}
+
+.pane-fade-leave-to {
+  opacity: 0;
+}
+
+::view-transition-group(*) {
+  animation-duration: var(--duration-slow);
+  animation-timing-function: var(--ease-out);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

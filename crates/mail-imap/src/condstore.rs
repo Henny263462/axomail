@@ -329,6 +329,10 @@ fn classify_vanished(
 }
 
 #[cfg(test)]
+#[allow(
+    clippy::single_range_in_vec_init,
+    reason = "VANISHED fixtures are lists of UID ranges; one range is intended"
+)]
 mod tests {
     use super::*;
 

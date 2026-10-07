@@ -53,8 +53,10 @@ fn decode_shift(run: &[u8], out: &mut String) {
         return;
     }
     let units: Vec<u16> = bytes
-        .chunks_exact(2)
-        .map(|pair| u16::from_be_bytes([pair[0], pair[1]]))
+        .as_chunks::<2>()
+        .0
+        .iter()
+        .map(|pair| u16::from_be_bytes(*pair))
         .collect();
     for chunk in char::decode_utf16(units) {
         out.push(chunk.unwrap_or('\u{FFFD}'));
